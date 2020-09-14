@@ -8,8 +8,9 @@ import (
 )
 
 var (
-	apiKey           = "QjgYur4LQTwe5HpvbvhpzK" // TODO(tzdybal): prepare new test set, new API key
-	testUser         = bullettrain.FeatureUser{Identifier: "bullet_train_sample_user"}
+	apiKey           = "MgfUaRCvvZMznuQyqjnQKt"
+	testUser         = bullettrain.FeatureUser{Identifier: "test_user"}
+	differentUser    = bullettrain.FeatureUser{Identifier: "different_user"}
 	testFeatureName  = "test_feature"
 	testFeatureValue = "sample feature value"
 	testTraitName    = "test_trait"
@@ -51,7 +52,7 @@ func TestGetFeatureFlagValue(t *testing.T) {
 	val, err := c.GetFeatureFlagValue(testFeatureName)
 
 	assert.NoError(t, err)
-	assert.NotEqual(t, "", val)
+	assert.Equal(t, testFeatureValue, val)
 }
 
 func TestGetUserFeatureFlagValue(t *testing.T) {
@@ -59,7 +60,7 @@ func TestGetUserFeatureFlagValue(t *testing.T) {
 	val, err := c.GetUserFeatureFlagValue(testUser, testFeatureName)
 
 	assert.NoError(t, err)
-	assert.NotEqual(t, "", val)
+	assert.Equal(t, testFeatureValue, val)
 }
 
 func TestHasFeatureFlag(t *testing.T) {
@@ -96,12 +97,17 @@ func TestGetTraits(t *testing.T) {
 }
 
 func TestUpdateTrait(t *testing.T) {
-	differentUser := bullettrain.FeatureUser{Identifier: "different_user"}
-	trait := bullettrain.Trait{Key: "key", Value: "value"}
-
 	c := bullettrain.DefaultBulletTrainClient(apiKey)
-	trait, err := c.UpdateTrait(differentUser, trait)
+	trait, err := c.GetTrait(differentUser, testTraitName)
+	assert.NoError(t, err)
 
-	assert.NoError(err)
+	newValue := "new value"
 
+	trait.Value = newValue
+	updated, err := c.UpdateTrait(differentUser, trait)
+	assert.NoError(t, err)
+	assert.Equal(t, trait.Value, updated.Value)
+
+	trait, err = c.GetTrait(differentUser, testTraitName)
+	assert.Equal(t, newValue, trait.Value)
 }
