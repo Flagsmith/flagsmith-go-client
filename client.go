@@ -123,21 +123,26 @@ func (c *BulletTrainClient) GetTrait(user User, key string) (Trait, error) {
 }
 
 func (c *BulletTrainClient) GetTraits(user User, keys ...string) ([]Trait, error) {
-	traits := make([]Trait, 0)
-	resp, err := c.client.NewRequest().
-		SetResult(&traits).
-		Get(c.config.BaseURI + "traits/")
-
-	fmt.Println(string(resp.Body()))
+	resp := struct {
+		Flags  []interface{} `json:"flags"`
+		Traits []Trait       `json:"traits"`
+	}{}
+	_, err := c.client.NewRequest().
+		SetResult(&resp).
+		SetQueryParam("identifier", user.Identifier).
+		Get(c.config.BaseURI + "identities/")
 
 	if err != nil {
 		return nil, err
 	}
 
+	if len(keys) == 0 {
+		return resp.Traits, nil
+	}
+
 	filtered := make([]Trait, 0, len(keys))
 	for _, key := range keys {
-		for _, t := range traits {
-			fmt.Println(t)
+		for _, t := range resp.Traits {
 			if key == t.Key {
 				filtered = append(filtered, t)
 				continue
