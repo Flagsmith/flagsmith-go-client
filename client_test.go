@@ -8,15 +8,16 @@ import (
 )
 
 var (
-	apiKey           = "MgfUaRCvvZMznuQyqjnQKt"
-	testUser         = bullettrain.User{Identifier: "test_user"}
-	differentUser    = bullettrain.User{Identifier: "different_user"}
-	testFeatureName  = "test_feature"
-	testFeatureValue = "sample feature value"
-	testFlagName     = "test_flag"
-	testFlagValue    = true
-	testTraitName    = "test_trait"
-	testTraitValue   = "sample trait value"
+	apiKey               = "MgfUaRCvvZMznuQyqjnQKt"
+	testUser             = bullettrain.User{Identifier: "test_user"}
+	differentUser        = bullettrain.User{Identifier: "different_user"}
+	testFeatureName      = "test_feature"
+	testFeatureValue     = "sample feature value"
+	testUserFeatureValue = "user feature value"
+	testFlagName         = "test_flag"
+	testFlagValue        = true
+	testTraitName        = "test_trait"
+	testTraitValue       = "sample trait value"
 )
 
 func TestGetFeatureFlags(t *testing.T) {
@@ -60,7 +61,7 @@ func TestGetUserFeatureFlagValue(t *testing.T) {
 	val, err := c.GetUserValue(testUser, testFeatureName)
 
 	assert.NoError(t, err)
-	assert.Equal(t, testFeatureValue, val)
+	assert.Equal(t, testUserFeatureValue, val)
 }
 
 func TestHasFeature(t *testing.T) {
