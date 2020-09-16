@@ -9,8 +9,8 @@ import (
 
 var (
 	apiKey           = "MgfUaRCvvZMznuQyqjnQKt"
-	testUser         = bullettrain.FeatureUser{Identifier: "test_user"}
-	differentUser    = bullettrain.FeatureUser{Identifier: "different_user"}
+	testUser         = bullettrain.User{Identifier: "test_user"}
+	differentUser    = bullettrain.User{Identifier: "different_user"}
 	testFeatureName  = "test_feature"
 	testFeatureValue = "sample feature value"
 	testTraitName    = "test_trait"
@@ -21,7 +21,7 @@ var (
 
 func TestGetFeatureFlags(t *testing.T) {
 	c := bullettrain.DefaultBulletTrainClient(apiKey)
-	flags, err := c.GetFeatureFlags()
+	flags, err := c.GetFeatures()
 
 	assert.NoError(t, err)
 	assert.NotNil(t, flags)
@@ -35,7 +35,7 @@ func TestGetFeatureFlags(t *testing.T) {
 
 func TestGetUserFeatureFlags(t *testing.T) {
 	c := bullettrain.DefaultBulletTrainClient(apiKey)
-	flags, err := c.GetUserFeatureFlags(testUser)
+	flags, err := c.GetUserFeatures(testUser)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, flags)
@@ -49,7 +49,7 @@ func TestGetUserFeatureFlags(t *testing.T) {
 
 func TestGetFeatureFlagValue(t *testing.T) {
 	c := bullettrain.DefaultBulletTrainClient(apiKey)
-	val, err := c.GetFeatureFlagValue(testFeatureName)
+	val, err := c.GetValue(testFeatureName)
 
 	assert.NoError(t, err)
 	assert.Equal(t, testFeatureValue, val)
@@ -57,23 +57,23 @@ func TestGetFeatureFlagValue(t *testing.T) {
 
 func TestGetUserFeatureFlagValue(t *testing.T) {
 	c := bullettrain.DefaultBulletTrainClient(apiKey)
-	val, err := c.GetUserFeatureFlagValue(testUser, testFeatureName)
+	val, err := c.GetUserValue(testUser, testFeatureName)
 
 	assert.NoError(t, err)
 	assert.Equal(t, testFeatureValue, val)
 }
 
-func TestHasFeatureFlag(t *testing.T) {
+func TestHasFeature(t *testing.T) {
 	c := bullettrain.DefaultBulletTrainClient(apiKey)
-	enabled, err := c.HasFeatureFlag(testFeatureName)
+	enabled, err := c.HasFeature(testFeatureName)
 
 	assert.NoError(t, err)
 	assert.True(t, enabled)
 }
 
-func TestHasUserFeatureFlag(t *testing.T) {
+func TestHasUserFeature(t *testing.T) {
 	c := bullettrain.DefaultBulletTrainClient(apiKey)
-	enabled, err := c.HasUserFeatureFlag(testUser, testFeatureName)
+	enabled, err := c.HasUserFeature(testUser, testFeatureName)
 
 	assert.NoError(t, err)
 	assert.True(t, enabled)

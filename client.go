@@ -32,7 +32,7 @@ func NewBulletTrainClient(apiKey string, config Config) *BulletTrainClient {
 	return c
 }
 
-func (c *BulletTrainClient) GetFeatureFlags() ([]Flag, error) {
+func (c *BulletTrainClient) GetFeatures() ([]Flag, error) {
 	flags := make([]Flag, 0)
 	resp, err := c.client.NewRequest().
 		SetResult(&flags).
@@ -46,7 +46,7 @@ func (c *BulletTrainClient) GetFeatureFlags() ([]Flag, error) {
 	return flags, err
 }
 
-func (c *BulletTrainClient) GetUserFeatureFlags(user FeatureUser) ([]Flag, error) {
+func (c *BulletTrainClient) GetUserFeatures(user User) ([]Flag, error) {
 	flags := make([]Flag, 0)
 	_, err := c.client.NewRequest().
 		SetResult(&flags).
@@ -55,48 +55,66 @@ func (c *BulletTrainClient) GetUserFeatureFlags(user FeatureUser) ([]Flag, error
 	return flags, err
 }
 
-func (c *BulletTrainClient) HasFeatureFlag(featureName string) (bool, error) {
-	flags, err := c.GetFeatureFlags()
+func (c *BulletTrainClient) HasFeature(name string) (bool, error) {
+	flags, err := c.GetFeatures()
 	if err != nil {
 		return false, err
 	}
-	return hasFeatureFlag(flags, featureName), nil
+	return hasFeatureFlag(flags, name), nil
 }
 
-func (c *BulletTrainClient) HasUserFeatureFlag(user FeatureUser, featureName string) (bool, error) {
-	flags, err := c.GetUserFeatureFlags(user)
+func (c *BulletTrainClient) HasUserFeature(user User, name string) (bool, error) {
+	flags, err := c.GetUserFeatures(user)
 	if err != nil {
 		return false, err
 	}
-	return hasFeatureFlag(flags, featureName), nil
+	return hasFeatureFlag(flags, name), nil
 }
 
-func (c *BulletTrainClient) GetFeatureFlagValue(featureName string) (string, error) {
-	flags, err := c.GetFeatureFlags()
+func (c *BulletTrainClient) FeatureEnabled(name string) (bool, error) {
+	flags, err := c.GetFeatures()
+	if err != nil {
+		return false, err
+	}
+	flag := findFeatureFlag(flags, name)
+	return flag != nil && flag.Enabled, nil
+}
+
+func (c *BulletTrainClient) UserFeatureEnabled(user User, name string) (bool, error) {
+	flags, err := c.GetUserFeatures(user)
+	if err != nil {
+		return false, err
+	}
+	flag := findFeatureFlag(flags, name)
+	return flag != nil && flag.Enabled, nil
+}
+
+func (c *BulletTrainClient) GetValue(name string) (string, error) {
+	flags, err := c.GetFeatures()
 	if err != nil {
 		return "", err
 	}
-	flag := findFeatureFlag(flags, featureName)
+	flag := findFeatureFlag(flags, name)
 	if flag != nil {
 		return flag.StateValue, nil
 	}
 
-	return "", fmt.Errorf("feature flag '%s' not found", featureName)
+	return "", fmt.Errorf("feature flag '%s' not found", name)
 }
 
-func (c *BulletTrainClient) GetUserFeatureFlagValue(user FeatureUser, featureName string) (string, error) {
-	flags, err := c.GetUserFeatureFlags(user)
+func (c *BulletTrainClient) GetUserValue(user User, name string) (string, error) {
+	flags, err := c.GetUserFeatures(user)
 	if err != nil {
 		return "", err
 	}
-	flag := findFeatureFlag(flags, featureName)
+	flag := findFeatureFlag(flags, name)
 	if flag != nil {
 		return flag.StateValue, nil
 	}
-	return "", fmt.Errorf("feature flag '%s' not found", featureName)
+	return "", fmt.Errorf("feature flag '%s' not found", name)
 }
 
-func (c *BulletTrainClient) GetTrait(user FeatureUser, key string) (Trait, error) {
+func (c *BulletTrainClient) GetTrait(user User, key string) (Trait, error) {
 	traits, err := c.GetTraits(user, key)
 	if err != nil {
 		return Trait{}, err
@@ -104,7 +122,7 @@ func (c *BulletTrainClient) GetTrait(user FeatureUser, key string) (Trait, error
 	return traits[0], nil
 }
 
-func (c *BulletTrainClient) GetTraits(user FeatureUser, keys ...string) ([]Trait, error) {
+func (c *BulletTrainClient) GetTraits(user User, keys ...string) ([]Trait, error) {
 	traits := make([]Trait, 0)
 	resp, err := c.client.NewRequest().
 		SetResult(&traits).
@@ -129,20 +147,20 @@ func (c *BulletTrainClient) GetTraits(user FeatureUser, keys ...string) ([]Trait
 	return filtered, nil
 }
 
-func (c *BulletTrainClient) UpdateTrait(user FeatureUser, toUpdate Trait) (Trait, error) {
+func (c *BulletTrainClient) UpdateTrait(user User, toUpdate Trait) (Trait, error) {
 	return Trait{}, errors.New("not implemented")
 }
 
-func findFeatureFlag(flags []Flag, featureName string) *Flag {
+func findFeatureFlag(flags []Flag, name string) *Flag {
 	for _, flag := range flags {
-		if flag.Feature.Name == featureName {
+		if flag.Feature.Name == name {
 			return &flag
 		}
 	}
 	return nil
 }
 
-func hasFeatureFlag(flags []Flag, featureName string) bool {
-	flag := findFeatureFlag(flags, featureName)
-	return flag != nil && flag.Enabled
+func hasFeatureFlag(flags []Flag, name string) bool {
+	flag := findFeatureFlag(flags, name)
+	return flag != nil
 }

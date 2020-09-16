@@ -12,12 +12,12 @@ type Flag struct {
 	Enabled    bool    `json:"enabled"`
 }
 
-type FeatureUser struct {
+type User struct {
 	Identifier string `json:"identifier"`
 }
 
 type Trait struct {
-	Identity FeatureUser `json:"identity"`
-	Key      string      `json:"trait_key"`
-	Value    string      `json:"trait_value"`
+	Identity User   `json:"identity"`
+	Key      string `json:"trait_key"`
+	Value    string `json:"trait_value"`
 }
