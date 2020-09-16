@@ -1,7 +1,6 @@
 package bullettrain
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/go-resty/resty/v2"
@@ -34,14 +33,12 @@ func NewBulletTrainClient(apiKey string, config Config) *BulletTrainClient {
 
 func (c *BulletTrainClient) GetFeatures() ([]Flag, error) {
 	flags := make([]Flag, 0)
-	resp, err := c.client.NewRequest().
+	_, err := c.client.NewRequest().
 		SetResult(&flags).
 		SetQueryParams(map[string]string{
 			"page": "1",
 		}).
 		Get(c.config.BaseURI + "flags/")
-
-	fmt.Println(string(resp.Body()))
 
 	return flags, err
 }
@@ -114,18 +111,22 @@ func (c *BulletTrainClient) GetUserValue(user User, name string) (string, error)
 	return "", fmt.Errorf("feature flag '%s' not found", name)
 }
 
-func (c *BulletTrainClient) GetTrait(user User, key string) (Trait, error) {
+func (c *BulletTrainClient) GetTrait(user User, key string) (*Trait, error) {
 	traits, err := c.GetTraits(user, key)
 	if err != nil {
-		return Trait{}, err
+		return nil, err
+	} else if len(traits) == 0 {
+		return nil, fmt.Errorf("trait '%s' not found", key)
 	}
-	return traits[0], nil
+	t := traits[0]
+	t.Identity = user
+	return t, nil
 }
 
-func (c *BulletTrainClient) GetTraits(user User, keys ...string) ([]Trait, error) {
+func (c *BulletTrainClient) GetTraits(user User, keys ...string) ([]*Trait, error) {
 	resp := struct {
 		Flags  []interface{} `json:"flags"`
-		Traits []Trait       `json:"traits"`
+		Traits []*Trait      `json:"traits"`
 	}{}
 	_, err := c.client.NewRequest().
 		SetResult(&resp).
@@ -140,7 +141,7 @@ func (c *BulletTrainClient) GetTraits(user User, keys ...string) ([]Trait, error
 		return resp.Traits, nil
 	}
 
-	filtered := make([]Trait, 0, len(keys))
+	filtered := make([]*Trait, 0, len(keys))
 	for _, key := range keys {
 		for _, t := range resp.Traits {
 			if key == t.Key {
@@ -152,8 +153,16 @@ func (c *BulletTrainClient) GetTraits(user User, keys ...string) ([]Trait, error
 	return filtered, nil
 }
 
-func (c *BulletTrainClient) UpdateTrait(user User, toUpdate Trait) (Trait, error) {
-	return Trait{}, errors.New("not implemented")
+func (c *BulletTrainClient) UpdateTrait(user User, toUpdate *Trait) (*Trait, error) {
+	toUpdate.Identity = user
+
+	trait := new(Trait)
+	_, err := c.client.NewRequest().
+		SetBody(toUpdate).
+		SetResult(trait).
+		Post(c.config.BaseURI + "traits/")
+
+	return trait, err
 }
 
 func findFeatureFlag(flags []Flag, name string) *Flag {

@@ -109,5 +109,10 @@ func TestUpdateTrait(t *testing.T) {
 	assert.Equal(t, trait.Value, updated.Value)
 
 	trait, err = c.GetTrait(differentUser, testTraitName)
+	assert.NoError(t, err)
 	assert.Equal(t, newValue, trait.Value)
+
+	trait.Value = "old value"
+	_, err = c.UpdateTrait(differentUser, trait)
+	assert.NoError(t, err)
 }
