@@ -13,7 +13,7 @@ type Client struct {
 	client *resty.Client
 }
 
-// DefaultBulletTrainClient retuns new Client with default configuration
+// DefaultBulletTrainClient returns new Client with default configuration
 func DefaultBulletTrainClient(apiKey string) *Client {
 	return NewBulletTrainClient(apiKey, DefaultConfig())
 }
