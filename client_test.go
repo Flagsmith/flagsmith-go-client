@@ -17,8 +17,6 @@ var (
 	testFlagValue    = true
 	testTraitName    = "test_trait"
 	testTraitValue   = "sample trait value"
-	testTrait2Name   = "another_trait"
-	testTrait2Value  = "yet another sample trait value"
 )
 
 func TestGetFeatureFlags(t *testing.T) {

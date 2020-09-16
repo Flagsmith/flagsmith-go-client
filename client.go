@@ -6,18 +6,18 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
-type BulletTrainClient struct {
+type Client struct {
 	apiKey string
 	config Config
 	client *resty.Client
 }
 
-func DefaultBulletTrainClient(apiKey string) *BulletTrainClient {
+func DefaultBulletTrainClient(apiKey string) *Client {
 	return NewBulletTrainClient(apiKey, DefaultConfig())
 }
 
-func NewBulletTrainClient(apiKey string, config Config) *BulletTrainClient {
-	c := &BulletTrainClient{
+func NewBulletTrainClient(apiKey string, config Config) *Client {
+	c := &Client{
 		apiKey: apiKey,
 		config: config,
 		client: resty.New(),
@@ -31,7 +31,7 @@ func NewBulletTrainClient(apiKey string, config Config) *BulletTrainClient {
 	return c
 }
 
-func (c *BulletTrainClient) GetFeatures() ([]Flag, error) {
+func (c *Client) GetFeatures() ([]Flag, error) {
 	flags := make([]Flag, 0)
 	_, err := c.client.NewRequest().
 		SetResult(&flags).
@@ -43,7 +43,7 @@ func (c *BulletTrainClient) GetFeatures() ([]Flag, error) {
 	return flags, err
 }
 
-func (c *BulletTrainClient) GetUserFeatures(user User) ([]Flag, error) {
+func (c *Client) GetUserFeatures(user User) ([]Flag, error) {
 	flags := make([]Flag, 0)
 	_, err := c.client.NewRequest().
 		SetResult(&flags).
@@ -52,7 +52,7 @@ func (c *BulletTrainClient) GetUserFeatures(user User) ([]Flag, error) {
 	return flags, err
 }
 
-func (c *BulletTrainClient) HasFeature(name string) (bool, error) {
+func (c *Client) HasFeature(name string) (bool, error) {
 	flags, err := c.GetFeatures()
 	if err != nil {
 		return false, err
@@ -60,7 +60,7 @@ func (c *BulletTrainClient) HasFeature(name string) (bool, error) {
 	return hasFeatureFlag(flags, name), nil
 }
 
-func (c *BulletTrainClient) HasUserFeature(user User, name string) (bool, error) {
+func (c *Client) HasUserFeature(user User, name string) (bool, error) {
 	flags, err := c.GetUserFeatures(user)
 	if err != nil {
 		return false, err
@@ -68,7 +68,7 @@ func (c *BulletTrainClient) HasUserFeature(user User, name string) (bool, error)
 	return hasFeatureFlag(flags, name), nil
 }
 
-func (c *BulletTrainClient) FeatureEnabled(name string) (bool, error) {
+func (c *Client) FeatureEnabled(name string) (bool, error) {
 	flags, err := c.GetFeatures()
 	if err != nil {
 		return false, err
@@ -77,7 +77,7 @@ func (c *BulletTrainClient) FeatureEnabled(name string) (bool, error) {
 	return flag != nil && flag.Enabled, nil
 }
 
-func (c *BulletTrainClient) UserFeatureEnabled(user User, name string) (bool, error) {
+func (c *Client) UserFeatureEnabled(user User, name string) (bool, error) {
 	flags, err := c.GetUserFeatures(user)
 	if err != nil {
 		return false, err
@@ -86,7 +86,7 @@ func (c *BulletTrainClient) UserFeatureEnabled(user User, name string) (bool, er
 	return flag != nil && flag.Enabled, nil
 }
 
-func (c *BulletTrainClient) GetValue(name string) (string, error) {
+func (c *Client) GetValue(name string) (string, error) {
 	flags, err := c.GetFeatures()
 	if err != nil {
 		return "", err
@@ -99,7 +99,7 @@ func (c *BulletTrainClient) GetValue(name string) (string, error) {
 	return "", fmt.Errorf("feature flag '%s' not found", name)
 }
 
-func (c *BulletTrainClient) GetUserValue(user User, name string) (string, error) {
+func (c *Client) GetUserValue(user User, name string) (string, error) {
 	flags, err := c.GetUserFeatures(user)
 	if err != nil {
 		return "", err
@@ -111,7 +111,7 @@ func (c *BulletTrainClient) GetUserValue(user User, name string) (string, error)
 	return "", fmt.Errorf("feature flag '%s' not found", name)
 }
 
-func (c *BulletTrainClient) GetTrait(user User, key string) (*Trait, error) {
+func (c *Client) GetTrait(user User, key string) (*Trait, error) {
 	traits, err := c.GetTraits(user, key)
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func (c *BulletTrainClient) GetTrait(user User, key string) (*Trait, error) {
 	return t, nil
 }
 
-func (c *BulletTrainClient) GetTraits(user User, keys ...string) ([]*Trait, error) {
+func (c *Client) GetTraits(user User, keys ...string) ([]*Trait, error) {
 	resp := struct {
 		Flags  []interface{} `json:"flags"`
 		Traits []*Trait      `json:"traits"`
@@ -153,7 +153,7 @@ func (c *BulletTrainClient) GetTraits(user User, keys ...string) ([]*Trait, erro
 	return filtered, nil
 }
 
-func (c *BulletTrainClient) UpdateTrait(user User, toUpdate *Trait) (*Trait, error) {
+func (c *Client) UpdateTrait(user User, toUpdate *Trait) (*Trait, error) {
 	toUpdate.Identity = user
 
 	trait := new(Trait)
@@ -166,9 +166,9 @@ func (c *BulletTrainClient) UpdateTrait(user User, toUpdate *Trait) (*Trait, err
 }
 
 func findFeatureFlag(flags []Flag, name string) *Flag {
-	for _, flag := range flags {
+	for i, flag := range flags {
 		if flag.Feature.Name == name {
-			return &flag
+			return &flags[i]
 		}
 	}
 	return nil
