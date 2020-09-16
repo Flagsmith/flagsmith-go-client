@@ -13,6 +13,8 @@ var (
 	differentUser    = bullettrain.User{Identifier: "different_user"}
 	testFeatureName  = "test_feature"
 	testFeatureValue = "sample feature value"
+	testFlagName     = "test_flag"
+	testFlagValue    = true
 	testTraitName    = "test_trait"
 	testTraitValue   = "sample trait value"
 	testTrait2Name   = "another_trait"
@@ -115,4 +117,18 @@ func TestUpdateTrait(t *testing.T) {
 	trait.Value = "old value"
 	_, err = c.UpdateTrait(differentUser, trait)
 	assert.NoError(t, err)
+}
+
+func TestFeatureEnabled(t *testing.T) {
+	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	enabled, err := c.FeatureEnabled(testFlagName)
+	assert.NoError(t, err)
+	assert.Equal(t, testFlagValue, enabled)
+}
+
+func TestUserFeatureEnabled(t *testing.T) {
+	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	enabled, err := c.UserFeatureEnabled(testUser, testFlagName)
+	assert.NoError(t, err)
+	assert.Equal(t, testFlagValue, enabled)
 }
