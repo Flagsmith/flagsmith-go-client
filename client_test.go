@@ -21,7 +21,7 @@ var (
 )
 
 func TestGetFeatureFlags(t *testing.T) {
-	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	c := bullettrain.DefaultClient(apiKey)
 	flags, err := c.GetFeatures()
 
 	assert.NoError(t, err)
@@ -35,7 +35,7 @@ func TestGetFeatureFlags(t *testing.T) {
 }
 
 func TestGetUserFeatureFlags(t *testing.T) {
-	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	c := bullettrain.DefaultClient(apiKey)
 	flags, err := c.GetUserFeatures(testUser)
 
 	assert.NoError(t, err)
@@ -49,7 +49,7 @@ func TestGetUserFeatureFlags(t *testing.T) {
 }
 
 func TestGetFeatureFlagValue(t *testing.T) {
-	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	c := bullettrain.DefaultClient(apiKey)
 	val, err := c.GetValue(testFeatureName)
 
 	assert.NoError(t, err)
@@ -57,7 +57,7 @@ func TestGetFeatureFlagValue(t *testing.T) {
 }
 
 func TestGetUserFeatureFlagValue(t *testing.T) {
-	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	c := bullettrain.DefaultClient(apiKey)
 	val, err := c.GetUserValue(testUser, testFeatureName)
 
 	assert.NoError(t, err)
@@ -65,7 +65,7 @@ func TestGetUserFeatureFlagValue(t *testing.T) {
 }
 
 func TestHasFeature(t *testing.T) {
-	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	c := bullettrain.DefaultClient(apiKey)
 	enabled, err := c.HasFeature(testFeatureName)
 
 	assert.NoError(t, err)
@@ -73,7 +73,7 @@ func TestHasFeature(t *testing.T) {
 }
 
 func TestHasUserFeature(t *testing.T) {
-	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	c := bullettrain.DefaultClient(apiKey)
 	enabled, err := c.HasUserFeature(testUser, testFeatureName)
 
 	assert.NoError(t, err)
@@ -81,7 +81,7 @@ func TestHasUserFeature(t *testing.T) {
 }
 
 func TestGetTrait(t *testing.T) {
-	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	c := bullettrain.DefaultClient(apiKey)
 	trait, err := c.GetTrait(testUser, testTraitName)
 
 	assert.NoError(t, err)
@@ -89,7 +89,7 @@ func TestGetTrait(t *testing.T) {
 }
 
 func TestGetTraits(t *testing.T) {
-	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	c := bullettrain.DefaultClient(apiKey)
 	traits, err := c.GetTraits(testUser)
 
 	assert.NoError(t, err)
@@ -98,7 +98,7 @@ func TestGetTraits(t *testing.T) {
 }
 
 func TestUpdateTrait(t *testing.T) {
-	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	c := bullettrain.DefaultClient(apiKey)
 	trait, err := c.GetTrait(differentUser, testTraitName)
 	assert.NoError(t, err)
 
@@ -119,14 +119,14 @@ func TestUpdateTrait(t *testing.T) {
 }
 
 func TestFeatureEnabled(t *testing.T) {
-	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	c := bullettrain.DefaultClient(apiKey)
 	enabled, err := c.FeatureEnabled(testFlagName)
 	assert.NoError(t, err)
 	assert.Equal(t, testFlagValue, enabled)
 }
 
 func TestUserFeatureEnabled(t *testing.T) {
-	c := bullettrain.DefaultBulletTrainClient(apiKey)
+	c := bullettrain.DefaultClient(apiKey)
 	enabled, err := c.UserFeatureEnabled(testUser, testFlagName)
 	assert.NoError(t, err)
 	assert.Equal(t, testFlagValue, enabled)

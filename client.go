@@ -13,13 +13,13 @@ type Client struct {
 	client *resty.Client
 }
 
-// DefaultBulletTrainClient returns new Client with default configuration
-func DefaultBulletTrainClient(apiKey string) *Client {
-	return NewBulletTrainClient(apiKey, DefaultConfig())
+// DefaultClient returns new Client with default configuration
+func DefaultClient(apiKey string) *Client {
+	return NewClient(apiKey, DefaultConfig())
 }
 
-// NewBulletTrainClient creates instance of Client with given configuration
-func NewBulletTrainClient(apiKey string, config Config) *Client {
+// NewClient creates instance of Client with given configuration
+func NewClient(apiKey string, config Config) *Client {
 	c := &Client{
 		apiKey: apiKey,
 		config: config,
