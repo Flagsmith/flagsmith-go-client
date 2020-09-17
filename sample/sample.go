@@ -24,7 +24,7 @@ func main() {
 
 	traits, err := b.GetTraits(bullettrain.User{"test_user"})
 	if err != nil {
-		log.Println(err)
+		log.Fatal(err)
 	}
 	for _, t := range traits {
 		fmt.Println(t.Key, "->", t.Value)
