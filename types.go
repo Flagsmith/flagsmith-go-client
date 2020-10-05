@@ -9,9 +9,9 @@ type Feature struct {
 
 // Flag contains information about Feature and it's value
 type Flag struct {
-	Feature    Feature `json:"feature"`
-	StateValue string  `json:"feature_state_value"`
-	Enabled    bool    `json:"enabled"`
+	Feature    Feature     `json:"feature"`
+	StateValue interface{} `json:"feature_state_value"`
+	Enabled    bool        `json:"enabled"`
 }
 
 // User holds identity information:w:w

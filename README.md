@@ -18,7 +18,7 @@ go get github.com/BulletTrainHQ/bullet-train-go-client
 
 ```go
 import (
-  "github.com/BulletTrainHQ/bullet-train-go-client"
+  bullettrain "github.com/BulletTrainHQ/bullet-train-go-client"
 )
 ```
 
@@ -33,13 +33,13 @@ Sign Up and create account at [https://bullet-train.io/](https://www.bullet-trai
 In your application initialise the BulletTrain client with your API key
 
 ```go
-bt := bullettrain.DefaultBulletTrainClient("<Your API Key>")
+bt := bullettrain.DefaultClient("<Your API Key>")
 ```
 
 To check if a feature flag exists and is enabled:
 
 ```go
-bt := bullettrain.DefaultBulletTrainClient("<Your API Key>")
+bt := bullettrain.DefaultClient("<Your API Key>")
 enabled, err := bt.FeatureEnabled("cart_abundant_notification_ab_test_enabled")
 if err != nil {
     log.Fatal(err)
@@ -53,11 +53,11 @@ if err != nil {
 To get the configuration value for feature flag value:
 
 ```go
-feature_value, err := bt.GetValue("cart_abundant_notification_ab_test")
+featureValue, err := bt.GetValue("cart_abundant_notification_ab_test")
 if err != nil {
     log.Fatal(err)
 } else {
-    fmt.Printf(feature_value)
+    fmt.Println(featureValue)
 }
 ```
 
@@ -68,7 +68,7 @@ More examples can be found in the [Tests](client_test.go)
 By default, client is using default configuration. You can override configuration as follows:
 
 ```go
-bt := bullettrain.NewBulletTrainClient("<Your API Key>", bullettrain.Config{BaseURI: "<Your API URL>"})
+bt := bullettrain.NewClient("<Your API Key>", bullettrain.Config{BaseURI: "<Your API URL>"})
 ```
 
 ## Contributing

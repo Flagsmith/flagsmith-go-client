@@ -96,28 +96,32 @@ func (c *Client) UserFeatureEnabled(user User, name string) (bool, error) {
 }
 
 // GetValue returns value of given feature (remote config)
-func (c *Client) GetValue(name string) (string, error) {
+//
+// Returned value can have one of following types: bool, int, string
+func (c *Client) GetValue(name string) (interface{}, error) {
 	flags, err := c.GetFeatures()
 	if err != nil {
 		return "", err
 	}
 	flag := findFeatureFlag(flags, name)
 	if flag != nil {
-		return flag.StateValue, nil
+		return convertValue(flag.StateValue), nil
 	}
 
 	return "", fmt.Errorf("feature flag '%s' not found", name)
 }
 
 // GetUserValue return value of given feature (remote config) as defined for given user
-func (c *Client) GetUserValue(user User, name string) (string, error) {
+//
+// Returned value can have one of following types: bool, int, string
+func (c *Client) GetUserValue(user User, name string) (interface{}, error) {
 	flags, err := c.GetUserFeatures(user)
 	if err != nil {
 		return "", err
 	}
 	flag := findFeatureFlag(flags, name)
 	if flag != nil {
-		return flag.StateValue, nil
+		return convertValue(flag.StateValue), nil
 	}
 	return "", fmt.Errorf("feature flag '%s' not found", name)
 }
@@ -194,4 +198,14 @@ func findFeatureFlag(flags []Flag, name string) *Flag {
 func hasFeatureFlag(flags []Flag, name string) bool {
 	flag := findFeatureFlag(flags, name)
 	return flag != nil
+}
+
+// convertValue converts from float64 (default "JSON number" representation in Go) to int
+func convertValue(value interface{}) interface{} {
+	switch v := value.(type) {
+	case float64:
+		return int(v)
+	default:
+		return value
+	}
 }

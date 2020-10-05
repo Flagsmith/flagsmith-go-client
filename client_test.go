@@ -131,3 +131,29 @@ func TestUserFeatureEnabled(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, testFlagValue, enabled)
 }
+
+func TestRemoteConfig(t *testing.T) {
+	c := bullettrain.DefaultClient(apiKey)
+
+	// string
+	val, err := c.GetValue(testFeatureName)
+	assert.NoError(t, err)
+	strVal, ok := val.(string)
+	assert.True(t, ok)
+	assert.Equal(t, testFeatureValue, strVal)
+
+	// integer
+	val, err = c.GetValue("integer_feature")
+	assert.NoError(t, err)
+	intVal, ok := val.(int)
+	assert.True(t, ok)
+	assert.Equal(t, 200, intVal)
+
+	// bool
+	val, err = c.GetValue("boolean_feature")
+	assert.NoError(t, err)
+	boolVal, ok := val.(bool)
+	assert.True(t, ok)
+	assert.Equal(t, true, boolVal)
+
+}
