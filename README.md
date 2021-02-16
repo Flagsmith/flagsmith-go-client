@@ -4,72 +4,15 @@
 
 <img width="100%" src="https://raw.githubusercontent.com/SolidStateGroup/bullet-train-frontend/master/hero.png"/>
 
-# Bullet Train SDK for Go
+# Flagsmith Go SDK
 
-Bullet Train allows you to manage feature flags and remote config across multiple projects, environments and organisations.
+Flagsmith allows you to manage feature flags and remote config across multiple projects, environments and organisations.
 
-This is the SDK for go for [https://bullet-train.io/](https://bullet-train.io/).
+This is the SDK for go for [https://www.flagsmith.com/](https://www.flagsmith.com/).
 
-## Getting Started
+## Adding to your project
 
-```bash
-go get github.com/BulletTrainHQ/bullet-train-go-client
-```
-
-```go
-import (
-  bullettrain "github.com/BulletTrainHQ/bullet-train-go-client"
-)
-```
-
-## Usage
-
-### Retrieving feature flags for your project
-
-For full documentation visit [https://docs.bullet-train.io](https://docs.bullet-train.io)
-
-Sign Up and create account at [https://bullet-train.io/](https://www.bullet-train.io/)
-
-In your application initialise the BulletTrain client with your API key
-
-```go
-bt := bullettrain.DefaultClient("<Your API Key>")
-```
-
-To check if a feature flag exists and is enabled:
-
-```go
-bt := bullettrain.DefaultClient("<Your API Key>")
-enabled, err := bt.FeatureEnabled("cart_abundant_notification_ab_test_enabled")
-if err != nil {
-    log.Fatal(err)
-} else {
-    if (enabled) {
-        fmt.Printf("Feature enabled")
-    }
-}
-```
-
-To get the configuration value for feature flag value:
-
-```go
-featureValue, err := bt.GetValue("cart_abundant_notification_ab_test")
-if err != nil {
-    log.Fatal(err)
-} else {
-    fmt.Println(featureValue)
-}
-```
-
-More examples can be found in the [Tests](client_test.go)
-
-## Override default configuration
-
-By default, client is using default configuration. You can override configuration as follows:
-
-```go
-bt := bullettrain.NewClient("<Your API Key>", bullettrain.Config{BaseURI: "<Your API URL>"})
-```
+For full documentation visit [https://docs.flagsmith.com/clients/go/](https://docs.flagsmith.com/clients/go/)
 
 ## Contributing
 
