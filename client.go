@@ -2,6 +2,8 @@ package bullettrain
 
 import (
 	"fmt"
+	"reflect"
+	"strconv"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -39,9 +41,6 @@ func (c *Client) GetFeatures() ([]Flag, error) {
 	flags := make([]Flag, 0)
 	_, err := c.client.NewRequest().
 		SetResult(&flags).
-		SetQueryParams(map[string]string{
-			"page": "1",
-		}).
 		Get(c.config.BaseURI + "flags/")
 
 	return flags, err
@@ -184,6 +183,40 @@ func (c *Client) UpdateTrait(user User, toUpdate *Trait) (*Trait, error) {
 		Post(c.config.BaseURI + "traits/")
 
 	return trait, err
+}
+
+func (c *Client) UpdateTraits(user User, object interface{}) ([]*Trait, error) {
+	value := reflect.ValueOf(object)
+	typ := reflect.TypeOf(object)
+	var bulk []Trait
+	for i := 0; i < value.NumField(); i++ {
+		field := value.Field(i)
+		toUpdate := Trait{}
+		switch field.Kind() {
+		case reflect.Bool:
+			toUpdate.Value = strconv.FormatBool(field.Bool())
+		case reflect.String:
+			toUpdate.Value = field.String()
+		case reflect.Int:
+			toUpdate.Value = strconv.FormatInt(field.Int(), 10)
+		case reflect.Float32, reflect.Float64:
+			toUpdate.Value = strconv.FormatFloat(field.Float(), 'f', -1, 64)
+		default:
+			return nil, fmt.Errorf("invalid type of field '%s' (bool, int and string are supported)", typ.Field(i).Name)
+		}
+		toUpdate.Identity = user
+		toUpdate.Key = typ.Field(i).Name
+		bulk = append(bulk, toUpdate)
+	}
+
+	bulkResp := make([]*Trait, len(bulk))
+
+	_, err := c.client.NewRequest().
+		SetBody(bulk).
+		SetResult(&bulkResp).
+		Put(c.config.BaseURI + "traits/bulk/")
+
+	return bulkResp, err
 }
 
 func findFeatureFlag(flags []Flag, name string) *Flag {

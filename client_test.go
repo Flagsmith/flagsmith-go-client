@@ -118,6 +118,50 @@ func TestUpdateTrait(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestBulkUpdateTraits(t *testing.T) {
+	c := bullettrain.DefaultClient(apiKey)
+
+	object := struct {
+		boolField    bool
+		intField     int
+		stringField  string
+		anotherField int
+		floatField   float64
+	}{
+		true, 42, "foo bar baz", 616, 3.14,
+	}
+
+	updated, err := c.UpdateTraits(differentUser, object)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, updated)
+	assert.Equal(t, 5, len(updated))
+	assert.Equal(t, "true", updated[0].Value)
+	assert.Equal(t, "42", updated[1].Value)
+	assert.Equal(t, "foo bar baz", updated[2].Value)
+	assert.Equal(t, "616", updated[3].Value)
+	assert.Equal(t, "3.14", updated[4].Value)
+
+	trait, err := c.GetTrait(differentUser, "boolField")
+	assert.NoError(t, err)
+	assert.Equal(t, "true", trait.Value)
+
+	trait, err = c.GetTrait(differentUser, "intField")
+	assert.NoError(t, err)
+	assert.Equal(t, "42", trait.Value)
+
+	trait, err = c.GetTrait(differentUser, "stringField")
+	assert.NoError(t, err)
+	assert.Equal(t, "foo bar baz", trait.Value)
+
+	trait, err = c.GetTrait(differentUser, "anotherField")
+	assert.NoError(t, err)
+	assert.Equal(t, "616", trait.Value)
+
+	trait, err = c.GetTrait(differentUser, "floatField")
+	assert.NoError(t, err)
+	assert.Equal(t, "3.14", trait.Value)
+}
+
 func TestFeatureEnabled(t *testing.T) {
 	c := bullettrain.DefaultClient(apiKey)
 	enabled, err := c.FeatureEnabled(testFlagName)
