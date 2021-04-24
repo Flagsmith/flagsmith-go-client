@@ -185,37 +185,56 @@ func (c *Client) UpdateTrait(user User, toUpdate *Trait) (*Trait, error) {
 	return trait, err
 }
 
+// UpdateTraits updates trait values in bulk.
+// The object argument may be a []Trait, []*Trait or a struct.
+// If object is []Trait or []*Trait then their Identity field may be mutated.
+// If object is a struct then the struct will be inspected
+// and each key value pair will be considered as a separate trait to be updated.
 func (c *Client) UpdateTraits(user User, object interface{}) ([]*Trait, error) {
-	value := reflect.ValueOf(object)
-	typ := reflect.TypeOf(object)
-	var bulk []Trait
-	for i := 0; i < value.NumField(); i++ {
-		field := value.Field(i)
-		toUpdate := Trait{}
-		switch field.Kind() {
-		case reflect.Bool:
-			toUpdate.Value = strconv.FormatBool(field.Bool())
-		case reflect.String:
-			toUpdate.Value = field.String()
-		case reflect.Int:
-			toUpdate.Value = strconv.FormatInt(field.Int(), 10)
-		case reflect.Float32, reflect.Float64:
-			toUpdate.Value = strconv.FormatFloat(field.Float(), 'f', -1, 64)
-		default:
-			return nil, fmt.Errorf("invalid type of field '%s' (bool, int and string are supported)", typ.Field(i).Name)
+	var bulkResp []*Trait = nil
+	var bulk []Trait = nil
+	switch traits := object.(type) {
+	case []*Trait:
+		bulk = make([]Trait, len(traits))
+		for idx, trait := range traits {
+			bulk[idx] = *trait
+			bulk[idx].Identity = user
 		}
-		toUpdate.Identity = user
-		toUpdate.Key = typ.Field(i).Name
-		bulk = append(bulk, toUpdate)
+	case []Trait:
+		bulk = make([]Trait, len(traits))
+		for idx, trait := range traits {
+			bulk[idx] = trait
+			bulk[idx].Identity = user
+		}
+	default:
+		value := reflect.ValueOf(object)
+		typ := reflect.TypeOf(object)
+		for i := 0; i < value.NumField(); i++ {
+			field := value.Field(i)
+			toUpdate := Trait{}
+			switch field.Kind() {
+			case reflect.Bool:
+				toUpdate.Value = strconv.FormatBool(field.Bool())
+			case reflect.String:
+				toUpdate.Value = field.String()
+			case reflect.Int:
+				toUpdate.Value = strconv.FormatInt(field.Int(), 10)
+			case reflect.Float32, reflect.Float64:
+				toUpdate.Value = strconv.FormatFloat(field.Float(), 'f', -1, 64)
+			default:
+				return nil, fmt.Errorf("invalid type of field '%s' (bool, int and string are supported)", typ.Field(i).Name)
+			}
+			toUpdate.Identity = user
+			toUpdate.Key = typ.Field(i).Name
+			bulk = append(bulk, toUpdate)
+
+		}
 	}
-
-	bulkResp := make([]*Trait, len(bulk))
-
+	bulkResp = make([]*Trait, len(bulk))
 	_, err := c.client.NewRequest().
 		SetBody(bulk).
 		SetResult(&bulkResp).
 		Put(c.config.BaseURI + "traits/bulk/")
-
 	return bulkResp, err
 }
 

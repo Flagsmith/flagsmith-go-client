@@ -118,20 +118,7 @@ func TestUpdateTrait(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestBulkUpdateTraits(t *testing.T) {
-	c := bullettrain.DefaultClient(apiKey)
-
-	object := struct {
-		boolField    bool
-		intField     int
-		stringField  string
-		anotherField int
-		floatField   float64
-	}{
-		true, 42, "foo bar baz", 616, 3.14,
-	}
-
-	updated, err := c.UpdateTraits(differentUser, object)
+func updateTraitsAsserts(updated []*bullettrain.Trait, err error, c *bullettrain.Client, t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, updated)
 	assert.Equal(t, 5, len(updated))
@@ -160,6 +147,92 @@ func TestBulkUpdateTraits(t *testing.T) {
 	trait, err = c.GetTrait(differentUser, "floatField")
 	assert.NoError(t, err)
 	assert.Equal(t, "3.14", trait.Value)
+}
+
+func TestBulkUpdateTraitsPointers(t *testing.T) {
+	c := bullettrain.DefaultClient(apiKey)
+
+	traits := []*bullettrain.Trait{
+		{
+			Identity: bullettrain.User{},
+			Key:      "boolField",
+			Value:    "true",
+		},
+		{
+			Identity: bullettrain.User{},
+			Key:      "intField",
+			Value:    "42",
+		},
+		{
+			Identity: bullettrain.User{},
+			Key:      "stringField",
+			Value:    "foo bar baz",
+		},
+		{
+			Identity: bullettrain.User{},
+			Key:      "anotherField",
+			Value:    "616",
+		},
+		{
+			Identity: bullettrain.User{},
+			Key:      "floatField",
+			Value:    "3.14",
+		},
+	}
+	updated, err := c.UpdateTraits(differentUser, traits)
+	updateTraitsAsserts(updated, err, c, t)
+}
+
+func TestBulkUpdateTraitsObject(t *testing.T) {
+	c := bullettrain.DefaultClient(apiKey)
+
+	object := struct {
+		boolField    bool
+		intField     int
+		stringField  string
+		anotherField int
+		floatField   float64
+	}{
+		true, 42, "foo bar baz", 616, 3.14,
+	}
+
+	updated, err := c.UpdateTraits(differentUser, object)
+	updateTraitsAsserts(updated, err, c, t)
+}
+
+func TestBulkUpdateTraits(t *testing.T) {
+	c := bullettrain.DefaultClient(apiKey)
+
+	traits := []bullettrain.Trait{
+		{
+			Identity: bullettrain.User{},
+			Key:      "boolField",
+			Value:    "true",
+		},
+		{
+			Identity: bullettrain.User{},
+			Key:      "intField",
+			Value:    "42",
+		},
+		{
+			Identity: bullettrain.User{},
+			Key:      "stringField",
+			Value:    "foo bar baz",
+		},
+		{
+			Identity: bullettrain.User{},
+			Key:      "anotherField",
+			Value:    "616",
+		},
+		{
+			Identity: bullettrain.User{},
+			Key:      "floatField",
+			Value:    "3.14",
+		},
+	}
+
+	updated, err := c.UpdateTraits(differentUser, traits)
+	updateTraitsAsserts(updated, err, c, t)
 }
 
 func TestFeatureEnabled(t *testing.T) {
