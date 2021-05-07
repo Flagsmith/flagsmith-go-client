@@ -36,6 +36,13 @@ func NewClient(apiKey string, config Config) *Client {
 	return c
 }
 
+func (c *Client) SetProxy(proxyUrl string) {
+	c.client.SetProxy(proxyUrl)
+}
+func (c *Client) RemoveProxy() {
+	c.client.RemoveProxy()
+}
+
 // GetFeatures returns all features available in given environment
 func (c *Client) GetFeatures() ([]Flag, error) {
 	flags := make([]Flag, 0)
