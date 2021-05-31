@@ -1,6 +1,7 @@
 package bullettrain_test
 
 import (
+	"context"
 	"testing"
 
 	bullettrain "github.com/BulletTrainHQ/bullet-train-go-client"
@@ -272,5 +273,15 @@ func TestRemoteConfig(t *testing.T) {
 	boolVal, ok := val.(bool)
 	assert.True(t, ok)
 	assert.Equal(t, true, boolVal)
+}
 
+func TestContextCancel(t *testing.T) {
+	c := bullettrain.DefaultClient(apiKey)
+	ctx, cancel := context.WithCancel(context.Background())
+	c.SetContext(ctx)
+	cancel()
+	traits, err := c.GetTraits(testUser)
+
+	assert.Nil(t, traits)
+	assert.Error(t, err)
 }

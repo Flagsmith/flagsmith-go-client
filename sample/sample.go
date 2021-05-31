@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -13,6 +14,10 @@ func main() {
 		Timeout: 3 * time.Second,
 		BaseURI: "https://api.bullet-train.io/api/v1/", // what a coincidence ;)
 	})
+
+	// Set a Context if needed (common use case: http.Request.Context())
+	ctx := context.TODO()
+	b.SetContext(ctx)
 
 	awesome, err := b.FeatureEnabled("awesome_feature")
 	if err != nil {

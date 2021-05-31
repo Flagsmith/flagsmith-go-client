@@ -1,6 +1,7 @@
 package bullettrain
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -13,6 +14,7 @@ type Client struct {
 	apiKey string
 	config Config
 	client *resty.Client
+	ctx    context.Context
 }
 
 // DefaultClient returns new Client with default configuration
@@ -33,7 +35,13 @@ func NewClient(apiKey string, config Config) *Client {
 		"X-Environment-Key": c.apiKey,
 	})
 
+	c.ctx = context.Background()
+
 	return c
+}
+
+func (c *Client) SetContext(ctx context.Context) {
+	c.ctx = ctx
 }
 
 func (c *Client) SetProxy(proxyUrl string) {
@@ -47,6 +55,7 @@ func (c *Client) RemoveProxy() {
 func (c *Client) GetFeatures() ([]Flag, error) {
 	flags := make([]Flag, 0)
 	_, err := c.client.NewRequest().
+		SetContext(c.ctx).
 		SetResult(&flags).
 		Get(c.config.BaseURI + "flags/")
 
@@ -57,6 +66,7 @@ func (c *Client) GetFeatures() ([]Flag, error) {
 func (c *Client) GetUserFeatures(user User) ([]Flag, error) {
 	flags := make([]Flag, 0)
 	_, err := c.client.NewRequest().
+		SetContext(c.ctx).
 		SetResult(&flags).
 		Get(c.config.BaseURI + "flags/" + user.Identifier + "/")
 
@@ -155,6 +165,7 @@ func (c *Client) GetTraits(user User, keys ...string) ([]*Trait, error) {
 		Traits []*Trait      `json:"traits"`
 	}{}
 	_, err := c.client.NewRequest().
+		SetContext(c.ctx).
 		SetResult(&resp).
 		SetQueryParam("identifier", user.Identifier).
 		Get(c.config.BaseURI + "identities/")
@@ -185,6 +196,7 @@ func (c *Client) UpdateTrait(user User, toUpdate *Trait) (*Trait, error) {
 
 	trait := new(Trait)
 	_, err := c.client.NewRequest().
+		SetContext(c.ctx).
 		SetBody(toUpdate).
 		SetResult(trait).
 		Post(c.config.BaseURI + "traits/")
@@ -239,6 +251,7 @@ func (c *Client) UpdateTraits(user User, object interface{}) ([]*Trait, error) {
 	}
 	bulkResp = make([]*Trait, len(bulk))
 	_, err := c.client.NewRequest().
+		SetContext(c.ctx).
 		SetBody(bulk).
 		SetResult(&bulkResp).
 		Put(c.config.BaseURI + "traits/bulk/")
