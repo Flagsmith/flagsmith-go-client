@@ -15,7 +15,9 @@ func main() {
 		BaseURI: "https://api.bullet-train.io/api/v1/", // what a coincidence ;)
 	})
 
-	// Set a Context if needed (common use case: http.Request.Context())
+	// Set a Context if needed.
+	// in a net/http based server request handler you can use
+	// ctx := request.Context()
 	ctx := context.TODO()
 	b.SetContext(ctx)
 
