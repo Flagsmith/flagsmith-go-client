@@ -2,7 +2,7 @@
 [![GoReportCard](https://goreportcard.com/badge/github.com/BulletTrainHQ/bullet-train-go-client)](https://goreportcard.com/report/github.com/BulletTrainHQ/bullet-train-go-client)
 [![GoDoc](https://godoc.org/github.com/BulletTrainHQ/bullet-train-go-client?status.svg)](https://godoc.org/github.com/BulletTrainHQ/bullet-train-go-client)
 
-<img width="100%" src="https://raw.githubusercontent.com/SolidStateGroup/bullet-train-frontend/master/hero.png"/>
+<img width="100%" src="https://github.com/Flagsmith/flagsmith/raw/main/static-files/hero.png"/>
 
 # Flagsmith Go SDK
 
