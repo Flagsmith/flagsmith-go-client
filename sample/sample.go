@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -29,4 +30,15 @@ func main() {
 	for _, t := range traits {
 		fmt.Println(t.Key, "->", t.Value)
 	}
+
+	// use a Context, perhaps from an incomming Request
+	ctx := context.Background()
+	awesome, err = b.FeatureEnabledWithContext(ctx, "awesome_feature")
+	if err != nil {
+		log.Fatal(err)
+	}
+	if awesome {
+		// do something awesome!
+	}
+
 }
