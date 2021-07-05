@@ -210,7 +210,6 @@ func (c *Client) GetTraits(user User, keys ...string) ([]*Trait, error) {
 //
 // If keys are provided, GetTrais returns only corresponding traits,
 // otherwise all traits for given user are returned.
-
 func (c *Client) GetTraitsWithContext(ctx context.Context, user User, keys ...string) ([]*Trait, error) {
 	resp := struct {
 		Flags  []interface{} `json:"flags"`
