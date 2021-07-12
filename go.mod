@@ -1,4 +1,4 @@
-module github.com/BulletTrainHQ/bullet-train-go-client
+module github.com/Flagsmith/flagsmith-go-client
 
 go 1.15
 
