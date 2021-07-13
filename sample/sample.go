@@ -23,7 +23,7 @@ func main() {
 		// do something awesome!
 	}
 
-	traits, err := b.GetTraits(flagsmith.User{"test_user"})
+	traits, err := b.GetTraits(flagsmith.User{Identifier: "test_user"})
 	if err != nil {
 		log.Fatal(err)
 	}
