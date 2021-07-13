@@ -1,4 +1,4 @@
-package bullettrain
+package flagsmith
 
 import (
 	"context"
