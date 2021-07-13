@@ -1,4 +1,4 @@
-package bullettrain
+package flagsmith
 
 // Feature contains core information about feature
 type Feature struct {

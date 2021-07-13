@@ -6,11 +6,11 @@ import (
 	"log"
 	"time"
 
-	bullettrain "github.com/BulletTrainHQ/bullet-train-go-client"
+	"github.com/Flagsmith/flagsmith-go-client"
 )
 
 func main() {
-	b := bullettrain.NewClient("MgfUaRCvvZMznuQyqjnQKt", bullettrain.Config{
+	b := flagsmith.NewClient("MgfUaRCvvZMznuQyqjnQKt", flagsmith.Config{
 		Timeout: 3 * time.Second,
 		BaseURI: "https://api.bullet-train.io/api/v1/", // what a coincidence ;)
 	})
@@ -23,7 +23,7 @@ func main() {
 		// do something awesome!
 	}
 
-	traits, err := b.GetTraits(bullettrain.User{"test_user"})
+	traits, err := b.GetTraits(flagsmith.User{Identifier: "test_user"})
 	if err != nil {
 		log.Fatal(err)
 	}
