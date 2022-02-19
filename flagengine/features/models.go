@@ -40,15 +40,15 @@ func (mfsv *MultivariateFeatureStateValueModel) Key() string {
 	return mfsv.MVFSValueUUID
 }
 
-func (fs *FeatureStateModel) MarshalJSON() ([]byte, error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
-	//TODO implement me
-	panic("implement me")
-}
+//func (fs *FeatureStateModel) MarshalJSON() ([]byte, error) {
+//	//TODO implement me
+//	panic("implement me")
+//}
+//
+//func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
+//	//TODO implement me
+//	panic("implement me")
+//}
 
 func (fs *FeatureStateModel) Value(identityID string) interface{} {
 	if identityID != "" && len(fs.MultivariateFeatureStateValues) > 0 {
