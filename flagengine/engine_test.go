@@ -42,7 +42,7 @@ func TestEngine(t *testing.T) {
 		t.Run(strconv.Itoa(i)+":"+c.Identity.CompositeKey(), func(t *testing.T) {
 			assert := assert.New(t)
 			require := require.New(t)
-			actual := flagengine.GetIdentityFeatureStates(&testData.Environment, &c.Identity, nil)
+			actual := flagengine.GetIdentityFeatureStates(&testData.Environment, &c.Identity)
 			expected := c.Response.Flags
 
 			sort.Slice(actual, func(i, j int) bool {

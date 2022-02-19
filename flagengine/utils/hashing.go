@@ -2,7 +2,6 @@ package utils
 
 import (
 	"crypto/md5"
-	"fmt"
 	"math/big"
 	"strings"
 )
@@ -22,7 +21,6 @@ func GetHashedPercentageForObjectIds(ids []string, iterations int) float64 {
 	hashValue.SetBytes(hash[:])
 
 	value = (float64(hashValue.Mod(&hashValue, big.NewInt(9999)).Int64()) / 9998.0) * 100.0
-	fmt.Printf("%.10f\n", ((9999%10000)/9999.0)*100.0)
 	if value == 100 {
 		return GetHashedPercentageForObjectIds(ids, iterations+1)
 	}
