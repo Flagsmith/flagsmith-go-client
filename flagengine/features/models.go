@@ -1,5 +1,11 @@
 package features
 
+import (
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
+	"sort"
+	"strconv"
+)
+
 type FeatureModel struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
@@ -12,7 +18,7 @@ type FeatureStateModel struct {
 	DjangoID                       int                                   `json:"django_id"`
 	FeatureStateUUID               string                                `json:"featurestate_uuid"`
 	MultivariateFeatureStateValues []*MultivariateFeatureStateValueModel `json:"multivariate_feature_state_values"`
-	Value                          interface{}                           `json:"feature_state_value"`
+	value                          interface{}                           `json:"feature_state_value"`
 }
 
 type MultivariateFeatureOptionModel struct {
@@ -21,8 +27,59 @@ type MultivariateFeatureOptionModel struct {
 }
 
 type MultivariateFeatureStateValueModel struct {
-	ID                        int                             `json:"ID"`
+	ID                        *int                            `json:"ID"`
 	MultivariateFeatureOption *MultivariateFeatureOptionModel `json:"multivariate_feature_option"`
 	PercentageAllocation      float64                         `json:"percentage_allocation"`
 	MVFSValueUUID             string                          `json:"mv_fs_value_uuid"`
+}
+
+func (mfsv *MultivariateFeatureStateValueModel) Key() string {
+	if mfsv.ID != nil {
+		return strconv.Itoa(*mfsv.ID)
+	}
+	return mfsv.MVFSValueUUID
+}
+
+func (fs *FeatureStateModel) MarshalJSON() ([]byte, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (fs *FeatureStateModel) Value(identityID string) interface{} {
+	if identityID != "" && len(fs.MultivariateFeatureStateValues) > 0 {
+		return fs.multivariateValue(identityID)
+	}
+	return fs.value
+}
+
+func (fs *FeatureStateModel) multivariateValue(identityID string) interface{} {
+	var uuid string
+	if fs.DjangoID != 0 {
+		uuid = strconv.Itoa(fs.DjangoID)
+	} else {
+		uuid = fs.FeatureStateUUID
+	}
+	percentageValue := utils.GetHashedPercentageForObjectIds([]string{uuid, identityID}, 1)
+	startPercentage := 0.0
+
+	values := make([]*MultivariateFeatureStateValueModel, len(fs.MultivariateFeatureStateValues))
+	copy(values, fs.MultivariateFeatureStateValues)
+	sort.Slice(values, func(i, j int) bool {
+		return values[i].Key() < values[j].Key()
+	})
+
+	for _, value := range values {
+		limit := value.PercentageAllocation + startPercentage
+		if startPercentage <= percentageValue && percentageValue < limit {
+			return value.MultivariateFeatureOption.Value
+		}
+		startPercentage = limit
+	}
+
+	return fs.value
 }
