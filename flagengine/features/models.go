@@ -1,9 +1,11 @@
 package features
 
 import (
+	"encoding/json"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 type FeatureModel struct {
@@ -18,12 +20,36 @@ type FeatureStateModel struct {
 	DjangoID                       int                                   `json:"django_id"`
 	FeatureStateUUID               string                                `json:"featurestate_uuid"`
 	MultivariateFeatureStateValues []*MultivariateFeatureStateValueModel `json:"multivariate_feature_state_values"`
-	value                          interface{}                           `json:"feature_state_value"`
+	RawValue                       string                                `json:"feature_state_value"`
+}
+
+func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
+	var obj struct {
+		Feature                        *FeatureModel                         `json:"feature"`
+		Enabled                        bool                                  `json:"enabled"`
+		DjangoID                       int                                   `json:"django_id"`
+		FeatureStateUUID               string                                `json:"featurestate_uuid"`
+		MultivariateFeatureStateValues []*MultivariateFeatureStateValueModel `json:"multivariate_feature_state_values"`
+		RawValue                       json.RawMessage                       `json:"feature_state_value"`
+	}
+
+	err := json.Unmarshal(bytes, &obj)
+	if err != nil {
+		return err
+	}
+
+	fs.Feature = obj.Feature
+	fs.Enabled = obj.Enabled
+	fs.DjangoID = obj.DjangoID
+	fs.FeatureStateUUID = obj.FeatureStateUUID
+	fs.MultivariateFeatureStateValues = obj.MultivariateFeatureStateValues
+	fs.RawValue = strings.Trim(string(obj.RawValue), `"`)
+	return nil
 }
 
 type MultivariateFeatureOptionModel struct {
-	ID    int         `json:"id"`
-	Value interface{} `json:"value"`
+	ID    int    `json:"id"`
+	Value string `json:"value"`
 }
 
 type MultivariateFeatureStateValueModel struct {
@@ -40,21 +66,11 @@ func (mfsv *MultivariateFeatureStateValueModel) Key() string {
 	return mfsv.MVFSValueUUID
 }
 
-//func (fs *FeatureStateModel) MarshalJSON() ([]byte, error) {
-//	//TODO implement me
-//	panic("implement me")
-//}
-//
-//func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
-//	//TODO implement me
-//	panic("implement me")
-//}
-
 func (fs *FeatureStateModel) Value(identityID string) interface{} {
 	if identityID != "" && len(fs.MultivariateFeatureStateValues) > 0 {
 		return fs.multivariateValue(identityID)
 	}
-	return fs.value
+	return fs.RawValue
 }
 
 func (fs *FeatureStateModel) multivariateValue(identityID string) interface{} {
@@ -81,5 +97,5 @@ func (fs *FeatureStateModel) multivariateValue(identityID string) interface{} {
 		startPercentage = limit
 	}
 
-	return fs.value
+	return fs.RawValue
 }
