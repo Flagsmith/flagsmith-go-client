@@ -1,6 +1,11 @@
 package segments
 
-import "github.com/Flagsmith/flagsmith-go-client/flagengine/features"
+import (
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
+	"regexp"
+	"strings"
+)
 
 type SegmentConditionModel struct {
 	Operator ConditionOperator `json:"operator"`
@@ -8,10 +13,43 @@ type SegmentConditionModel struct {
 	Property string            `json:"property_"`
 }
 
+func (m *SegmentConditionModel) MatchesTraitValue(traitValue string) bool {
+	switch m.Operator {
+	case NotContains:
+		return !strings.Contains(traitValue, m.Value)
+	case Regex:
+		return m.regex(traitValue)
+	default:
+		return match(m.Operator, traitValue, m.Value)
+	}
+}
+
+func (m *SegmentConditionModel) regex(traitValue string) bool {
+	match, err := regexp.Match(m.Value, []byte(traitValue))
+	if err != nil {
+		// TODO(tzdybal): how to handle this?
+		return false
+	}
+	return match
+}
+
 type SegmentRuleModel struct {
-	Type       string `json:"string"`
+	Type       RuleType `json:"string"`
 	Rules      []*SegmentRuleModel
 	Conditions []*SegmentConditionModel
+}
+
+func (sr *SegmentRuleModel) MatchingFunction() func([]bool) bool {
+	switch sr.Type {
+	case All:
+		return utils.All
+	case Any:
+		return utils.Any
+	default:
+		return func(args []bool) bool {
+			return !utils.Any(args)
+		}
+	}
 }
 
 type SegmentModel struct {
