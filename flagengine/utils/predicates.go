@@ -2,7 +2,7 @@ package utils
 
 func All(args []bool) bool {
 	for _, a := range args {
-		if a == false {
+		if !a {
 			return false
 		}
 	}
@@ -11,7 +11,7 @@ func All(args []bool) bool {
 
 func Any(args []bool) bool {
 	for _, a := range args {
-		if a == true {
+		if a {
 			return true
 		}
 	}

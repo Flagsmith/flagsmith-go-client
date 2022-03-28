@@ -1,6 +1,73 @@
 package segments
 
-import "strconv"
+import (
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
+	"strconv"
+)
+
+func EvaluateIdentityInSegment(
+	identity *identities.IdentityModel,
+	segment *SegmentModel,
+	overrideTraits ...*traits.TraitModel,
+) bool {
+	if len(segment.Rules) == 0 {
+		return false
+	}
+
+	traits := identity.IdentityTraits
+	if len(overrideTraits) > 0 {
+		traits = overrideTraits
+	}
+
+	for _, rule := range segment.Rules {
+		if !traitsMatchSegmentRule(traits, rule, segment.ID, identity.CompositeKey()) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func traitsMatchSegmentRule(
+	identityTraits []*traits.TraitModel,
+	rule *SegmentRuleModel,
+	segmentID int,
+	identityID string,
+) bool {
+	conditions := make([]bool, len(rule.Conditions))
+	for i, c := range rule.Conditions {
+		conditions[i] = traitsMatchSegmentCondition(identityTraits, c, segmentID, identityID)
+	}
+	matchesConditions := rule.MatchingFunction()(conditions) || len(rule.Conditions) == 0
+
+	rules := make([]bool, len(rule.Rules))
+	for i, r := range rule.Rules {
+		rules[i] = traitsMatchSegmentRule(identityTraits, r, segmentID, identityID)
+	}
+
+	return matchesConditions && utils.All(rules)
+}
+
+func traitsMatchSegmentCondition(
+	identityTraits []*traits.TraitModel,
+	condition *SegmentConditionModel,
+	segmentID int,
+	identityID string,
+) bool {
+	if condition.Operator == PercentageSplit {
+		floatValue, _ := strconv.ParseFloat(condition.Value, 64)
+		return utils.GetHashedPercentageForObjectIds([]string{strconv.Itoa(segmentID), identityID}, 1) > floatValue
+	}
+
+	for _, trait := range identityTraits {
+		if trait.TraitKey == condition.Property {
+			return condition.MatchesTraitValue(trait.TraitValue)
+		}
+	}
+	return false
+}
 
 func match(c ConditionOperator, s1, s2 string) bool {
 	b1, e1 := strconv.ParseBool(s1)
