@@ -1,8 +1,11 @@
-package segments
+package segments_test
 
 import (
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/segments"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils/fixtures"
 	"github.com/stretchr/testify/assert"
 	"strconv"
 	"testing"
@@ -20,16 +23,16 @@ const (
 )
 
 var (
-	empty_segment            = &SegmentModel{ID: 1, Name: "empty_segment"}
-	segment_single_condition = &SegmentModel{
+	empty_segment            = &segments.SegmentModel{ID: 1, Name: "empty_segment"}
+	segment_single_condition = &segments.SegmentModel{
 		ID:   2,
 		Name: "segment_one_condition",
-		Rules: []*SegmentRuleModel{
+		Rules: []*segments.SegmentRuleModel{
 			{
-				Type: All,
-				Conditions: []*SegmentConditionModel{
+				Type: segments.All,
+				Conditions: []*segments.SegmentConditionModel{
 					{
-						Operator: Equal,
+						Operator: segments.Equal,
 						Property: trait_key_1,
 						Value:    trait_value_1,
 					},
@@ -37,20 +40,20 @@ var (
 			},
 		},
 	}
-	segment_multiple_conditions_all = &SegmentModel{
+	segment_multiple_conditions_all = &segments.SegmentModel{
 		ID:   3,
 		Name: "segment_multiple_conditions_all",
-		Rules: []*SegmentRuleModel{
+		Rules: []*segments.SegmentRuleModel{
 			{
-				Type: All,
-				Conditions: []*SegmentConditionModel{
+				Type: segments.All,
+				Conditions: []*segments.SegmentConditionModel{
 					{
-						Operator: Equal,
+						Operator: segments.Equal,
 						Property: trait_key_1,
 						Value:    trait_value_1,
 					},
 					{
-						Operator: Equal,
+						Operator: segments.Equal,
 						Property: trait_key_2,
 						Value:    trait_value_2,
 					},
@@ -58,19 +61,19 @@ var (
 			},
 		},
 	}
-	segment_multiple_conditions_any = &SegmentModel{
+	segment_multiple_conditions_any = &segments.SegmentModel{
 		ID:   4,
 		Name: "segment_multiple_conditions_all",
-		Rules: []*SegmentRuleModel{
+		Rules: []*segments.SegmentRuleModel{
 			{
-				Type: Any,
-				Conditions: []*SegmentConditionModel{{
-					Operator: Equal,
+				Type: segments.Any,
+				Conditions: []*segments.SegmentConditionModel{{
+					Operator: segments.Equal,
 					Property: trait_key_1,
 					Value:    trait_value_1,
 				},
 					{
-						Operator: Equal,
+						Operator: segments.Equal,
 						Property: trait_key_2,
 						Value:    trait_value_2,
 					},
@@ -78,33 +81,33 @@ var (
 			},
 		},
 	}
-	segment_nested_rules = &SegmentModel{
+	segment_nested_rules = &segments.SegmentModel{
 		ID:   5,
 		Name: "segment_nested_rules_all",
-		Rules: []*SegmentRuleModel{
+		Rules: []*segments.SegmentRuleModel{
 			{
-				Type: All,
-				Rules: []*SegmentRuleModel{
+				Type: segments.All,
+				Rules: []*segments.SegmentRuleModel{
 					{
-						Type: All,
-						Conditions: []*SegmentConditionModel{
+						Type: segments.All,
+						Conditions: []*segments.SegmentConditionModel{
 							{
-								Operator: Equal,
+								Operator: segments.Equal,
 								Property: trait_key_1,
 								Value:    trait_value_1,
 							},
 							{
-								Operator: Equal,
+								Operator: segments.Equal,
 								Property: trait_key_2,
 								Value:    trait_value_2,
 							},
 						},
 					},
 					{
-						Type: All,
-						Conditions: []*SegmentConditionModel{
+						Type: segments.All,
+						Conditions: []*segments.SegmentConditionModel{
 							{
-								Operator: Equal,
+								Operator: segments.Equal,
 								Property: trait_key_3,
 								Value:    trait_value_3,
 							},
@@ -114,35 +117,35 @@ var (
 			},
 		},
 	}
-	segment_conditions_and_nested_rules = &SegmentModel{
+	segment_conditions_and_nested_rules = &segments.SegmentModel{
 		ID:   6,
 		Name: "segment_multiple_conditions_all_and_nested_rules",
-		Rules: []*SegmentRuleModel{
+		Rules: []*segments.SegmentRuleModel{
 			{
-				Type: All,
-				Conditions: []*SegmentConditionModel{
+				Type: segments.All,
+				Conditions: []*segments.SegmentConditionModel{
 					{
-						Operator: Equal,
+						Operator: segments.Equal,
 						Property: trait_key_1,
 						Value:    trait_value_1,
 					},
 				},
-				Rules: []*SegmentRuleModel{
+				Rules: []*segments.SegmentRuleModel{
 					{
-						Type: All,
-						Conditions: []*SegmentConditionModel{
+						Type: segments.All,
+						Conditions: []*segments.SegmentConditionModel{
 							{
-								Operator: Equal,
+								Operator: segments.Equal,
 								Property: trait_key_2,
 								Value:    trait_value_2,
 							},
 						},
 					},
 					{
-						Type: All,
-						Conditions: []*SegmentConditionModel{
+						Type: segments.All,
+						Conditions: []*segments.SegmentConditionModel{
 							{
-								Operator: Equal,
+								Operator: segments.Equal,
 								Property: trait_key_3,
 								Value:    trait_value_3,
 							},
@@ -158,7 +161,7 @@ func TestIdentityInSegment(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		segment        *SegmentModel
+		segment        *segments.SegmentModel
 		identityTraits []*traits.TraitModel
 		expected       bool
 	}{
@@ -245,7 +248,7 @@ func TestIdentityInSegment(t *testing.T) {
 	}
 }
 
-func doTestIdentityInSegment(t *testing.T, segment *SegmentModel, identityTraits []*traits.TraitModel, expected bool) {
+func doTestIdentityInSegment(t *testing.T, segment *segments.SegmentModel, identityTraits []*traits.TraitModel, expected bool) {
 	t.Helper()
 
 	identity := &identities.IdentityModel{
@@ -254,5 +257,44 @@ func doTestIdentityInSegment(t *testing.T, segment *SegmentModel, identityTraits
 		EnvironmentAPIKey: "api-key",
 	}
 
-	assert.Equal(t, expected, EvaluateIdentityInSegment(identity, segment))
+	assert.Equal(t, expected, segments.EvaluateIdentityInSegment(identity, segment))
+}
+
+func TestIdentityInSegmentPercentageSplit(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		segmentSplitValue        int
+		identityHashedPercentage int
+		expectedResult           bool
+	}{
+		{10, 1, true},
+		{100, 50, true},
+		{0, 1, false},
+		{10, 20, false},
+	}
+
+	_, _, _, identity := fixtures.GetFixtures()
+
+	for i, c := range cases {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+
+			cond := &segments.SegmentConditionModel{
+				Operator: segments.PercentageSplit,
+				Value:    strconv.Itoa(c.segmentSplitValue),
+			}
+			rule := &segments.SegmentRuleModel{
+				Type:       segments.All,
+				Conditions: []*segments.SegmentConditionModel{cond},
+			}
+			segment := &segments.SegmentModel{ID: 1, Name: "% split", Rules: []*segments.SegmentRuleModel{rule}}
+
+			utils.SetMockHashedPercentageForObjectIds(func(_ []string, _ int) float64 {
+				return float64(c.identityHashedPercentage)
+			})
+			result := segments.EvaluateIdentityInSegment(identity, segment)
+
+			assert.Equal(t, c.expectedResult, result)
+		})
+	}
 }

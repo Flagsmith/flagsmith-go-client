@@ -7,9 +7,7 @@ import (
 )
 
 // GetHashedPercentageForObjectIds returns a number in range [0:100) based on hashes of ids.
-//
-//
-func GetHashedPercentageForObjectIds(ids []string, iterations int) float64 {
+func getHashedPercentageForObjectIds(ids []string, iterations int) float64 {
 	strs := make([]string, len(ids)*iterations)
 	for i := 0; i < len(strs); i++ {
 		strs[i] = ids[i%len(ids)]
@@ -26,4 +24,18 @@ func GetHashedPercentageForObjectIds(ids []string, iterations int) float64 {
 	}
 
 	return value
+}
+
+func GetHashedPercentageForObjectIds(ids []string, iterations int) float64 {
+	fn := getHashedPercentageForObjectIds
+	if mockHashedPercentageForObjectIds != nil {
+		fn = mockHashedPercentageForObjectIds
+	}
+	return fn(ids, iterations)
+}
+
+var mockHashedPercentageForObjectIds func([]string, int) float64
+
+func SetMockHashedPercentageForObjectIds(fn func([]string, int) float64) {
+	mockHashedPercentageForObjectIds = fn
 }

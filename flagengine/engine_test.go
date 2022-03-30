@@ -2,6 +2,7 @@ package flagengine_test
 
 import (
 	"encoding/json"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils/fixtures"
 	"io/ioutil"
 	"sort"
 	"strconv"
@@ -60,4 +61,59 @@ func TestEngine(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIdentityGetFeatureStateWithoutAnyOverride(t *testing.T) {
+	feature1, _, env, identity := fixtures.GetFixtures()
+
+	featureState := flagengine.GetIdentityFeatureState(env, identity, feature1.Name)
+	assert.Equal(t, feature1, featureState.Feature)
+}
+
+func TestIdentityGetAllFeatureStatesNoSegments(t *testing.T) {
+	_, _, env, identity := fixtures.GetFixtures()
+
+	overriddenFeature := &features.FeatureModel{ID: 3, Name: "overridden_feature", Type: "STANDARD"}
+
+	// set the state of the feature to false in the environment configuration
+	env.FeatureStates = append(env.FeatureStates, &features.FeatureStateModel{
+		DjangoID: 3, Feature: overriddenFeature, Enabled: false,
+	})
+
+	// but true for the identity
+	identity.IdentityFeatures = []*features.FeatureStateModel{
+		{DjangoID: 4, Feature: overriddenFeature, Enabled: true},
+	}
+
+	allFeatureStates := flagengine.GetIdentityFeatureStates(env, identity)
+	assert.Len(t, allFeatureStates, 3)
+	for _, fs := range allFeatureStates {
+		envFeatureState := getEnvironmentFeatureStateForFeature(env, fs.Feature)
+
+		var expected bool
+		if fs.Feature == overriddenFeature {
+			expected = true
+		} else {
+			expected = envFeatureState.Enabled
+		}
+		assert.Equal(t, expected, fs.Enabled)
+	}
+}
+
+func getEnvironmentFeatureStateForFeature(env *environments.EnvironmentModel, feature *features.FeatureModel) *features.FeatureStateModel {
+	for _, fs := range env.FeatureStates {
+		if fs.Feature == feature {
+			return fs
+		}
+	}
+	return nil
+}
+
+func getEnvironmentFeatureStateForFeatureByName(env *environments.EnvironmentModel, featureName string) *features.FeatureStateModel {
+	for _, fs := range env.FeatureStates {
+		if fs.Feature.Name == featureName {
+			return fs
+		}
+	}
+	return nil
 }

@@ -27,6 +27,22 @@ func GetIdentityFeatureStates(
 	return featureStates
 }
 
+func GetIdentityFeatureState(
+	environment *environments.EnvironmentModel,
+	identity *identities.IdentityModel,
+	featureName string,
+	overrideTraits ...*traits.TraitModel,
+) *features.FeatureStateModel {
+	featureStates := getIdentityFeatureStatesMap(environment, identity, overrideTraits...)
+
+	for feature, featureState := range featureStates {
+		if feature.Name == featureName {
+			return featureState
+		}
+	}
+	return nil
+}
+
 func getIdentitySegments(
 	environment *environments.EnvironmentModel,
 	identity *identities.IdentityModel,
