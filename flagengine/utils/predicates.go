@@ -17,3 +17,7 @@ func Any(args []bool) bool {
 	}
 	return false
 }
+
+func None(args []bool) bool {
+	return !Any(args)
+}

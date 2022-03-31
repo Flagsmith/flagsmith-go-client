@@ -34,7 +34,7 @@ func (m *SegmentConditionModel) regex(traitValue string) bool {
 }
 
 type SegmentRuleModel struct {
-	Type       RuleType `json:"string"`
+	Type       RuleType `json:"type"`
 	Rules      []*SegmentRuleModel
 	Conditions []*SegmentConditionModel
 }
@@ -46,9 +46,7 @@ func (sr *SegmentRuleModel) MatchingFunction() func([]bool) bool {
 	case Any:
 		return utils.Any
 	default:
-		return func(args []bool) bool {
-			return !utils.Any(args)
-		}
+		return utils.None
 	}
 }
 

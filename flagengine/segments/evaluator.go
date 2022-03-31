@@ -5,6 +5,7 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
 	"strconv"
+	"strings"
 )
 
 func EvaluateIdentityInSegment(
@@ -58,7 +59,7 @@ func traitsMatchSegmentCondition(
 ) bool {
 	if condition.Operator == PercentageSplit {
 		floatValue, _ := strconv.ParseFloat(condition.Value, 64)
-		return utils.GetHashedPercentageForObjectIds([]string{strconv.Itoa(segmentID), identityID}, 1) > floatValue
+		return utils.GetHashedPercentageForObjectIds([]string{strconv.Itoa(segmentID), identityID}, 1) <= floatValue
 	}
 
 	for _, trait := range identityTraits {
@@ -140,6 +141,8 @@ func matchFloat(c ConditionOperator, v1, v2 float64) bool {
 
 func matchString(c ConditionOperator, v1, v2 string) bool {
 	switch c {
+	case Contains:
+		return strings.Contains(v1, v2)
 	case Equal:
 		return v1 == v2
 	case GreaterThan:

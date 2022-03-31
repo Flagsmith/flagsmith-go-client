@@ -1,6 +1,7 @@
 package segments_test
 
 import (
+	"fmt"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/segments"
@@ -261,8 +262,6 @@ func doTestIdentityInSegment(t *testing.T, segment *segments.SegmentModel, ident
 }
 
 func TestIdentityInSegmentPercentageSplit(t *testing.T) {
-	t.Parallel()
-
 	cases := []struct {
 		segmentSplitValue        int
 		identityHashedPercentage int
@@ -289,12 +288,104 @@ func TestIdentityInSegmentPercentageSplit(t *testing.T) {
 			}
 			segment := &segments.SegmentModel{ID: 1, Name: "% split", Rules: []*segments.SegmentRuleModel{rule}}
 
-			utils.SetMockHashedPercentageForObjectIds(func(_ []string, _ int) float64 {
+			utils.MockSetHashedPercentageForObjectIds(func(_ []string, _ int) float64 {
 				return float64(c.identityHashedPercentage)
 			})
 			result := segments.EvaluateIdentityInSegment(identity, segment)
 
 			assert.Equal(t, c.expectedResult, result)
+		})
+	}
+	utils.MockSetHashedPercentageForObjectIds(utils.GetHashedPercentageForObjectIds)
+}
+
+func TestSegmentConditionMatchesTraitValue(t *testing.T) {
+	cases := []struct {
+		operator       segments.ConditionOperator
+		traitValue     interface{}
+		conditionValue string
+		expectedResult bool
+	}{
+		{segments.Equal, "bar", "bar", true},
+		{segments.Equal, "bar", "baz", false},
+		{segments.Equal, 1, "1", true},
+		{segments.Equal, 1, "2", false},
+		{segments.Equal, true, "true", true},
+		{segments.Equal, false, "false", true},
+		{segments.Equal, false, "true", false},
+		{segments.Equal, true, "false", false},
+		{segments.Equal, 1.23, "1.23", true},
+		{segments.Equal, 1.23, "4.56", false},
+		{segments.GreaterThan, 2, "1", true},
+		{segments.GreaterThan, 1, "1", false},
+		{segments.GreaterThan, 0, "1", false},
+		{segments.GreaterThan, 2.1, "2.0", true},
+		{segments.GreaterThan, 2.1, "2.1", false},
+		{segments.GreaterThan, 2.0, "2.1", false},
+		{segments.GreaterThanInclusive, 2, "1", true},
+		{segments.GreaterThanInclusive, 1, "1", true},
+		{segments.GreaterThanInclusive, 0, "1", false},
+		{segments.GreaterThanInclusive, 2.1, "2.0", true},
+		{segments.GreaterThanInclusive, 2.1, "2.1", true},
+		{segments.GreaterThanInclusive, 2.0, "2.1", false},
+		{segments.LessThan, 1, "2", true},
+		{segments.LessThan, 1, "1", false},
+		{segments.LessThan, 1, "0", false},
+		{segments.LessThan, 2.0, "2.1", true},
+		{segments.LessThan, 2.1, "2.1", false},
+		{segments.LessThan, 2.1, "2.0", false},
+		{segments.LessThanInclusive, 1, "2", true},
+		{segments.LessThanInclusive, 1, "1", true},
+		{segments.LessThanInclusive, 1, "0", false},
+		{segments.LessThanInclusive, 2.0, "2.1", true},
+		{segments.LessThanInclusive, 2.1, "2.1", true},
+		{segments.LessThanInclusive, 2.1, "2.0", false},
+		{segments.NotEqual, "bar", "baz", true},
+		{segments.NotEqual, "bar", "bar", false},
+		{segments.NotEqual, 1, "2", true},
+		{segments.NotEqual, 1, "1", false},
+		{segments.NotEqual, true, "false", true},
+		{segments.NotEqual, false, "true", true},
+		{segments.NotEqual, false, "false", false},
+		{segments.NotEqual, true, "true", false},
+		{segments.Contains, "bar", "b", true},
+		{segments.Contains, "bar", "bar", true},
+		{segments.Contains, "bar", "baz", false},
+		{segments.NotContains, "bar", "b", false},
+		{segments.NotContains, "bar", "bar", false},
+		{segments.NotContains, "bar", "baz", true},
+		{segments.Regex, "foo", "[a-z]+", true},
+		{segments.Regex, "FOO", "[a-z]+", false},
+	}
+
+	for _, c := range cases {
+		trStr := fmt.Sprint(c.traitValue)
+		t.Run(trStr+" "+string(c.operator)+" "+c.conditionValue, func(t *testing.T) {
+			cond := &segments.SegmentConditionModel{
+				Operator: c.operator,
+				Property: "foo",
+				Value:    c.conditionValue,
+			}
+			assert.Equal(t, c.expectedResult, cond.MatchesTraitValue(trStr))
+		})
+	}
+}
+
+func TestSegmentRuleNone(t *testing.T) {
+	cases := []struct {
+		iterable       []bool
+		expectedResult bool
+	}{
+		{[]bool{}, true},
+		{[]bool{false}, true},
+		{[]bool{false, false}, true},
+		{[]bool{false, true}, false},
+		{[]bool{true, true}, false},
+	}
+
+	for i, c := range cases {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			assert.Equal(t, c.expectedResult, utils.None(c.iterable))
 		})
 	}
 }

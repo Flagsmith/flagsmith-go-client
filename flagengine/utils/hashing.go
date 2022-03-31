@@ -20,22 +20,18 @@ func getHashedPercentageForObjectIds(ids []string, iterations int) float64 {
 
 	value = (float64(hashValue.Mod(&hashValue, big.NewInt(9999)).Int64()) / 9998.0) * 100.0
 	if value == 100 {
-		return GetHashedPercentageForObjectIds(ids, iterations+1)
+		return getHashedPercentageForObjectIds(ids, iterations+1)
 	}
 
 	return value
 }
 
 func GetHashedPercentageForObjectIds(ids []string, iterations int) float64 {
-	fn := getHashedPercentageForObjectIds
-	if mockHashedPercentageForObjectIds != nil {
-		fn = mockHashedPercentageForObjectIds
-	}
-	return fn(ids, iterations)
+	return hashedPercentageForObjectIdsFunc(ids, iterations)
 }
 
-var mockHashedPercentageForObjectIds func([]string, int) float64
+var hashedPercentageForObjectIdsFunc = getHashedPercentageForObjectIds
 
-func SetMockHashedPercentageForObjectIds(fn func([]string, int) float64) {
-	mockHashedPercentageForObjectIds = fn
+func MockSetHashedPercentageForObjectIds(fn func([]string, int) float64) {
+	hashedPercentageForObjectIdsFunc = fn
 }

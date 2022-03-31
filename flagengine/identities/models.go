@@ -23,3 +23,16 @@ func (i *IdentityModel) CompositeKey() string {
 	}
 	return i.CompositeKey_
 }
+
+func (i *IdentityModel) GetIdentityFeatures() []*features.FeatureStateModel {
+	unique := make(map[int]*features.FeatureStateModel)
+	for _, feat := range i.IdentityFeatures {
+		if _, ok := unique[feat.Feature.ID]; ok {
+			panic("hell")
+		} else {
+			unique[feat.Feature.ID] = feat
+		}
+	}
+
+	return i.IdentityFeatures
+}

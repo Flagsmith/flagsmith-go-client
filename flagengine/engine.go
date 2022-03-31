@@ -35,8 +35,8 @@ func GetIdentityFeatureState(
 ) *features.FeatureStateModel {
 	featureStates := getIdentityFeatureStatesMap(environment, identity, overrideTraits...)
 
-	for feature, featureState := range featureStates {
-		if feature.Name == featureName {
+	for _, featureState := range featureStates {
+		if featureState.Feature.Name == featureName {
 			return featureState
 		}
 	}
@@ -63,22 +63,22 @@ func getIdentityFeatureStatesMap(
 	environment *environments.EnvironmentModel,
 	identity *identities.IdentityModel,
 	overrideTraits ...*traits.TraitModel,
-) map[*features.FeatureModel]*features.FeatureStateModel {
-	featureStates := make(map[*features.FeatureModel]*features.FeatureStateModel)
+) map[int]*features.FeatureStateModel {
+	featureStates := make(map[int]*features.FeatureStateModel)
 	for _, fs := range environment.FeatureStates {
-		featureStates[fs.Feature] = fs
+		featureStates[fs.Feature.ID] = fs
 	}
 
 	identitySegments := getIdentitySegments(environment, identity, overrideTraits...)
 	for _, segment := range identitySegments {
 		for _, fs := range segment.FeatureStates {
-			featureStates[fs.Feature] = fs
+			featureStates[fs.Feature.ID] = fs
 		}
 	}
 
-	for _, fs := range identity.IdentityFeatures {
-		if _, ok := featureStates[fs.Feature]; ok {
-			featureStates[fs.Feature] = fs
+	for _, fs := range identity.GetIdentityFeatures() {
+		if _, ok := featureStates[fs.Feature.ID]; ok {
+			featureStates[fs.Feature.ID] = fs
 		}
 	}
 
