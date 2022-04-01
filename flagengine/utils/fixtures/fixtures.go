@@ -142,7 +142,7 @@ func EnvironmentWithSegmentOverride(
 	return env
 }
 
-func GetFixtures() (*features.FeatureModel, *features.FeatureModel, *environments.EnvironmentModel, *identities.IdentityModel) {
+func GetFixtures() (*features.FeatureModel, *features.FeatureModel, *segments.SegmentModel, *environments.EnvironmentModel, *identities.IdentityModel) {
 	feature1 := Feature1()
 	feature2 := Feature2()
 	org := Organization()
@@ -152,5 +152,5 @@ func GetFixtures() (*features.FeatureModel, *features.FeatureModel, *environment
 	proj := Project(org, segment)
 	env := Environment(feature1, feature2, proj)
 	identity := Identity(env)
-	return feature1, feature2, env, identity
+	return feature1, feature2, segment, env, identity
 }

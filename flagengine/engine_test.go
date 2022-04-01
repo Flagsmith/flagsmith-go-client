@@ -64,14 +64,14 @@ func TestEngine(t *testing.T) {
 }
 
 func TestIdentityGetFeatureStateWithoutAnyOverride(t *testing.T) {
-	feature1, _, env, identity := fixtures.GetFixtures()
+	feature1, _, _, env, identity := fixtures.GetFixtures()
 
 	featureState := flagengine.GetIdentityFeatureState(env, identity, feature1.Name)
 	assert.Equal(t, feature1, featureState.Feature)
 }
 
 func TestIdentityGetAllFeatureStatesNoSegments(t *testing.T) {
-	_, _, env, identity := fixtures.GetFixtures()
+	_, _, _, env, identity := fixtures.GetFixtures()
 
 	overriddenFeature := &features.FeatureModel{ID: 3, Name: "overridden_feature", Type: "STANDARD"}
 
@@ -101,13 +101,50 @@ func TestIdentityGetAllFeatureStatesNoSegments(t *testing.T) {
 }
 
 func TestGetIdentityFeatureStatesHidesDisabledFlagsIfEnabled(t *testing.T) {
-	_, _, env, identity := fixtures.GetFixtures()
+	_, _, _, env, identity := fixtures.GetFixtures()
 	env.Project.HideDisabledFlags = true
 
 	featureStates := flagengine.GetIdentityFeatureStates(env, identity)
 
 	for _, fs := range featureStates {
 		assert.True(t, fs.Enabled)
+	}
+}
+
+func TestIdentityGetAllFeatureStatesSegmentsOnly(t *testing.T) {
+	_, _, segment, env, _ := fixtures.GetFixtures()
+	traitMatchingSegment := fixtures.TraitMatchingSegment(fixtures.SegmentCondition())
+	identityInSegment := fixtures.IdentityInSegment(traitMatchingSegment, env)
+
+	overriddenFeature := &features.FeatureModel{
+		ID:   3,
+		Name: "overridden_feature",
+		Type: "STANDARD",
+	}
+
+	env.FeatureStates = append(env.FeatureStates, &features.FeatureStateModel{
+		DjangoID: 3,
+		Feature:  overriddenFeature,
+		Enabled:  false,
+	})
+
+	segment.FeatureStates = append(segment.FeatureStates, &features.FeatureStateModel{
+		DjangoID: 4,
+		Feature:  overriddenFeature,
+		Enabled:  true,
+	})
+
+	allFeatureStates := flagengine.GetIdentityFeatureStates(env, identityInSegment)
+
+	assert.Len(t, allFeatureStates, 3)
+
+	for _, fs := range allFeatureStates {
+		envFeatureState := getEnvironmentFeatureStateForFeature(env, fs.Feature)
+		expected := envFeatureState.Enabled
+		if fs.Feature == overriddenFeature {
+			expected = true
+		}
+		assert.Equal(t, expected, fs.Enabled)
 	}
 }
 

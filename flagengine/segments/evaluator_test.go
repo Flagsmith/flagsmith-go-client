@@ -273,7 +273,7 @@ func TestIdentityInSegmentPercentageSplit(t *testing.T) {
 		{10, 20, false},
 	}
 
-	_, _, _, identity := fixtures.GetFixtures()
+	_, _, _, _, identity := fixtures.GetFixtures()
 
 	for i, c := range cases {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
