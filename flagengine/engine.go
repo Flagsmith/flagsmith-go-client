@@ -8,6 +8,30 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/segments"
 )
 
+// GetEnvironmentFeatureStates returns a list of feature states for a given environment.
+func GetEnvironmentFeatureStates(environment *environments.EnvironmentModel) []*features.FeatureStateModel {
+	if environment.Project.HideDisabledFlags {
+		var featureStates []*features.FeatureStateModel
+		for _, fs := range environment.FeatureStates {
+			if fs.Enabled {
+				featureStates = append(featureStates, fs)
+			}
+		}
+		return featureStates
+	}
+	return environment.FeatureStates
+}
+
+// GetEnvironmentFeatureState returns a specific feature state for a given featureName in a given environment, or nil feature state is not found.
+func GetEnvironmentFeatureState(environment *environments.EnvironmentModel, featureName string) *features.FeatureStateModel {
+	for _, fs := range environment.FeatureStates {
+		if fs.Feature.Name == featureName {
+			return fs
+		}
+	}
+	return nil
+}
+
 // GetIdentityFeatureStates returns a list of feature states for a given identity in a given environment.
 func GetIdentityFeatureStates(
 	environment *environments.EnvironmentModel,
