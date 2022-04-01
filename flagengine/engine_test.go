@@ -21,6 +21,7 @@ import (
 const TestData = "./engine-test-data/data/environment_n9fbf9h3v4fFgH3U3ngWhb.json"
 
 func TestEngine(t *testing.T) {
+	t.Parallel()
 	var testData struct {
 		Environment environments.EnvironmentModel `json:"environment"`
 		TestCases   []struct {
@@ -64,6 +65,7 @@ func TestEngine(t *testing.T) {
 }
 
 func TestIdentityGetFeatureStateWithoutAnyOverride(t *testing.T) {
+	t.Parallel()
 	feature1, _, _, env, identity := fixtures.GetFixtures()
 
 	featureState := flagengine.GetIdentityFeatureState(env, identity, feature1.Name)
@@ -71,6 +73,7 @@ func TestIdentityGetFeatureStateWithoutAnyOverride(t *testing.T) {
 }
 
 func TestIdentityGetAllFeatureStatesNoSegments(t *testing.T) {
+	t.Parallel()
 	_, _, _, env, identity := fixtures.GetFixtures()
 
 	overriddenFeature := &features.FeatureModel{ID: 3, Name: "overridden_feature", Type: "STANDARD"}
@@ -101,6 +104,7 @@ func TestIdentityGetAllFeatureStatesNoSegments(t *testing.T) {
 }
 
 func TestGetIdentityFeatureStatesHidesDisabledFlagsIfEnabled(t *testing.T) {
+	t.Parallel()
 	_, _, _, env, identity := fixtures.GetFixtures()
 	env.Project.HideDisabledFlags = true
 
@@ -112,6 +116,7 @@ func TestGetIdentityFeatureStatesHidesDisabledFlagsIfEnabled(t *testing.T) {
 }
 
 func TestIdentityGetAllFeatureStatesSegmentsOnly(t *testing.T) {
+	t.Parallel()
 	_, _, segment, env, _ := fixtures.GetFixtures()
 	traitMatchingSegment := fixtures.TraitMatchingSegment(fixtures.SegmentCondition())
 	identityInSegment := fixtures.IdentityInSegment(traitMatchingSegment, env)
@@ -146,6 +151,22 @@ func TestIdentityGetAllFeatureStatesSegmentsOnly(t *testing.T) {
 		}
 		assert.Equal(t, expected, fs.Enabled)
 	}
+}
+
+func TestIdentityGetAllFeatureStatesWithTraits(t *testing.T) {
+	t.Parallel()
+
+	feature1, _, segment, env, identity := fixtures.GetFixtures()
+
+	envWithSegmentOverride := fixtures.EnvironmentWithSegmentOverride(env, fixtures.SegmentOverrideFs(segment, feature1), segment)
+
+	traitModels := []*traits.TraitModel{
+		{TraitKey: fixtures.SegmentConditionProperty, TraitValue: fixtures.SegmentConditionStringValaue},
+	}
+
+	allFeatureStates := flagengine.GetIdentityFeatureStates(envWithSegmentOverride, identity, traitModels...)
+
+	assert.Equal(t, "segment_override", allFeatureStates[0].RawValue)
 }
 
 func getEnvironmentFeatureStateForFeature(env *environments.EnvironmentModel, feature *features.FeatureModel) *features.FeatureStateModel {
