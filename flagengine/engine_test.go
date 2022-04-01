@@ -191,6 +191,24 @@ func TestEnvironmentGetFeatureStatesHidesDisabledFlagsIfEnabled(t *testing.T) {
 	}
 }
 
+func TestEnvironmentGetFeatureState(t *testing.T) {
+	t.Parallel()
+
+	feature1, _, _, env, _ := fixtures.GetFixtures()
+	fs := flagengine.GetEnvironmentFeatureState(env, feature1.Name)
+
+	assert.Equal(t, feature1, fs.Feature)
+}
+
+func TestEnvironmentGetFeatureStateFeatureNotFound(t *testing.T) {
+	t.Parallel()
+
+	_, _, _, env, _ := fixtures.GetFixtures()
+	fs := flagengine.GetEnvironmentFeatureState(env, "not_a_feature_name")
+	assert.Nil(t, fs)
+
+}
+
 func getEnvironmentFeatureStateForFeature(env *environments.EnvironmentModel, feature *features.FeatureModel) *features.FeatureStateModel {
 	for _, fs := range env.FeatureStates {
 		if fs.Feature == feature {
