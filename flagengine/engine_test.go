@@ -153,6 +153,15 @@ func TestIdentityGetAllFeatureStatesSegmentsOnly(t *testing.T) {
 	}
 }
 
+func TestEnvironmentGetAllFeatureStates(t *testing.T) {
+	t.Parallel()
+
+	_, _, _, env, _ := fixtures.GetFixtures()
+	featureStates := flagengine.GetEnvironmentFeatureStates(env)
+
+	assert.Equal(t, env.FeatureStates, featureStates)
+}
+
 func TestIdentityGetAllFeatureStatesWithTraits(t *testing.T) {
 	t.Parallel()
 
