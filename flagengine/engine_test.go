@@ -153,15 +153,6 @@ func TestIdentityGetAllFeatureStatesSegmentsOnly(t *testing.T) {
 	}
 }
 
-func TestEnvironmentGetAllFeatureStates(t *testing.T) {
-	t.Parallel()
-
-	_, _, _, env, _ := fixtures.GetFixtures()
-	featureStates := flagengine.GetEnvironmentFeatureStates(env)
-
-	assert.Equal(t, env.FeatureStates, featureStates)
-}
-
 func TestIdentityGetAllFeatureStatesWithTraits(t *testing.T) {
 	t.Parallel()
 
@@ -176,6 +167,28 @@ func TestIdentityGetAllFeatureStatesWithTraits(t *testing.T) {
 	allFeatureStates := flagengine.GetIdentityFeatureStates(envWithSegmentOverride, identity, traitModels...)
 
 	assert.Equal(t, "segment_override", allFeatureStates[0].RawValue)
+}
+
+func TestEnvironmentGetAllFeatureStates(t *testing.T) {
+	t.Parallel()
+
+	_, _, _, env, _ := fixtures.GetFixtures()
+	featureStates := flagengine.GetEnvironmentFeatureStates(env)
+
+	assert.Equal(t, env.FeatureStates, featureStates)
+}
+
+func TestEnvironmentGetFeatureStatesHidesDisabledFlagsIfEnabled(t *testing.T) {
+	t.Parallel()
+
+	_, _, _, env, _ := fixtures.GetFixtures()
+	env.Project.HideDisabledFlags = true
+	featureStates := flagengine.GetEnvironmentFeatureStates(env)
+
+	assert.NotEqual(t, env.FeatureStates, featureStates)
+	for _, fs := range featureStates {
+		assert.True(t, fs.Enabled)
+	}
 }
 
 func getEnvironmentFeatureStateForFeature(env *environments.EnvironmentModel, feature *features.FeatureModel) *features.FeatureStateModel {
