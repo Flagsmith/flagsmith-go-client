@@ -100,6 +100,17 @@ func TestIdentityGetAllFeatureStatesNoSegments(t *testing.T) {
 	}
 }
 
+func TestGetIdentityFeatureStatesHidesDisabledFlagsIfEnabled(t *testing.T) {
+	_, _, env, identity := fixtures.GetFixtures()
+	env.Project.HideDisabledFlags = true
+
+	featureStates := flagengine.GetIdentityFeatureStates(env, identity)
+
+	for _, fs := range featureStates {
+		assert.True(t, fs.Enabled)
+	}
+}
+
 func getEnvironmentFeatureStateForFeature(env *environments.EnvironmentModel, feature *features.FeatureModel) *features.FeatureStateModel {
 	for _, fs := range env.FeatureStates {
 		if fs.Feature == feature {
