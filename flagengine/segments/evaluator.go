@@ -1,11 +1,12 @@
 package segments
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
-	"strconv"
-	"strings"
 )
 
 func EvaluateIdentityInSegment(

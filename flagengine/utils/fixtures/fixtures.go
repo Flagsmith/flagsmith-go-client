@@ -1,6 +1,8 @@
 package fixtures
 
 import (
+	"time"
+
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/environments"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
@@ -9,7 +11,6 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/projects"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/segments"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
-	"time"
 )
 
 const (
@@ -92,7 +93,7 @@ func Identity(env *environments.EnvironmentModel) *identities.IdentityModel {
 	return &identities.IdentityModel{
 		Identifier:        "identity_1",
 		EnvironmentAPIKey: env.APIKey,
-		CreatedDate:       utils.ISOTime{time.Now()},
+		CreatedDate:       utils.ISOTime{Time: time.Now()},
 	}
 }
 

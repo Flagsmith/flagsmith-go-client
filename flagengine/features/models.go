@@ -2,10 +2,11 @@ package features
 
 import (
 	"encoding/json"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
 )
 
 type FeatureModel struct {

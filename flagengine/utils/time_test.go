@@ -1,10 +1,12 @@
 package utils_test
 
 import (
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
 )
 
 func TestUnmarshal(t *testing.T) {

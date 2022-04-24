@@ -2,7 +2,6 @@ package flagengine_test
 
 import (
 	"encoding/json"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils/fixtures"
 	"io/ioutil"
 	"sort"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils/fixtures"
 )
 
 const TestData = "./engine-test-data/data/environment_n9fbf9h3v4fFgH3U3ngWhb.json"
@@ -212,15 +212,6 @@ func TestEnvironmentGetFeatureStateFeatureNotFound(t *testing.T) {
 func getEnvironmentFeatureStateForFeature(env *environments.EnvironmentModel, feature *features.FeatureModel) *features.FeatureStateModel {
 	for _, fs := range env.FeatureStates {
 		if fs.Feature == feature {
-			return fs
-		}
-	}
-	return nil
-}
-
-func getEnvironmentFeatureStateForFeatureByName(env *environments.EnvironmentModel, featureName string) *features.FeatureStateModel {
-	for _, fs := range env.FeatureStates {
-		if fs.Feature.Name == featureName {
 			return fs
 		}
 	}

@@ -2,11 +2,11 @@ package utils_test
 
 import (
 	"fmt"
-	"github.com/google/uuid"
 	"sort"
 	"strconv"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"

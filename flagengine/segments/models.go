@@ -1,10 +1,11 @@
 package segments
 
 import (
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
 	"regexp"
 	"strings"
+
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
 )
 
 type SegmentConditionModel struct {

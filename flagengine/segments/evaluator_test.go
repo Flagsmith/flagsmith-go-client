@@ -2,14 +2,16 @@ package segments_test
 
 import (
 	"fmt"
+	"strconv"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/segments"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils/fixtures"
-	"github.com/stretchr/testify/assert"
-	"strconv"
-	"testing"
 )
 
 const (
@@ -170,39 +172,39 @@ func TestIdentityInSegment(t *testing.T) {
 		{segment_single_condition, nil, false},
 		{
 			segment_single_condition,
-			[]*traits.TraitModel{{trait_key_1, trait_value_1}},
+			[]*traits.TraitModel{{TraitKey: trait_key_1, TraitValue: trait_value_1}},
 			true,
 		},
 		{segment_multiple_conditions_all, nil, false},
 		{
 			segment_multiple_conditions_all,
-			[]*traits.TraitModel{{trait_key_1, trait_value_1}},
+			[]*traits.TraitModel{{TraitKey: trait_key_1, TraitValue: trait_value_1}},
 			false,
 		},
 		{
 			segment_multiple_conditions_all,
 			[]*traits.TraitModel{
-				{trait_key_1, trait_value_1},
-				{trait_key_2, trait_value_2},
+				{TraitKey: trait_key_1, TraitValue: trait_value_1},
+				{TraitKey: trait_key_2, TraitValue: trait_value_2},
 			},
 			true,
 		},
 		{segment_multiple_conditions_any, nil, false},
 		{
 			segment_multiple_conditions_any,
-			[]*traits.TraitModel{{trait_key_1, trait_value_1}},
+			[]*traits.TraitModel{{TraitKey: trait_key_1, TraitValue: trait_value_1}},
 			true,
 		},
 		{
 			segment_multiple_conditions_any,
-			[]*traits.TraitModel{{trait_key_2, trait_value_2}},
+			[]*traits.TraitModel{{TraitKey: trait_key_2, TraitValue: trait_value_2}},
 			true,
 		},
 		{
 			segment_multiple_conditions_all,
 			[]*traits.TraitModel{
-				{trait_key_1, trait_value_1},
-				{trait_key_2, trait_value_2},
+				{TraitKey: trait_key_1, TraitValue: trait_value_1},
+				{TraitKey: trait_key_2, TraitValue: trait_value_2},
 			},
 			true,
 		},
@@ -210,16 +212,16 @@ func TestIdentityInSegment(t *testing.T) {
 		{
 			segment_nested_rules,
 			[]*traits.TraitModel{
-				{trait_key_1, trait_value_1},
+				{TraitKey: trait_key_1, TraitValue: trait_value_1},
 			},
 			false,
 		},
 		{
 			segment_nested_rules,
 			[]*traits.TraitModel{
-				{trait_key_1, trait_value_1},
-				{trait_key_2, trait_value_2},
-				{trait_key_3, trait_value_3},
+				{TraitKey: trait_key_1, TraitValue: trait_value_1},
+				{TraitKey: trait_key_2, TraitValue: trait_value_2},
+				{TraitKey: trait_key_3, TraitValue: trait_value_3},
 			},
 			true,
 		},
@@ -227,16 +229,16 @@ func TestIdentityInSegment(t *testing.T) {
 		{
 			segment_conditions_and_nested_rules,
 			[]*traits.TraitModel{
-				{trait_key_1, trait_value_1},
+				{TraitKey: trait_key_1, TraitValue: trait_value_1},
 			},
 			false,
 		},
 		{
 			segment_conditions_and_nested_rules,
 			[]*traits.TraitModel{
-				{trait_key_1, trait_value_1},
-				{trait_key_2, trait_value_2},
-				{trait_key_3, trait_value_3},
+				{TraitKey: trait_key_1, TraitValue: trait_value_1},
+				{TraitKey: trait_key_2, TraitValue: trait_value_2},
+				{TraitKey: trait_key_3, TraitValue: trait_value_3},
 			},
 			true,
 		},
