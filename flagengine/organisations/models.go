@@ -1,4 +1,4 @@
-package organizations
+package organisations
 
 import "strconv"
 

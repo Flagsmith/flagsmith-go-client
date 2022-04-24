@@ -5,7 +5,7 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/organizations"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/organisations"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/projects"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/segments"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
@@ -40,8 +40,8 @@ func Segment(rule *segments.SegmentRuleModel) *segments.SegmentModel {
 	}
 }
 
-func Organization() *organizations.OrganisationModel {
-	return &organizations.OrganisationModel{
+func Organization() *organisations.OrganisationModel {
+	return &organisations.OrganisationModel{
 		ID:               1,
 		Name:             "test Org",
 		StopServingFlags: false,
@@ -50,7 +50,7 @@ func Organization() *organizations.OrganisationModel {
 	}
 }
 
-func Project(org *organizations.OrganisationModel, segment *segments.SegmentModel) *projects.ProjectModel {
+func Project(org *organisations.OrganisationModel, segment *segments.SegmentModel) *projects.ProjectModel {
 	return &projects.ProjectModel{
 		ID:                1,
 		Name:              "Test Project",
