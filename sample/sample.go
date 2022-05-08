@@ -10,10 +10,10 @@ import (
 )
 
 func main() {
-	f := flagsmith.NewClient("MgfUaRCvvZMznuQyqjnQKt", flagsmith.Config{
-		Timeout: 3 * time.Second,
-		BaseURI: "https://api.bullet-train.io/api/v1/", // what a coincidence ;)
-	})
+	f := flagsmith.New("MgfUaRCvvZMznuQyqjnQKt",
+		flagsmith.WithBaseURI("https://api.bullet-train.io/api/v1/"), // what a coincidence ;)
+		flagsmith.WithRequestTimeout(3*time.Second),
+	)
 
 	awesome, err := f.FeatureEnabled("awesome_feature")
 	if err != nil {

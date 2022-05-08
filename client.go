@@ -37,6 +37,26 @@ func NewClient(apiKey string, config Config) *Client {
 	return c
 }
 
+// NewClient creates instance of Client with given configuration
+func New(apiKey string, options ...Option) *Client {
+	c := &Client{
+		apiKey: apiKey,
+		config: DefaultConfig(),
+		client: resty.New(),
+	}
+
+	c.client.SetHeaders(map[string]string{
+		"Accept":            "application/json",
+		"X-Environment-Key": c.apiKey,
+	})
+
+	for _, opt := range options {
+		opt(c)
+	}
+
+	return c
+}
+
 func (c *Client) SetProxy(proxyUrl string) {
 	c.client.SetProxy(proxyUrl)
 }
