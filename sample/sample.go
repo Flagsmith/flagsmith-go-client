@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	f := flagsmith.New("MgfUaRCvvZMznuQyqjnQKt",
+	f := flagsmith.NewClient("MgfUaRCvvZMznuQyqjnQKt",
 		flagsmith.WithBaseURI("https://api.bullet-train.io/api/v1/"), // what a coincidence ;)
 		flagsmith.WithRequestTimeout(3*time.Second),
 	)

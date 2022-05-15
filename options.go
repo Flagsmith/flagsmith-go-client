@@ -17,37 +17,37 @@ var _ = []Option{
 
 func WithBaseURI(uri string) Option {
 	return func(c *Client) {
-		c.config.BaseURI = uri
+		c.config.baseURI = uri
 	}
 }
 
 func WithLocalEvaluation() Option {
 	return func(c *Client) {
-		c.config.LocalEval = true
+		c.config.localEvaluation = true
 	}
 }
 
 func WithRemoteEvaluation() Option {
 	return func(c *Client) {
-		c.config.LocalEval = false
+		c.config.localEvaluation = false
 	}
 }
 
 func WithRequestTimeout(timeout time.Duration) Option {
 	return func(c *Client) {
-		c.config.Timeout = timeout
+		c.config.timeout = timeout
 	}
 }
 
 func WithEnvironmentRefreshInterval(interval time.Duration) Option {
 	return func(c *Client) {
-		c.config.EnvRefreshInterval = interval
+		c.config.envRefreshInterval = interval
 	}
 }
 
 func WithAnalytics() Option {
 	return func(c *Client) {
-		c.config.EnableAnalytics = true
+		c.config.enableAnalytics = true
 	}
 }
 

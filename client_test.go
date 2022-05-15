@@ -22,7 +22,7 @@ var (
 )
 
 func TestGetFeatureFlags(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	flags, err := c.GetFeatures()
 
 	assert.NoError(t, err)
@@ -36,7 +36,7 @@ func TestGetFeatureFlags(t *testing.T) {
 }
 
 func TestGetUserFeatureFlags(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	flags, err := c.GetUserFeatures(testUser)
 
 	assert.NoError(t, err)
@@ -50,7 +50,7 @@ func TestGetUserFeatureFlags(t *testing.T) {
 }
 
 func TestGetFeatureFlagValue(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	val, err := c.GetValue(testFeatureName)
 
 	assert.NoError(t, err)
@@ -58,7 +58,7 @@ func TestGetFeatureFlagValue(t *testing.T) {
 }
 
 func TestGetUserFeatureFlagValue(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	val, err := c.GetUserValue(testUser, testFeatureName)
 
 	assert.NoError(t, err)
@@ -66,7 +66,7 @@ func TestGetUserFeatureFlagValue(t *testing.T) {
 }
 
 func TestHasFeature(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	enabled, err := c.HasFeature(testFeatureName)
 
 	assert.NoError(t, err)
@@ -74,7 +74,7 @@ func TestHasFeature(t *testing.T) {
 }
 
 func TestHasUserFeature(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	enabled, err := c.HasUserFeature(testUser, testFeatureName)
 
 	assert.NoError(t, err)
@@ -82,7 +82,7 @@ func TestHasUserFeature(t *testing.T) {
 }
 
 func TestGetTrait(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	trait, err := c.GetTrait(testUser, testTraitName)
 
 	assert.NoError(t, err)
@@ -90,7 +90,7 @@ func TestGetTrait(t *testing.T) {
 }
 
 func TestGetTraits(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	traits, err := c.GetTraits(testUser)
 
 	assert.NoError(t, err)
@@ -99,7 +99,7 @@ func TestGetTraits(t *testing.T) {
 }
 
 func TestUpdateTrait(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	trait, err := c.GetTrait(differentUser, testTraitName)
 	assert.NoError(t, err)
 
@@ -151,7 +151,7 @@ func updateTraitsAsserts(updated []*flagsmith.Trait, err error, c *flagsmith.Cli
 }
 
 func TestBulkUpdateTraitsPointers(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 
 	traits := []*flagsmith.Trait{
 		{
@@ -185,7 +185,7 @@ func TestBulkUpdateTraitsPointers(t *testing.T) {
 }
 
 func TestBulkUpdateTraitsObject(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 
 	object := struct {
 		boolField    bool
@@ -202,7 +202,7 @@ func TestBulkUpdateTraitsObject(t *testing.T) {
 }
 
 func TestBulkUpdateTraits(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 
 	traits := []flagsmith.Trait{
 		{
@@ -237,21 +237,21 @@ func TestBulkUpdateTraits(t *testing.T) {
 }
 
 func TestFeatureEnabled(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	enabled, err := c.FeatureEnabled(testFlagName)
 	assert.NoError(t, err)
 	assert.Equal(t, testFlagValue, enabled)
 }
 
 func TestUserFeatureEnabled(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	enabled, err := c.UserFeatureEnabled(testUser, testFlagName)
 	assert.NoError(t, err)
 	assert.Equal(t, testFlagValue, enabled)
 }
 
 func TestRemoteConfig(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 
 	// string
 	val, err := c.GetValue(testFeatureName)
@@ -276,7 +276,7 @@ func TestRemoteConfig(t *testing.T) {
 }
 
 func TestGetTraitsWithContextCancel(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	traits, err := c.GetTraitsWithContext(ctx, testUser)
@@ -286,7 +286,7 @@ func TestGetTraitsWithContextCancel(t *testing.T) {
 }
 
 func TestGetFeatureFlagsWithContextCancel(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
+	c := flagsmith.NewClient(apiKey)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := c.GetFeaturesWithContext(ctx)

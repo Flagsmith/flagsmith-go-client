@@ -9,21 +9,21 @@ const (
 	DefaultBaseURI = "https://api.bullet-train.io/api/v1/"
 )
 
-// Config contains all configurable Client settings
-type Config struct {
-	BaseURI string
-	Timeout time.Duration
+// config contains all configurable Client settings
+type config struct {
+	baseURI string
+	timeout time.Duration
 
-	LocalEval          bool
-	EnvRefreshInterval time.Duration
+	localEvaluation    bool
+	envRefreshInterval time.Duration
 
-	EnableAnalytics bool
+	enableAnalytics bool
 }
 
-// DefaultConfig returns default configuration
-func DefaultConfig() Config {
-	return Config{
-		BaseURI: DefaultBaseURI,
-		Timeout: DefaultTimeout,
+// defaultConfig returns default configuration
+func defaultConfig() config {
+	return config{
+		baseURI: DefaultBaseURI,
+		timeout: DefaultTimeout,
 	}
 }

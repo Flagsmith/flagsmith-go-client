@@ -12,36 +12,16 @@ import (
 // Client provides various methods to query BulletTrain API
 type Client struct {
 	apiKey string
-	config Config
+	config config
+
 	client *resty.Client
 }
 
-// DefaultClient returns new Client with default configuration
-func DefaultClient(apiKey string) *Client {
-	return NewClient(apiKey, DefaultConfig())
-}
-
 // NewClient creates instance of Client with given configuration
-func NewClient(apiKey string, config Config) *Client {
+func NewClient(apiKey string, options ...Option) *Client {
 	c := &Client{
 		apiKey: apiKey,
-		config: config,
-		client: resty.New(),
-	}
-
-	c.client.SetHeaders(map[string]string{
-		"Accept":            "application/json",
-		"X-Environment-Key": c.apiKey,
-	})
-
-	return c
-}
-
-// NewClient creates instance of Client with given configuration
-func New(apiKey string, options ...Option) *Client {
-	c := &Client{
-		apiKey: apiKey,
-		config: DefaultConfig(),
+		config: defaultConfig(),
 		client: resty.New(),
 	}
 
@@ -75,7 +55,7 @@ func (c *Client) GetFeaturesWithContext(ctx context.Context) ([]Flag, error) {
 	_, err := c.client.NewRequest().
 		SetContext(ctx).
 		SetResult(&flags).
-		Get(c.config.BaseURI + "flags/")
+		Get(c.config.baseURI + "flags/")
 
 	return flags, err
 }
@@ -91,7 +71,7 @@ func (c *Client) GetUserFeaturesWithContext(ctx context.Context, user User) ([]F
 	_, err := c.client.NewRequest().
 		SetContext(ctx).
 		SetResult(&flags).
-		Get(c.config.BaseURI + "flags/" + user.Identifier + "/")
+		Get(c.config.baseURI + "flags/" + user.Identifier + "/")
 
 	return flags, err
 }
@@ -239,7 +219,7 @@ func (c *Client) GetTraitsWithContext(ctx context.Context, user User, keys ...st
 		SetContext(ctx).
 		SetResult(&resp).
 		SetQueryParam("identifier", user.Identifier).
-		Get(c.config.BaseURI + "identities/")
+		Get(c.config.baseURI + "identities/")
 
 	if err != nil {
 		return nil, err
@@ -275,7 +255,7 @@ func (c *Client) UpdateTraitWithContext(ctx context.Context, user User, toUpdate
 		SetContext(ctx).
 		SetBody(toUpdate).
 		SetResult(trait).
-		Post(c.config.BaseURI + "traits/")
+		Post(c.config.baseURI + "traits/")
 
 	return trait, err
 }
@@ -339,7 +319,7 @@ func (c *Client) UpdateTraitsWithContext(ctx context.Context, user User, object 
 		SetContext(ctx).
 		SetBody(bulk).
 		SetResult(&bulkResp).
-		Put(c.config.BaseURI + "traits/bulk/")
+		Put(c.config.baseURI + "traits/bulk/")
 	return bulkResp, err
 }
 
