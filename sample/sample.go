@@ -13,6 +13,8 @@ func main() {
 	f := flagsmith.NewClient("MgfUaRCvvZMznuQyqjnQKt",
 		flagsmith.WithBaseURI("https://api.bullet-train.io/api/v1/"), // what a coincidence ;)
 		flagsmith.WithRequestTimeout(3*time.Second),
+		flagsmith.WithLocalEvaluation(),
+		flagsmith.WithEnvironmentRefreshInterval(1*time.Second),
 	)
 
 	awesome, err := f.FeatureEnabled("awesome_feature")

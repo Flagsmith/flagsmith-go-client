@@ -2,17 +2,25 @@ package flagsmith
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log"
 	"reflect"
 	"strconv"
+	"sync/atomic"
+	"time"
 
 	"github.com/go-resty/resty/v2"
+
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/environments"
 )
 
 // Client provides various methods to query BulletTrain API
 type Client struct {
 	apiKey string
 	config config
+
+	environment atomic.Value
 
 	client *resty.Client
 }
@@ -32,6 +40,10 @@ func NewClient(apiKey string, options ...Option) *Client {
 
 	for _, opt := range options {
 		opt(c)
+	}
+
+	if c.config.localEvaluation {
+		go c.pollEnvironment(context.TODO())
 	}
 
 	return c
@@ -321,6 +333,49 @@ func (c *Client) UpdateTraitsWithContext(ctx context.Context, user User, object 
 		SetResult(&bulkResp).
 		Put(c.config.baseURI + "traits/bulk/")
 	return bulkResp, err
+}
+
+func (c *Client) pollEnvironment(ctx context.Context) {
+	update := func() {
+		ctx, cancel := context.WithTimeout(ctx, c.config.envRefreshInterval)
+		defer cancel()
+		err := c.updateEnvironment(ctx)
+		if err != nil {
+			// TODO(tzdybal): error handling - log vs panic?
+			log.Printf("ERROR: failed to update environment: %v", err)
+		}
+	}
+
+	update()
+	ticker := time.NewTicker(c.config.envRefreshInterval)
+	for {
+		select {
+		case <-ticker.C:
+			update()
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (c *Client) updateEnvironment(ctx context.Context) error {
+	var env environments.EnvironmentModel
+	e := make(map[string]string)
+	_, err := c.client.NewRequest().
+		SetContext(ctx).
+		SetResult(&env).
+		SetError(&e).
+		Get(c.config.baseURI + "environment-document/")
+	if err != nil {
+		return err
+	}
+	if len(e) > 0 {
+		return errors.New(e["detail"])
+	}
+
+	c.environment.Store(&env)
+
+	return nil
 }
 
 func findFeatureFlag(flags []Flag, name string) *Flag {
