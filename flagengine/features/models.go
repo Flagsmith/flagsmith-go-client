@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"fmt"
 
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
 )
