@@ -84,8 +84,8 @@ func (fs *FeatureStateModel) IsHigherSegmentPriority(other *FeatureStateModel) b
 	if fs.FeatureSegment == nil {
 		return false
 
-	} else if (other.FeatureSegment == nil){
-		return  true
+	} else if other.FeatureSegment == nil {
+		return true
 	}
 	return fs.FeatureSegment.Priority < other.FeatureSegment.Priority
 }
