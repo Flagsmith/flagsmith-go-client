@@ -10,12 +10,14 @@ import (
 )
 
 func main() {
-	b := flagsmith.NewClient("MgfUaRCvvZMznuQyqjnQKt", flagsmith.Config{
-		Timeout: 3 * time.Second,
-		BaseURI: "https://api.bullet-train.io/api/v1/", // what a coincidence ;)
-	})
+	f := flagsmith.NewClient("MgfUaRCvvZMznuQyqjnQKt",
+		flagsmith.WithBaseURI("https://api.bullet-train.io/api/v1/"), // what a coincidence ;)
+		flagsmith.WithRequestTimeout(3*time.Second),
+		flagsmith.WithLocalEvaluation(),
+		flagsmith.WithEnvironmentRefreshInterval(1*time.Second),
+	)
 
-	awesome, err := b.FeatureEnabled("awesome_feature")
+	awesome, err := f.FeatureEnabled("awesome_feature")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -23,7 +25,7 @@ func main() {
 		// do something awesome!
 	}
 
-	traits, err := b.GetTraits(flagsmith.User{Identifier: "test_user"})
+	traits, err := f.GetTraits(flagsmith.User{Identifier: "test_user"})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -33,7 +35,7 @@ func main() {
 
 	// use a Context, perhaps from an incomming Request
 	ctx := context.Background()
-	awesome, err = b.FeatureEnabledWithContext(ctx, "awesome_feature")
+	awesome, err = f.FeatureEnabledWithContext(ctx, "awesome_feature")
 	if err != nil {
 		log.Fatal(err)
 	}
