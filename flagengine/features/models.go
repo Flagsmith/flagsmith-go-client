@@ -83,7 +83,6 @@ func (fs *FeatureStateModel) Value(identityID string) interface{} {
 func (fs *FeatureStateModel) IsHigherSegmentPriority(other *FeatureStateModel) bool {
 	if fs.FeatureSegment == nil {
 		return false
-
 	} else if other.FeatureSegment == nil {
 		return true
 	}
