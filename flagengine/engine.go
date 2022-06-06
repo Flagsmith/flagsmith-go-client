@@ -96,6 +96,11 @@ func getIdentityFeatureStatesMap(
 	identitySegments := getIdentitySegments(environment, identity, overrideTraits...)
 	for _, segment := range identitySegments {
 		for _, fs := range segment.FeatureStates {
+			existing_fs, exists := featureStates[fs.Feature.ID]
+			if exists && existing_fs.IsHigherSegmentPriority(fs) {
+				continue
+			}
+
 			featureStates[fs.Feature.ID] = fs
 		}
 	}

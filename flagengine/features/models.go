@@ -15,9 +15,13 @@ type FeatureModel struct {
 	Type string `json:"type"`
 }
 
+type FeatureSegment struct {
+	Priority int `json:"priority"`
+}
 type FeatureStateModel struct {
 	Feature                        *FeatureModel                         `json:"feature"`
 	Enabled                        bool                                  `json:"enabled"`
+	FeatureSegment                 *FeatureSegment                       `json:"feature_segment"`
 	DjangoID                       int                                   `json:"django_id"`
 	FeatureStateUUID               string                                `json:"featurestate_uuid"`
 	MultivariateFeatureStateValues []*MultivariateFeatureStateValueModel `json:"multivariate_feature_state_values"`
@@ -28,6 +32,7 @@ func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
 	var obj struct {
 		Feature                        *FeatureModel                         `json:"feature"`
 		Enabled                        bool                                  `json:"enabled"`
+		FeatureSegment                 *FeatureSegment                       `json:"feature_segment"`
 		DjangoID                       int                                   `json:"django_id"`
 		FeatureStateUUID               string                                `json:"featurestate_uuid"`
 		MultivariateFeatureStateValues []*MultivariateFeatureStateValueModel `json:"multivariate_feature_state_values"`
@@ -41,6 +46,7 @@ func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
 
 	fs.Feature = obj.Feature
 	fs.Enabled = obj.Enabled
+	fs.FeatureSegment = obj.FeatureSegment
 	fs.DjangoID = obj.DjangoID
 	fs.FeatureStateUUID = obj.FeatureStateUUID
 	fs.MultivariateFeatureStateValues = obj.MultivariateFeatureStateValues
@@ -72,6 +78,15 @@ func (fs *FeatureStateModel) Value(identityID string) interface{} {
 		return fs.multivariateValue(identityID)
 	}
 	return fs.RawValue
+}
+
+func (fs *FeatureStateModel) IsHigherSegmentPriority(other *FeatureStateModel) bool {
+	if fs.FeatureSegment == nil {
+		return false
+	} else if other.FeatureSegment == nil {
+		return true
+	}
+	return fs.FeatureSegment.Priority < other.FeatureSegment.Priority
 }
 
 func (fs *FeatureStateModel) multivariateValue(identityID string) interface{} {
