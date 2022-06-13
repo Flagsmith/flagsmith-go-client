@@ -7,6 +7,7 @@ import (
 )
 
 const AnalyticsTimerInMilli = 10 *1000
+const AnalyticsEndpoint = "analytics/flags/"
 
 type AnalyticsProcessor struct {
 	client *resty.Client
@@ -23,7 +24,7 @@ func NewAnalyticsProcessor(client *resty.Client, baseURL string, timerInMilli *i
 	processor := AnalyticsProcessor{
 		client: client,
 		data: data,
-		endpoint: baseURL + "analytics/flags/",
+		endpoint: baseURL + AnalyticsEndpoint,
 	}
 	go func() {
 		for {

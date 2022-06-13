@@ -22,6 +22,8 @@ func TestAnalytics(t *testing.T) {
 		actualRequestBodyRaw, err := ioutil.ReadAll(req.Body)
 		assert.NoError(t, err)
 		actualRequestBody = string(actualRequestBodyRaw)
+
+		assert.Equal(t, "/api/v1/analytics/flags/", req.URL.Path, )
 		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 	}))
 	defer server.Close()
@@ -34,7 +36,7 @@ func TestAnalytics(t *testing.T) {
 	client.SetHeader("X-Environment-Key", EnvironmentAPIKey)
 
 	// Now let's create the processor
-	processor := NewAnalyticsProcessor(client, server.URL + "/", &analyticsTimer)
+	processor := NewAnalyticsProcessor(client, server.URL + "/api/v1/", &analyticsTimer)
 
 	// and, track some features
 	processor.TrackFeature(1)
@@ -49,20 +51,5 @@ func TestAnalytics(t *testing.T) {
 
 	// and, that the data was cleared
 	assert.Equal(t, 0, len(processor.data))
-
-}
-
-func TestTrackFeatureUpdatesAnalyticsData(t *testing.T) {
-	// Given
-	client := resty.New()
-	featureID := 1
-	processor := NewAnalyticsProcessor(client, BaseURL, nil)
-
-	// When
-	processor.TrackFeature(featureID)
-	processor.TrackFeature(featureID)
-
-	// Then
-	assert.Equal(t, 2, processor.data[featureID])
 
 }
