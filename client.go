@@ -105,8 +105,8 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 	}
 }
 
-func (c *Client) updateEnvironment(ctx context.Context) error {
-	fmt.Println("updating environment");
+func (c *Client) UpdateEnvironment(ctx context.Context) error {
+	//fmt.Println("updating environment");
 	var env environments.EnvironmentModel
 	e := make(map[string]string)
 	_, err := c.client.NewRequest().
