@@ -5,13 +5,13 @@ import "time"
 const (
 	// DefaultTimeout is a default timeout for HTTP client
 	DefaultTimeout = 10 * time.Second
-	// DefaultBaseURI is a default URI
-	DefaultBaseURI = "https://api.bullet-train.io/api/v1/"
+	// DefaultBaseURL is a default URI
+	DefaultBaseURL = "https://api.bullet-train.io/api/v1/"
 )
 
 // config contains all configurable Client settings
 type config struct {
-	baseURI string
+	baseURL string
 	timeout time.Duration
 
 	localEvaluation    bool
@@ -23,7 +23,8 @@ type config struct {
 // defaultConfig returns default configuration
 func defaultConfig() config {
 	return config{
-		baseURI: DefaultBaseURI,
+		baseURL: DefaultBaseURL,
 		timeout: DefaultTimeout,
+		envRefreshInterval: time.Second * 60,
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"log"
 	"sync/atomic"
 	"time"
-
+	"fmt"
 	"github.com/go-resty/resty/v2"
 
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/environments"
@@ -43,11 +43,14 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 
 	if c.config.localEvaluation {
+		fmt.Println("local evaluation enabled");
 		go c.pollEnvironment(context.TODO())
 	}
+	fmt.Println("is analytics processor enabled: ", c.config.enableAnalytics);
 	// Initialize analytics processor
 	if c.config.enableAnalytics {
-		c.analyticsProcessor = NewAnalyticsProcessor(c.client, c.config.baseURI, nil)
+		fmt.Println("initializing analytics processor");
+		//c.analyticsProcessor = NewAnalyticsProcessor(c.client, c.config.baseURI, nil)
 	}
 
 	return c
@@ -79,16 +82,17 @@ func(c *Client) GetEnvironmentFlagsFromDocument(ctx context.Context, env environ
 }
 
 func (c *Client) pollEnvironment(ctx context.Context) {
+	fmt.Println("polling environment");
 	update := func() {
 		ctx, cancel := context.WithTimeout(ctx, c.config.envRefreshInterval)
 		defer cancel()
 		err := c.updateEnvironment(ctx)
 		if err != nil {
+			fmt.Println("error updating environment: ", err);
 			// TODO(tzdybal): error handling - log vs panic?
 			log.Printf("ERROR: failed to update environment: %v", err)
 		}
 	}
-
 	update()
 	ticker := time.NewTicker(c.config.envRefreshInterval)
 	for {
@@ -102,13 +106,14 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 }
 
 func (c *Client) updateEnvironment(ctx context.Context) error {
+	fmt.Println("updating environment");
 	var env environments.EnvironmentModel
 	e := make(map[string]string)
 	_, err := c.client.NewRequest().
 		SetContext(ctx).
 		SetResult(&env).
 		SetError(&e).
-		Get(c.config.baseURI + "environment-document/")
+		Get(c.config.baseURL + "environment-document/")
 	if err != nil {
 		return err
 	}

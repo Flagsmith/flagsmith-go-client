@@ -5,7 +5,7 @@ import "time"
 type Option func(c *Client)
 
 var _ = []Option{
-	WithBaseURI(""),
+	WithBaseURL(""),
 	WithLocalEvaluation(),
 	WithRemoteEvaluation(),
 	WithRequestTimeout(0),
@@ -15,9 +15,9 @@ var _ = []Option{
 	WithCustomHeaders(nil),
 }
 
-func WithBaseURI(uri string) Option {
+func WithBaseURL(url string) Option {
 	return func(c *Client) {
-		c.config.baseURI = uri
+		c.config.baseURL = url
 	}
 }
 
