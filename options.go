@@ -63,3 +63,9 @@ func WithCustomHeaders(headers map[string]string) Option {
 		c.client.SetHeaders(headers)
 	}
 }
+
+func WithDefaultHandler(handler DefaultFlagHandlerType) Option {
+	return func(c *Client) {
+		c.defaultFlagHandler = &handler
+	}
+}
