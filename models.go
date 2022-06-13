@@ -1,19 +1,39 @@
 package flagsmith
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
 )
 
+type DefaultFlagHandlerType func(FeatureName string) Flag
 type Flag struct {
-	Enabled     bool        `json:"enabled"`
-	Value       interface{} `json:"value"`
-	IsDefault   bool        `json:"is_default"`
-	FeatureID   int         `json:"feature_id"`
-	FeatureName string      `json:"feature_name"`
+	Enabled     bool
+	Value       interface{}
+	IsDefault   bool
+	FeatureID   int
+	FeatureName string
+}
+type jsonFeature struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
 }
 
-type DefaultFlagHandlerType func(FeatureName string) Flag
+type jsonFlag struct {
+	Enabled bool        `json:"enabled"`
+	Value   interface{} `json:"feature_state_value"`
+	Feature jsonFeature `json:"feature"`
+}
 
+func (jf *jsonFlag) toFlag() Flag {
+	return Flag{
+		Enabled:     jf.Enabled,
+		Value:       jf.Value,
+		IsDefault:   false,
+		FeatureID:   jf.Feature.ID,
+		FeatureName: jf.Feature.Name,
+	}
+}
 
 func MakeFlagFromFeatureState(featureState *features.FeatureStateModel, identityID string) Flag {
 	return Flag{
@@ -25,7 +45,6 @@ func MakeFlagFromFeatureState(featureState *features.FeatureStateModel, identity
 	}
 }
 
-
 type Flags struct {
 	flags              []Flag
 	analyticsProcessor *AnalyticsProcessor
@@ -35,7 +54,7 @@ type Flags struct {
 func MakeFlagsFromFeatureStates(featureStates []*features.FeatureStateModel,
 	analyticsProcessor *AnalyticsProcessor,
 	defaultFlagHandler *DefaultFlagHandlerType,
-	identityID string) Flags{
+	identityID string) Flags {
 
 	flags := make([]Flag, len(featureStates))
 	for i, featureState := range featureStates {
@@ -48,4 +67,29 @@ func MakeFlagsFromFeatureStates(featureStates []*features.FeatureStateModel,
 		defaultFlagHandler: defaultFlagHandler,
 	}
 
+}
+
+func MakeFlagsFromAPIFlags(flagsJson []byte, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler *DefaultFlagHandlerType) (Flags, error) {
+	fmt.Println("MakeFlagsFromAPIFlags", flagsJson)
+	var jsonflags []jsonFlag
+	err := json.Unmarshal(flagsJson, &jsonflags)
+	if err != nil {
+		fmt.Println("MakeFlagsFromAPIFlags error", err)
+		return Flags{}, err
+	}
+	flags := make([]Flag, len(jsonflags))
+	for i, jf := range jsonflags {
+		flags[i] = jf.toFlag()
+	}
+	fmt.Println("MakeFlagsFromAPIFlags flags hain ", flags)
+	return Flags{
+		flags:              flags,
+		analyticsProcessor: analyticsProcessor,
+		defaultFlagHandler: defaultFlagHandler,
+	}, err
+}
+
+// Returns an array of all flag objects
+func (f *Flags) AllFlags() []Flag {
+	return f.flags
 }
