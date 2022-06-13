@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"time"
-
+	"context"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -36,7 +36,7 @@ func TestAnalytics(t *testing.T) {
 	client.SetHeader("X-Environment-Key", EnvironmentAPIKey)
 
 	// Now let's create the processor
-	processor := NewAnalyticsProcessor(client, server.URL + "/api/v1/", &analyticsTimer)
+	processor := NewAnalyticsProcessor(context.Background(), client, server.URL + "/api/v1/", &analyticsTimer)
 
 	// and, track some features
 	processor.TrackFeature(1)

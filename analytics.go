@@ -1,35 +1,41 @@
 package flagsmith
 
 import (
-	"time"
-	"log"
+	"context"
 	"github.com/go-resty/resty/v2"
+	"log"
+	"time"
 )
 
-const AnalyticsTimerInMilli = 10 *1000
+const AnalyticsTimerInMilli = 10 * 1000
 const AnalyticsEndpoint = "analytics/flags/"
 
 type AnalyticsProcessor struct {
-	client *resty.Client
-	data map[int]int
+	client   *resty.Client
+	data     map[int]int
 	endpoint string
 }
 
-func NewAnalyticsProcessor(client *resty.Client, baseURL string, timerInMilli *int) *AnalyticsProcessor {
+func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL string, timerInMilli *int) *AnalyticsProcessor {
 	data := make(map[int]int)
-	sleepTime := AnalyticsTimerInMilli
+	tickerInterval := AnalyticsTimerInMilli
 	if timerInMilli != nil {
-		sleepTime = *timerInMilli
+		tickerInterval = *timerInMilli
 	}
 	processor := AnalyticsProcessor{
-		client: client,
-		data: data,
+		client:   client,
+		data:     data,
 		endpoint: baseURL + AnalyticsEndpoint,
 	}
+
+	ticker := time.NewTicker(time.Duration(tickerInterval) * time.Millisecond)
 	go func() {
-		for {
+		select {
+		case <-ticker.C:
 			processor.Flush()
-			time.Sleep(time.Duration(sleepTime) * time.Millisecond)
+		case <-ctx.Done():
+			return
+
 		}
 	}()
 	return &processor
