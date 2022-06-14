@@ -52,6 +52,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 	fmt.Println("is analytics processor enabled: ", c.config.enableAnalytics)
 	// Initialize analytics processor
 	if c.config.enableAnalytics {
+		c.analyticsProcessor = NewAnalyticsProcessor(context.TODO(), c.client, c.config.baseURL, nil)
 		fmt.Println("initializing analytics processor")
 	}
 
@@ -81,7 +82,7 @@ func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) 
 	if err != nil {
 		return Flags{}, err
 	}
-	if !resp.IsSuccess(){
+	if !resp.IsSuccess() {
 		return Flags{}, errors.New("Unable to get valid response from Flagsmith API.")
 	}
 	return MakeFlagsFromAPIFlags(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
@@ -95,7 +96,7 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifer string, 
 	if err != nil {
 		return Flags{}, err
 	}
-	if !resp.IsSuccess(){
+	if !resp.IsSuccess() {
 		return Flags{}, errors.New("Unable to get valid response from Flagsmith API.")
 	}
 	return MakeFlagsFromAPIFlags(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
@@ -108,7 +109,6 @@ func (c *Client) GetIdentityFlagsWithContext(ctx context.Context, identifier str
 
 	}
 	return c.GetIdentityFlagsFromAPI(ctx, identifier, traits)
-
 
 }
 
