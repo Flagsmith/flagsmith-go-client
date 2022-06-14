@@ -67,13 +67,15 @@ func (c *Client) GetUserFeatures(user User) ([]Flag, error) {
 
 // GetUserFeaturesWithContext returns all features as defined for given user
 func (c *Client) GetUserFeaturesWithContext(ctx context.Context, user User) ([]Flag, error) {
-	flags := make([]Flag, 0)
+	resp := struct {
+		Flags []Flag `json:"flags"`
+	}{}
 	_, err := c.client.NewRequest().
+		SetQueryParam("identifier", user.Identifier).
 		SetContext(ctx).
-		SetResult(&flags).
-		Get(c.config.BaseURI + "flags/" + user.Identifier + "/")
-
-	return flags, err
+		SetResult(&resp).
+		Get(c.config.BaseURI + "identities/")
+	return resp.Flags, err
 }
 
 // HasFeature returns information whether given feature is defined
