@@ -3,16 +3,14 @@ package flagsmith_test
 import (
 	//	"context"
 	"context"
-	"encoding/json"
 	flagsmith "github.com/Flagsmith/flagsmith-go-client"
+	"github.com/stretchr/testify/assert"
 	"io"
 	"io/ioutil"
-	"testing"
-	"time"
-"fmt"
-	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
+	"testing"
+	"time"
 )
 
 const BaseURL = "http://localhost:8000/api/v1/"
@@ -23,87 +21,100 @@ const Feature1ID = 1
 
 const EnvironmentJson = `
 {
-            "api_key": "B62qaMZNwfiqT76p38ggrQ",
-            "project": {
-                "name": "Test project",
-                "organisation": {
-                    "feature_analytics": false,
-                    "name": "Test Org",
-                    "id": 1,
-                    "persist_trait_data": true,
-                    "stop_serving_flags": false
-                },
-                "id": 1,
-                "hide_disabled_flags": false,
-                "segments": [
-                    {
-                        "id": 1,
-                        "name": "Test Segment",
-                        "feature_states":[],
-                        "rules": [
-                            {
-                                "type": "ALL",
-                                "conditions": [],
-                                "rules": [
-                                    {
-                                        "type": "ALL",
-                                        "rules": [],
-                                        "conditions": [
-                                            {
-                                                "operator": "EQUAL",
-                                                "property_": "foo",
-                                                "value": "bar"
-                                            }
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            },
-            "segment_overrides": [],
-            "id": 1,
-            "feature_states": [
-                {
-                    "multivariate_feature_state_values": [],
-                    "feature_state_value": "some_value",
-                    "id": 1,
-                    "featurestate_uuid": "40eb539d-3713-4720-bbd4-829dbef10d51",
-                    "feature": {
-                        "name": "feature_1",
-                        "type": "STANDARD",
-                        "id": 1
-                    },
-                    "segment_id": null,
-                    "enabled": true
-                }
-            ]
-    }
-
+	"api_key": "B62qaMZNwfiqT76p38ggrQ",
+	"project": {
+		"name": "Test project",
+		"organisation": {
+			"feature_analytics": false,
+			"name": "Test Org",
+			"id": 1,
+			"persist_trait_data": true,
+			"stop_serving_flags": false
+		},
+		"id": 1,
+		"hide_disabled_flags": false,
+		"segments": [{
+			"id": 1,
+			"name": "Test Segment",
+			"feature_states": [],
+			"rules": [{
+				"type": "ALL",
+				"conditions": [],
+				"rules": [{
+					"type": "ALL",
+					"rules": [],
+					"conditions": [{
+						"operator": "EQUAL",
+						"property_": "foo",
+						"value": "bar"
+					}]
+				}]
+			}]
+		}]
+	},
+	"segment_overrides": [],
+	"id": 1,
+	"feature_states": [{
+		"multivariate_feature_state_values": [],
+		"feature_state_value": "some_value",
+		"id": 1,
+		"featurestate_uuid": "40eb539d-3713-4720-bbd4-829dbef10d51",
+		"feature": {
+			"name": "feature_1",
+			"type": "STANDARD",
+			"id": 1
+		},
+		"segment_id": null,
+		"enabled": true
+	}]
+}
 `
 
 const FlagsJson = `
-        [
-                {
-                    "id": 1,
-                    "feature": {
-                        "id": 1,
-                        "name": "feature_1",
-                        "created_date": "2019-08-27T14:53:45.698555Z",
-                        "initial_value": null,
-                        "description": null,
-                        "default_enabled": false,
-                        "type": "STANDARD",
-                        "project": 1
-                    },
-                    "feature_state_value": "some_value",
-                    "enabled": true,
-                    "environment": 1,
-                    "identity": null,
-                    "feature_segment": null
-                }
-    ]
+[{
+	"id": 1,
+	"feature": {
+		"id": 1,
+		"name": "feature_1",
+		"created_date": "2019-08-27T14:53:45.698555Z",
+		"initial_value": null,
+		"description": null,
+		"default_enabled": false,
+		"type": "STANDARD",
+		"project": 1
+	},
+	"feature_state_value": "some_value",
+	"enabled": true,
+	"environment": 1,
+	"identity": null,
+	"feature_segment": null
+}]
+`
+const IdentityResponseJson = `
+{
+	"flags": [{
+		"id": 1,
+		"feature": {
+			"id": 1,
+			"name": "feature_1",
+			"created_date": "2019-08-27T14:53:45.698555Z",
+			"initial_value": null,
+			"description": null,
+			"default_enabled": false,
+			"type": "STANDARD",
+			"project": 1
+		},
+		"feature_state_value": "some_value",
+		"enabled": true,
+		"environment": 1,
+		"identity": null,
+		"feature_segment": null
+	}],
+	"traits": [{
+		"trait_key": "foo",
+		"trait_value": "bar"
+	}]
+}
 
 `
 
@@ -257,32 +268,25 @@ func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 
 func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *testing.T) {
 	// Given
-	requestBody := struct {
-		Identifier string            `json:"identifier"`
-		Traits     []flagsmith.Trait `json:"traits"`
-	}{}
+	expectedRequestBody := `{"identifier":"test_identity","traits":[{"trait_key":"stringTrait","trait_value":"trait_value"},` +
+		`{"trait_key":"intTrait","trait_value":1},` +
+		`{"trait_key":"floatTrait","trait_value":1.11},` +
+		`{"trait_key":"boolTrait","trait_value":true}]}`
+
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		fmt.Println("the body that was sent is:-------- ")
 
 		assert.Equal(t, req.URL.Path, "/api/v1/identities/")
 		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 
-		fmt.Println("the body that was sent is 2222:-------- ")
-		rawBody, err := req.GetBody()
-
-		fmt.Println("the body that was sent is 33333333333222:-------- ")
+		// Test that we sent the correct body
+		rawBody, err := ioutil.ReadAll(req.Body)
 		assert.NoError(t, err)
-		body, err := ioutil.ReadAll(rawBody)
-		fmt.Println("the body that was sent is: ", err)
-		fmt.Println("the body that was sent is: ", string(body))
-		assert.NoError(t, err)
-		err = json.Unmarshal(body, &requestBody)
-		assert.NoError(t, err)
+		assert.Equal(t, expectedRequestBody, string(rawBody))
 
 		rw.Header().Set("Content-Type", "application/json")
 
 		rw.WriteHeader(http.StatusOK)
-		io.WriteString(rw, EnvironmentJson)
+		io.WriteString(rw, IdentityResponseJson)
 	}))
 	defer server.Close()
 	// When
