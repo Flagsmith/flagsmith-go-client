@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-resty/resty/v2"
 	"log"
 	"sync/atomic"
 	"time"
 
+	"github.com/go-resty/resty/v2"
+
 	"github.com/Flagsmith/flagsmith-go-client/flagengine"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/environments"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/engine"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/segments"
 
 	. "github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
 )
@@ -85,11 +86,11 @@ func (c *Client) GetIdentityFlagsWithContext(ctx context.Context, identifier str
 
 }
 
-//Returns an array of segments that the given identity is part of
-func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segments.Segment, error) {
+// Returns an array of segments that the given identity is part of
+func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segments.SegmentModel, error) {
 	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
 		identity := buildIdentityModel(identifier, env.APIKey, traits)
-		return engine.getIdentitySegments(env, &identity)
+		return flagengine.GetIdentitySegments(env, &identity), nil
 	}
 	return nil, errors.New("Local evaluation required to obtain identity segments")
 
@@ -109,11 +110,11 @@ func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) 
 
 }
 
-func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifer string, traits []*Trait) (Flags, error) {
+func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string, traits []*Trait) (Flags, error) {
 	body := struct {
 		Identifier string   `json:"identifier"`
 		Traits     []*Trait `json:"traits,omitempty"`
-	}{Identifier: identifer, Traits: traits}
+	}{Identifier: identifier, Traits: traits}
 	resp, err := c.client.NewRequest().
 		SetBody(&body).
 		SetContext(ctx).
@@ -174,7 +175,6 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 }
 
 func (c *Client) UpdateEnvironment(ctx context.Context) error {
-	//fmt.Println("updating environment");
 	var env environments.EnvironmentModel
 	e := make(map[string]string)
 	_, err := c.client.NewRequest().
@@ -189,20 +189,19 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	if len(e) > 0 {
 		return errors.New(e["detail"])
 	}
-	//fmt.Println("storing environment ", env.ID);
 	c.environment.Store(&env)
 
 	return nil
 }
 
-func buildIdentityModel(identifier string,  APIKey string, traits []*Trait) identities.IdentityModel {
+func buildIdentityModel(identifier string, apiKey string, traits []*Trait) identities.IdentityModel {
 	identityTraits := make([]*TraitModel, len(traits))
 	for i, trait := range traits {
 		identityTraits[i] = trait.ToTraitModel()
 	}
-	return  identities.IdentityModel{
+	return identities.IdentityModel{
 		Identifier:        identifier,
 		IdentityTraits:    identityTraits,
-		EnvironmentAPIKey: APIKey,
+		EnvironmentAPIKey: apiKey,
 	}
 }

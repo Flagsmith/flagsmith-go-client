@@ -3,6 +3,7 @@ package flagsmith
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
 
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
@@ -17,13 +18,13 @@ type Flag struct {
 }
 
 type Trait struct {
-	TraitKey string `json:"trait_key"`
+	TraitKey   string      `json:"trait_key"`
 	TraitValue interface{} `json:"trait_value"`
 }
 
 func (t *Trait) ToTraitModel() *traits.TraitModel {
 	return &traits.TraitModel{
-		TraitKey: t.TraitKey,
+		TraitKey:   t.TraitKey,
 		TraitValue: fmt.Sprint(t.TraitValue),
 	}
 }
@@ -115,12 +116,14 @@ func makeFlagsfromIdentityAPIJson(jsonResponse []byte, analyticsProcessor *Analy
 	}
 	return MakeFlagsFromAPIFlags(b, analyticsProcessor, defaultFlagHandler)
 }
+
 // Returns an array of all flag objects
 func (f *Flags) AllFlags() []Flag {
 	return f.flags
 }
+
 // Returns the value of a particular flag
-func (f *Flags) GetFeatureValue(featureName string) (interface{}, error){
+func (f *Flags) GetFeatureValue(featureName string) (interface{}, error) {
 	flag, err := f.GetFlag(featureName)
 	if err != nil {
 		return nil, err
@@ -145,13 +148,13 @@ func (f *Flags) GetFlag(featureName string) (Flag, error) {
 			resultFlag = flag
 		}
 	}
-	if resultFlag.FeatureID  == 0 {
+	if resultFlag.FeatureID == 0 {
 		if f.defaultFlagHandler != nil {
 			return f.defaultFlagHandler(featureName), nil
 		}
 		return resultFlag, fmt.Errorf("No feature found with name %s", featureName)
 	}
-	if f.analyticsProcessor != nil{
+	if f.analyticsProcessor != nil {
 		f.analyticsProcessor.TrackFeature(resultFlag.FeatureID)
 	}
 	fmt.Println("Getting flag for feature", featureName, resultFlag)

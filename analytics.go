@@ -2,9 +2,10 @@ package flagsmith
 
 import (
 	"context"
-	"github.com/go-resty/resty/v2"
 	"log"
 	"time"
+
+	"github.com/go-resty/resty/v2"
 )
 
 const AnalyticsTimerInMilli = 10 * 1000

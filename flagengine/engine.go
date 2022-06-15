@@ -67,7 +67,7 @@ func GetIdentityFeatureState(
 	return nil
 }
 
-func getIdentitySegments(
+func GetIdentitySegments(
 	environment *environments.EnvironmentModel,
 	identity *identities.IdentityModel,
 	overrideTraits ...*traits.TraitModel,
@@ -93,7 +93,7 @@ func getIdentityFeatureStatesMap(
 		featureStates[fs.Feature.ID] = fs
 	}
 
-	identitySegments := getIdentitySegments(environment, identity, overrideTraits...)
+	identitySegments := GetIdentitySegments(environment, identity, overrideTraits...)
 	for _, segment := range identitySegments {
 		for _, fs := range segment.FeatureStates {
 			existing_fs, exists := featureStates[fs.Feature.ID]

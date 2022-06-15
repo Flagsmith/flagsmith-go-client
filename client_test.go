@@ -3,14 +3,15 @@ package flagsmith_test
 import (
 	//	"context"
 	"context"
-	flagsmith "github.com/Flagsmith/flagsmith-go-client"
-	"github.com/stretchr/testify/assert"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	flagsmith "github.com/Flagsmith/flagsmith-go-client"
+	"github.com/stretchr/testify/assert"
 )
 
 const BaseURL = "http://localhost:8000/api/v1/"
@@ -175,7 +176,8 @@ func TestGetEnvironmentFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 		rw.Header().Set("Content-Type", "application/json")
 
 		rw.WriteHeader(http.StatusOK)
-		io.WriteString(rw, EnvironmentJson)
+		_, err := io.WriteString(rw, EnvironmentJson)
+		assert.NoError(t, err)
 	}))
 	defer server.Close()
 
@@ -210,7 +212,9 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 		rw.Header().Set("Content-Type", "application/json")
 
 		rw.WriteHeader(http.StatusOK)
-		io.WriteString(rw, FlagsJson)
+		_, err := io.WriteString(rw, FlagsJson)
+
+		assert.NoError(t, err)
 	}))
 	defer server.Close()
 
@@ -241,7 +245,9 @@ func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 		rw.Header().Set("Content-Type", "application/json")
 
 		rw.WriteHeader(http.StatusOK)
-		io.WriteString(rw, EnvironmentJson)
+		_, err := io.WriteString(rw, EnvironmentJson)
+
+		assert.NoError(t, err)
 	}))
 	defer server.Close()
 	// When
@@ -286,7 +292,9 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 		rw.Header().Set("Content-Type", "application/json")
 
 		rw.WriteHeader(http.StatusOK)
-		io.WriteString(rw, IdentityResponseJson)
+		_, err = io.WriteString(rw, IdentityResponseJson)
+
+		assert.NoError(t, err)
 	}))
 	defer server.Close()
 	// When

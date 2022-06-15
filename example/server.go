@@ -3,11 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/Flagsmith/flagsmith-go-client"
 	"html/template"
 	"log"
 	"net/http"
 	"os"
+
+	flagsmith "github.com/Flagsmith/flagsmith-go-client"
 )
 
 func main() {
@@ -49,7 +50,7 @@ func RootHandler(w http.ResponseWriter, r *http.Request) {
 		// convert button data to map
 		buttonData = buttonData.(string)
 		var buttonDataMap map[string]string
-		json.Unmarshal([]byte(buttonData.(string)), &buttonDataMap)
+		_ = json.Unmarshal([]byte(buttonData.(string)), &buttonDataMap)
 
 		templateData := TemplateData{
 			Identifier:   identifier,
@@ -57,7 +58,7 @@ func RootHandler(w http.ResponseWriter, r *http.Request) {
 			ButtonColour: buttonDataMap["colour"],
 		}
 		t, _ := template.ParseFiles("home.html")
-		t.Execute(w, templateData)
+		_ = t.Execute(w, templateData)
 		return
 	}
 	flags, _ := client.GetEnvironmentFlags()
@@ -69,7 +70,7 @@ func RootHandler(w http.ResponseWriter, r *http.Request) {
 	// convert button data to map
 	buttonData = buttonData.(string)
 	var buttonDataMap map[string]string
-	json.Unmarshal([]byte(buttonData.(string)), &buttonDataMap)
+	_ = json.Unmarshal([]byte(buttonData.(string)), &buttonDataMap)
 
 	templateData := TemplateData{
 		ShowButton:   showButton,
@@ -77,5 +78,5 @@ func RootHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t, _ := template.ParseFiles("home.html")
-	t.Execute(w, templateData)
+	_ = t.Execute(w, templateData)
 }

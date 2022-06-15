@@ -1,3 +1,7 @@
+// cgo.go
+//go:build unittest
+// +build unittest
+
 package integration_test
 
 import (

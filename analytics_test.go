@@ -1,13 +1,14 @@
 package flagsmith
 
 import (
-	"github.com/go-resty/resty/v2"
-	"net/http/httptest"
-	"testing"
+	"context"
 	"io/ioutil"
 	"net/http"
+	"net/http/httptest"
+	"testing"
 	"time"
-	"context"
+
+	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -23,7 +24,7 @@ func TestAnalytics(t *testing.T) {
 		assert.NoError(t, err)
 		actualRequestBody = string(actualRequestBodyRaw)
 
-		assert.Equal(t, "/api/v1/analytics/flags/", req.URL.Path, )
+		assert.Equal(t, "/api/v1/analytics/flags/", req.URL.Path)
 		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 	}))
 	defer server.Close()
@@ -36,15 +37,15 @@ func TestAnalytics(t *testing.T) {
 	client.SetHeader("X-Environment-Key", EnvironmentAPIKey)
 
 	// Now let's create the processor
-	processor := NewAnalyticsProcessor(context.Background(), client, server.URL + "/api/v1/", &analyticsTimer)
+	processor := NewAnalyticsProcessor(context.Background(), client, server.URL+"/api/v1/", &analyticsTimer)
 
 	// and, track some features
 	processor.TrackFeature(1)
 	processor.TrackFeature(2)
 	processor.TrackFeature(2)
 
-        // Next, let's sleep a little to let the processor flush the data
-	time.Sleep(50* time.Millisecond)
+	// Next, let's sleep a little to let the processor flush the data
+	time.Sleep(50 * time.Millisecond)
 
 	// Finally, let's make sure correct data was sent to the API
 	assert.Equal(t, expectedRequstBody, actualRequestBody)
