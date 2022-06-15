@@ -2,14 +2,14 @@ package flagsmith_test
 
 import (
 	//	"context"
+	"context"
+	"encoding/json"
+	flagsmith "github.com/Flagsmith/flagsmith-go-client"
+	"io"
+	"io/ioutil"
 	"testing"
 	"time"
-	"context"
-	//"io/ioutil"
-	"io"
-	flagsmith "github.com/Flagsmith/flagsmith-go-client"
-
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
+"fmt"
 	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +21,7 @@ const Feature1Value = "some_value"
 const Feature1Name = "feature_1"
 const Feature1ID = 1
 
-const EnvironmentJson  = `
+const EnvironmentJson = `
 {
             "api_key": "B62qaMZNwfiqT76p38ggrQ",
             "project": {
@@ -204,7 +204,7 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(EnvironmentAPIKey,flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.NewClient(EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	flags, err := client.GetEnvironmentFlags()
 
@@ -218,7 +218,6 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 	assert.Equal(t, Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, Feature1Value, allFlags[0].Value)
-
 
 }
 func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
@@ -242,9 +241,7 @@ func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	// Then
 	assert.NoError(t, err)
 
-	trait := traits.TraitModel{TraitKey: "trait_key", TraitValue: "trait_value"}
-	traits := []*traits.TraitModel{&trait}
-	flags, err := client.GetIdentityFlags("test_identity", traits)
+	flags, err := client.GetIdentityFlags("test_identity", nil)
 
 	assert.NoError(t, err)
 
@@ -256,5 +253,61 @@ func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	assert.Equal(t, Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, Feature1Value, allFlags[0].Value)
 
+}
+
+func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *testing.T) {
+	// Given
+	requestBody := struct {
+		Identifier string            `json:"identifier"`
+		Traits     []flagsmith.Trait `json:"traits"`
+	}{}
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		fmt.Println("the body that was sent is:-------- ")
+
+		assert.Equal(t, req.URL.Path, "/api/v1/identities/")
+		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		fmt.Println("the body that was sent is 2222:-------- ")
+		rawBody, err := req.GetBody()
+
+		fmt.Println("the body that was sent is 33333333333222:-------- ")
+		assert.NoError(t, err)
+		body, err := ioutil.ReadAll(rawBody)
+		fmt.Println("the body that was sent is: ", err)
+		fmt.Println("the body that was sent is: ", string(body))
+		assert.NoError(t, err)
+		err = json.Unmarshal(body, &requestBody)
+		assert.NoError(t, err)
+
+		rw.Header().Set("Content-Type", "application/json")
+
+		rw.WriteHeader(http.StatusOK)
+		io.WriteString(rw, EnvironmentJson)
+	}))
+	defer server.Close()
+	// When
+	client := flagsmith.NewClient(EnvironmentAPIKey,
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	stringTrait := flagsmith.Trait{TraitKey: "stringTrait", TraitValue: "trait_value"}
+	intTrait := flagsmith.Trait{TraitKey: "intTrait", TraitValue: 1}
+	floatTrait := flagsmith.Trait{TraitKey: "floatTrait", TraitValue: 1.11}
+	boolTrait := flagsmith.Trait{TraitKey: "boolTrait", TraitValue: true}
+
+	traits := []*flagsmith.Trait{&stringTrait, &intTrait, &floatTrait, &boolTrait}
+	// When
+
+	flags, err := client.GetIdentityFlags("test_identity", traits)
+
+	// Then
+	assert.NoError(t, err)
+
+	allFlags := flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+
+	assert.Equal(t, Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, Feature1Value, allFlags[0].Value)
 
 }

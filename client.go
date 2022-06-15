@@ -12,7 +12,8 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/flagengine"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/environments"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
+
+	. "github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
 )
 
 // Client provides various methods to query BulletTrain API
@@ -23,7 +24,7 @@ type Client struct {
 	environment atomic.Value
 
 	analyticsProcessor *AnalyticsProcessor
-	defaultFlagHandler *DefaultFlagHandlerType
+	defaultFlagHandler func(featureName string) Flag
 
 	client *resty.Client
 }
@@ -44,12 +45,11 @@ func NewClient(apiKey string, options ...Option) *Client {
 	for _, opt := range options {
 		opt(c)
 	}
-
 	if c.config.localEvaluation {
 		fmt.Println("local evaluation enabled")
 		go c.pollEnvironment(context.TODO())
 	}
-	fmt.Println("is analytics processor enabled: ", c.config.enableAnalytics)
+	fmt.Println("is analytics processor ", c.config.enableAnalytics)
 	// Initialize analytics processor
 	if c.config.enableAnalytics {
 		c.analyticsProcessor = NewAnalyticsProcessor(context.TODO(), c.client, c.config.baseURL, nil)
@@ -63,7 +63,7 @@ func (c *Client) GetEnvironmentFlags() (Flags, error) {
 	return c.GetEnvironmentFlagsWithContext(context.TODO())
 }
 
-func (c *Client) GetIdentityFlags(identifier string, traits []*traits.TraitModel) (Flags, error) {
+func (c *Client) GetIdentityFlags(identifier string, traits []*Trait) (Flags, error) {
 	return c.GetIdentityFlagsWithContext(context.TODO(), identifier, traits)
 }
 
@@ -82,6 +82,7 @@ func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) 
 	if err != nil {
 		return Flags{}, err
 	}
+	fmt.Println("getting environment flags from api", resp)
 	if !resp.IsSuccess() {
 		return Flags{}, errors.New("Unable to get valid response from Flagsmith API.")
 	}
@@ -89,21 +90,27 @@ func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) 
 
 }
 
-func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifer string, traits []*traits.TraitModel) (Flags, error) {
+func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifer string, traits []*Trait) (Flags, error) {
+	body := struct {
+		Identifier string   `json:"identifier"`
+		Traits     []*Trait `json:"traits,omitempty"`
+	}{Identifier: identifer, Traits: traits}
 	resp, err := c.client.NewRequest().
+		SetBody(&body).
 		SetContext(ctx).
-		Get(c.config.baseURL + "identities/")
+		Post(c.config.baseURL + "identities/")
+	fmt.Println("getting identity flags from api", resp)
 	if err != nil {
 		return Flags{}, err
 	}
 	if !resp.IsSuccess() {
 		return Flags{}, errors.New("Unable to get valid response from Flagsmith API.")
 	}
-	return MakeFlagsFromAPIFlags(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
+	return makeFlagsfromIdentityAPIJson(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
 
 }
 
-func (c *Client) GetIdentityFlagsWithContext(ctx context.Context, identifier string, traits []*traits.TraitModel) (Flags, error) {
+func (c *Client) GetIdentityFlagsWithContext(ctx context.Context, identifier string, traits []*Trait) (Flags, error) {
 	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
 		return c.GetIdentityFlagsFromDocument(ctx, env, identifier, traits)
 
@@ -112,10 +119,14 @@ func (c *Client) GetIdentityFlagsWithContext(ctx context.Context, identifier str
 
 }
 
-func (c *Client) GetIdentityFlagsFromDocument(ctx context.Context, env *environments.EnvironmentModel, identifier string, traits []*traits.TraitModel) (Flags, error) {
+func (c *Client) GetIdentityFlagsFromDocument(ctx context.Context, env *environments.EnvironmentModel, identifier string, traits []*Trait) (Flags, error) {
+	identityTraits := make([]*TraitModel, len(traits))
+	for i, trait := range traits{
+		identityTraits[i] = trait.ToTraitModel()
+	}
 	identity := identities.IdentityModel{
 		Identifier:        identifier,
-		IdentityTraits:    traits,
+		IdentityTraits:    identityTraits,
 		EnvironmentAPIKey: env.APIKey,
 	}
 	featureStates := flagengine.GetIdentityFeatureStates(env, &identity)
