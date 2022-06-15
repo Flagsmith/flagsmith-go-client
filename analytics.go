@@ -50,6 +50,7 @@ func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL st
 
 func (a *AnalyticsProcessor) Flush() {
 	a.store.mu.Lock()
+	defer a.store.mu.Unlock()
 	if len(a.store.data) == 0 {
 		return
 	}
@@ -63,12 +64,11 @@ func (a *AnalyticsProcessor) Flush() {
 
 	// clear the map
 	a.store.data = make(map[int]int)
-	a.store.mu.Unlock()
 }
 
 func (a *AnalyticsProcessor) TrackFeature(featureID int) {
 	a.store.mu.Lock()
+	defer a.store.mu.Unlock()
 	currentCount := a.store.data[featureID]
 	a.store.data[featureID] = currentCount + 1
-	a.store.mu.Unlock()
 }
