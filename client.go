@@ -12,6 +12,7 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/flagengine"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/environments"
 	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/engine"
 
 	. "github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
 )
@@ -75,6 +76,24 @@ func (c *Client) GetEnvironmentFlagsWithContext(ctx context.Context) (Flags, err
 	return c.GetEnvironmentFlagsFromAPI(ctx)
 }
 
+func (c *Client) GetIdentityFlagsWithContext(ctx context.Context, identifier string, traits []*Trait) (Flags, error) {
+	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
+		return c.GetIdentityFlagsFromDocument(ctx, env, identifier, traits)
+
+	}
+	return c.GetIdentityFlagsFromAPI(ctx, identifier, traits)
+
+}
+
+//Returns an array of segments that the given identity is part of
+func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segments.Segment, error) {
+	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
+		identity := buildIdentityModel(identifier, env.APIKey, traits)
+		return engine.getIdentitySegments(env, &identity)
+	}
+	return nil, errors.New("Local evaluation required to obtain identity segments")
+
+}
 func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) {
 	resp, err := c.client.NewRequest().
 		SetContext(ctx).
@@ -110,25 +129,8 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifer string, 
 
 }
 
-func (c *Client) GetIdentityFlagsWithContext(ctx context.Context, identifier string, traits []*Trait) (Flags, error) {
-	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
-		return c.GetIdentityFlagsFromDocument(ctx, env, identifier, traits)
-
-	}
-	return c.GetIdentityFlagsFromAPI(ctx, identifier, traits)
-
-}
-
 func (c *Client) GetIdentityFlagsFromDocument(ctx context.Context, env *environments.EnvironmentModel, identifier string, traits []*Trait) (Flags, error) {
-	identityTraits := make([]*TraitModel, len(traits))
-	for i, trait := range traits{
-		identityTraits[i] = trait.ToTraitModel()
-	}
-	identity := identities.IdentityModel{
-		Identifier:        identifier,
-		IdentityTraits:    identityTraits,
-		EnvironmentAPIKey: env.APIKey,
-	}
+	identity := buildIdentityModel(identifier, env.APIKey, traits)
 	featureStates := flagengine.GetIdentityFeatureStates(env, &identity)
 	flags := MakeFlagsFromFeatureStates(
 		featureStates,
@@ -138,6 +140,7 @@ func (c *Client) GetIdentityFlagsFromDocument(ctx context.Context, env *environm
 	)
 	return flags, nil
 }
+
 func (c *Client) GetEnvironmentFlagsFromDocument(ctx context.Context, env *environments.EnvironmentModel) (Flags, error) {
 	return MakeFlagsFromFeatureStates(
 		env.FeatureStates,
@@ -148,7 +151,6 @@ func (c *Client) GetEnvironmentFlagsFromDocument(ctx context.Context, env *envir
 }
 
 func (c *Client) pollEnvironment(ctx context.Context) {
-	//fmt.Println("polling environment");
 	update := func() {
 		ctx, cancel := context.WithTimeout(ctx, c.config.envRefreshInterval)
 		defer cancel()
@@ -191,4 +193,16 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	c.environment.Store(&env)
 
 	return nil
+}
+
+func buildIdentityModel(identifier string,  APIKey string, traits []*Trait) identities.IdentityModel {
+	identityTraits := make([]*TraitModel, len(traits))
+	for i, trait := range traits {
+		identityTraits[i] = trait.ToTraitModel()
+	}
+	return  identities.IdentityModel{
+		Identifier:        identifier,
+		IdentityTraits:    identityTraits,
+		EnvironmentAPIKey: APIKey,
+	}
 }
