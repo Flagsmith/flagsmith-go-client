@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,12 +19,17 @@ const EnvironmentAPIKey = "test_key"
 func TestAnalytics(t *testing.T) {
 	// First, we need to create a test server
 	// to capture the requests made to the API
-	var actualRequestBody string
+	// var actualRequestBody string
+	actualRequestBody := struct {
+		mu   sync.Mutex
+		body string
+	}{}
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		actualRequestBodyRaw, err := ioutil.ReadAll(req.Body)
 		assert.NoError(t, err)
-		actualRequestBody = string(actualRequestBodyRaw)
-
+		actualRequestBody.mu.Lock()
+		actualRequestBody.body = string(actualRequestBodyRaw)
+		actualRequestBody.mu.Unlock()
 		assert.Equal(t, "/api/v1/analytics/flags/", req.URL.Path)
 		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 	}))
@@ -48,9 +54,11 @@ func TestAnalytics(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Finally, let's make sure correct data was sent to the API
-	assert.Equal(t, expectedRequstBody, actualRequestBody)
+	actualRequestBody.mu.Lock()
+	assert.Equal(t, expectedRequstBody, actualRequestBody.body)
 
 	// and, that the data was cleared
-	assert.Equal(t, 0, len(processor.data))
+	processor.store.mu.Lock()
+	assert.Equal(t, 0, len(processor.store.data))
 
 }

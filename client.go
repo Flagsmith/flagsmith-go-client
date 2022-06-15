@@ -157,7 +157,6 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 		defer cancel()
 		err := c.UpdateEnvironment(ctx)
 		if err != nil {
-			//	fmt.Println("error updating environment: ", err);
 			// TODO(tzdybal): error handling - log vs panic?
 			log.Printf("ERROR: failed to update environment: %v", err)
 		}

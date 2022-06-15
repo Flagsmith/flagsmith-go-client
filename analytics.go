@@ -3,6 +3,7 @@ package flagsmith
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -11,21 +12,26 @@ import (
 const AnalyticsTimerInMilli = 10 * 1000
 const AnalyticsEndpoint = "analytics/flags/"
 
+type analyticDataStore struct {
+	mu   sync.Mutex
+	data map[int]int
+}
 type AnalyticsProcessor struct {
 	client   *resty.Client
-	data     map[int]int
+	store    *analyticDataStore
 	endpoint string
 }
 
 func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL string, timerInMilli *int) *AnalyticsProcessor {
 	data := make(map[int]int)
+	dataStore := analyticDataStore{data: data}
 	tickerInterval := AnalyticsTimerInMilli
 	if timerInMilli != nil {
 		tickerInterval = *timerInMilli
 	}
 	processor := AnalyticsProcessor{
 		client:   client,
-		data:     data,
+		store:    &dataStore,
 		endpoint: baseURL + AnalyticsEndpoint,
 	}
 
@@ -43,10 +49,11 @@ func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL st
 }
 
 func (a *AnalyticsProcessor) Flush() {
-	if len(a.data) == 0 {
+	a.store.mu.Lock()
+	if len(a.store.data) == 0 {
 		return
 	}
-	resp, err := a.client.R().SetBody(a.data).Post(a.endpoint)
+	resp, err := a.client.R().SetBody(a.store.data).Post(a.endpoint)
 	if err != nil {
 		log.Printf("WARNING: failed to send analytics data: %v", err)
 	}
@@ -55,10 +62,13 @@ func (a *AnalyticsProcessor) Flush() {
 	}
 
 	// clear the map
-	a.data = make(map[int]int)
+	a.store.data = make(map[int]int)
+	a.store.mu.Unlock()
 }
 
 func (a *AnalyticsProcessor) TrackFeature(featureID int) {
-	currentCount := a.data[featureID]
-	a.data[featureID] = currentCount + 1
+	a.store.mu.Lock()
+	currentCount := a.store.data[featureID]
+	a.store.data[featureID] = currentCount + 1
+	a.store.mu.Unlock()
 }

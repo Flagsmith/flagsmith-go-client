@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -121,9 +122,14 @@ const IdentityResponseJson = `
 
 func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 	// Given
-	requestReceived := false
+	requestReceived := struct {
+		mu                sync.Mutex
+		isRequestReceived bool
+	}{}
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		requestReceived = true
+		requestReceived.mu.Lock()
+		requestReceived.isRequestReceived = true
+		requestReceived.mu.Unlock()
 		assert.Equal(t, req.URL.Path, "/api/v1/environment-document/")
 		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 	}))
@@ -137,15 +143,21 @@ func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	// Then
-	assert.True(t, requestReceived)
+	requestReceived.mu.Lock()
+	assert.True(t, requestReceived.isRequestReceived)
 }
 
 func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 	// Given
-	actualEnvironmentRefreshCount := 0
+	actualEnvironmentRefreshCounter := struct {
+		mu    sync.Mutex
+		count int
+	}{}
 	expectedEnvironmentRefreshCount := 3
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		actualEnvironmentRefreshCount++
+		actualEnvironmentRefreshCounter.mu.Lock()
+		actualEnvironmentRefreshCounter.count++
+		actualEnvironmentRefreshCounter.mu.Unlock()
 		assert.Equal(t, req.URL.Path, "/api/v1/environment-document/")
 		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 	}))
@@ -162,7 +174,9 @@ func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 	// We should have called refresh environment 3 times
 	// one when the client starts and 2
 	// for each time the refresh interval expires
-	assert.Equal(t, expectedEnvironmentRefreshCount, actualEnvironmentRefreshCount)
+
+	actualEnvironmentRefreshCounter.mu.Lock()
+	assert.Equal(t, expectedEnvironmentRefreshCount, actualEnvironmentRefreshCounter.count)
 
 }
 
