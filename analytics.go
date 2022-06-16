@@ -39,17 +39,11 @@ func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL st
 }
 
 func (a *AnalyticsProcessor) start(ctx context.Context, tickerInterval int) {
-	flush := func() {
-		ctx, cancel := context.WithTimeout(ctx, time.Duration(tickerInterval)*time.Millisecond)
-		defer cancel()
-		a.Flush(ctx)
-
-	}
 	ticker := time.NewTicker(time.Duration(tickerInterval) * time.Millisecond)
 	for {
 		select {
 		case <-ticker.C:
-			flush()
+			a.Flush(ctx)
 		case <-ctx.Done():
 			return
 
