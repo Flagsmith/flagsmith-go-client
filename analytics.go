@@ -34,27 +34,37 @@ func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL st
 		store:    &dataStore,
 		endpoint: baseURL + AnalyticsEndpoint,
 	}
+	go processor.start(ctx, tickerInterval)
+	return &processor
+}
 
+func (a *AnalyticsProcessor) start(ctx context.Context, tickerInterval int) {
+	flush := func() {
+		ctx, cancel := context.WithTimeout(ctx, time.Duration(tickerInterval)*time.Millisecond)
+		defer cancel()
+		a.Flush(ctx)
+
+	}
 	ticker := time.NewTicker(time.Duration(tickerInterval) * time.Millisecond)
-	go func() {
+	for {
 		select {
 		case <-ticker.C:
-			processor.Flush()
+			flush()
 		case <-ctx.Done():
 			return
 
 		}
-	}()
-	return &processor
+	}
+
 }
 
-func (a *AnalyticsProcessor) Flush() {
+func (a *AnalyticsProcessor) Flush(ctx context.Context) {
 	a.store.mu.Lock()
 	defer a.store.mu.Unlock()
 	if len(a.store.data) == 0 {
 		return
 	}
-	resp, err := a.client.R().SetBody(a.store.data).Post(a.endpoint)
+	resp, err := a.client.R().SetContext(ctx).SetBody(a.store.data).Post(a.endpoint)
 	if err != nil {
 		log.Printf("WARNING: failed to send analytics data: %v", err)
 	}
