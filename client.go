@@ -63,7 +63,7 @@ func (c *Client) GetEnvironmentFlags() (Flags, error) {
 	return c.GetEnvironmentFlagsWithContext(context.TODO())
 }
 
-// Returns all the flags for the current environment for a given identity. Will also
+// Returns `Flags` struct holding all the flags for the current environment for a given identity. Will also
 // upsert all traits to the Flagsmith API for future evaluations. Providing a
 // trait with a value of nil will remove the trait from the identity if it exists.
 func (c *Client) GetIdentityFlags(identifier string, traits []*Trait) (Flags, error) {
