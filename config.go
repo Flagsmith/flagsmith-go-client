@@ -1,6 +1,8 @@
 package flagsmith
 
-import "time"
+import (
+	"time"
+)
 
 const (
 	// Number of seconds to wait for a request to

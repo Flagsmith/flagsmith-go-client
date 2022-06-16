@@ -1,6 +1,9 @@
 package flagsmith
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type Option func(c *Client)
 
@@ -67,5 +70,11 @@ func WithCustomHeaders(headers map[string]string) Option {
 func WithDefaultHandler(handler func(string) Flag) Option {
 	return func(c *Client) {
 		c.defaultFlagHandler = handler
+	}
+}
+
+func WithContext(ctx context.Context) Option {
+	return func(c *Client) {
+		c.ctx = ctx
 	}
 }

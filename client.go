@@ -28,6 +28,7 @@ type Client struct {
 	defaultFlagHandler func(string) Flag
 
 	client *resty.Client
+	ctx    context.Context
 }
 
 // NewClient creates instance of Client with given configuration
@@ -36,6 +37,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 		apiKey: apiKey,
 		config: defaultConfig(),
 		client: resty.New(),
+		ctx:    context.Background(),
 	}
 
 	c.client.SetHeaders(map[string]string{
@@ -48,11 +50,11 @@ func NewClient(apiKey string, options ...Option) *Client {
 		opt(c)
 	}
 	if c.config.localEvaluation {
-		go c.pollEnvironment(context.TODO())
+		go c.pollEnvironment(c.ctx)
 	}
 	// Initialize analytics processor
 	if c.config.enableAnalytics {
-		c.analyticsProcessor = NewAnalyticsProcessor(context.TODO(), c.client, c.config.baseURL, nil)
+		c.analyticsProcessor = NewAnalyticsProcessor(c.ctx, c.client, c.config.baseURL, nil)
 	}
 
 	return c

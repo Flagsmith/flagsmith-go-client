@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -27,8 +28,13 @@ type TemplateData struct {
 }
 
 func RootHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Intialise the flagsmith client
-	client := flagsmith.NewClient(os.Getenv("FLAGSMITH_API_KEY"))
+	client := flagsmith.NewClient(os.Getenv("FLAGSMITH_API_KEY"),
+		flagsmith.WithContext(ctx),
+	)
 	q := r.URL.Query()
 
 	if q.Get("identifier") != "" {
