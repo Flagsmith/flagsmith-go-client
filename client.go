@@ -17,7 +17,7 @@ import (
 	. "github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
 )
 
-// Client provides various methods to query BulletTrain API
+// Client provides various methods to query Flagsmith API
 type Client struct {
 	apiKey string
 	config config
@@ -42,6 +42,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 		"Accept":            "application/json",
 		"X-Environment-Key": c.apiKey,
 	})
+	c.client.SetTimeout(time.Second * c.config.timeout)
 
 	for _, opt := range options {
 		opt(c)
@@ -57,10 +58,14 @@ func NewClient(apiKey string, options ...Option) *Client {
 	return c
 }
 
+// Returns `Flags` struct holding all the flags for the current environment
 func (c *Client) GetEnvironmentFlags() (Flags, error) {
 	return c.GetEnvironmentFlagsWithContext(context.TODO())
 }
 
+// Returns all the flags for the current environment for a given identity. Will also
+// upsert all traits to the Flagsmith API for future evaluations. Providing a
+// trait with a value of nil will remove the trait from the identity if it exists.
 func (c *Client) GetIdentityFlags(identifier string, traits []*Trait) (Flags, error) {
 	return c.GetIdentityFlagsWithContext(context.TODO(), identifier, traits)
 }
