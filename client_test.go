@@ -12,113 +12,9 @@ import (
 	"time"
 
 	flagsmith "github.com/Flagsmith/flagsmith-go-client"
+	"github.com/Flagsmith/flagsmith-go-client/fixtures"
 	"github.com/stretchr/testify/assert"
 )
-
-const BaseURL = "http://localhost:8000/api/v1/"
-const EnvironmentAPIKey = "test_key"
-const Feature1Value = "some_value"
-const Feature1Name = "feature_1"
-const Feature1ID = 1
-
-const EnvironmentJson = `
-{
-	"api_key": "B62qaMZNwfiqT76p38ggrQ",
-	"project": {
-		"name": "Test project",
-		"organisation": {
-			"feature_analytics": false,
-			"name": "Test Org",
-			"id": 1,
-			"persist_trait_data": true,
-			"stop_serving_flags": false
-		},
-		"id": 1,
-		"hide_disabled_flags": false,
-		"segments": [{
-			"id": 1,
-			"name": "Test Segment",
-			"feature_states": [],
-			"rules": [{
-				"type": "ALL",
-				"conditions": [],
-				"rules": [{
-					"type": "ALL",
-					"rules": [],
-					"conditions": [{
-						"operator": "EQUAL",
-						"property_": "foo",
-						"value": "bar"
-					}]
-				}]
-			}]
-		}]
-	},
-	"segment_overrides": [],
-	"id": 1,
-	"feature_states": [{
-		"multivariate_feature_state_values": [],
-		"feature_state_value": "some_value",
-		"id": 1,
-		"featurestate_uuid": "40eb539d-3713-4720-bbd4-829dbef10d51",
-		"feature": {
-			"name": "feature_1",
-			"type": "STANDARD",
-			"id": 1
-		},
-		"segment_id": null,
-		"enabled": true
-	}]
-}
-`
-
-const FlagsJson = `
-[{
-	"id": 1,
-	"feature": {
-		"id": 1,
-		"name": "feature_1",
-		"created_date": "2019-08-27T14:53:45.698555Z",
-		"initial_value": null,
-		"description": null,
-		"default_enabled": false,
-		"type": "STANDARD",
-		"project": 1
-	},
-	"feature_state_value": "some_value",
-	"enabled": true,
-	"environment": 1,
-	"identity": null,
-	"feature_segment": null
-}]
-`
-const IdentityResponseJson = `
-{
-	"flags": [{
-		"id": 1,
-		"feature": {
-			"id": 1,
-			"name": "feature_1",
-			"created_date": "2019-08-27T14:53:45.698555Z",
-			"initial_value": null,
-			"description": null,
-			"default_enabled": false,
-			"type": "STANDARD",
-			"project": 1
-		},
-		"feature_state_value": "some_value",
-		"enabled": true,
-		"environment": 1,
-		"identity": null,
-		"feature_segment": null
-	}],
-	"traits": [{
-		"trait_key": "foo",
-		"trait_value": "bar"
-	}]
-}
-
-`
 
 func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 	// Given
@@ -131,12 +27,12 @@ func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 		requestReceived.isRequestReceived = true
 		requestReceived.mu.Unlock()
 		assert.Equal(t, req.URL.Path, "/api/v1/environment-document/")
-		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 	}))
 	defer server.Close()
 
 	// When
-	_ = flagsmith.NewClient(EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	// Sleep to ensure that the server has time to update the environment
@@ -159,12 +55,12 @@ func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 		actualEnvironmentRefreshCounter.count++
 		actualEnvironmentRefreshCounter.mu.Unlock()
 		assert.Equal(t, req.URL.Path, "/api/v1/environment-document/")
-		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 	}))
 	defer server.Close()
 
 	// When
-	_ = flagsmith.NewClient(EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
 		flagsmith.WithEnvironmentRefreshInterval(100*time.Millisecond),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
@@ -182,21 +78,11 @@ func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 
 func TestGetEnvironmentFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	// Given
-	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-
-		assert.Equal(t, req.URL.Path, "/api/v1/environment-document/")
-		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
-
-		rw.Header().Set("Content-Type", "application/json")
-
-		rw.WriteHeader(http.StatusOK)
-		_, err := io.WriteString(rw, EnvironmentJson)
-		assert.NoError(t, err)
-	}))
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 	err := client.UpdateEnvironment(context.Background())
 
@@ -210,9 +96,9 @@ func TestGetEnvironmentFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 
 	assert.Equal(t, 1, len(allFlags))
 
-	assert.Equal(t, Feature1Name, allFlags[0].FeatureName)
-	assert.Equal(t, Feature1ID, allFlags[0].FeatureID)
-	assert.Equal(t, Feature1Value, allFlags[0].Value)
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
 
 }
 
@@ -221,19 +107,19 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 
 		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
-		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 
 		rw.Header().Set("Content-Type", "application/json")
 
 		rw.WriteHeader(http.StatusOK)
-		_, err := io.WriteString(rw, FlagsJson)
+		_, err := io.WriteString(rw, fixtures.FlagsJson)
 
 		assert.NoError(t, err)
 	}))
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
 		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
 			return flagsmith.Flag{IsDefault: true}
 		}))
@@ -246,41 +132,30 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 	allFlags := flags.AllFlags()
 
 	assert.Equal(t, 1, len(allFlags))
-	flag, err := flags.GetFlag(Feature1Name)
+	flag, err := flags.GetFlag(fixtures.Feature1Name)
 
 	assert.NoError(t, err)
-	assert.Equal(t, Feature1Name, flag.FeatureName)
-	assert.Equal(t, Feature1ID, flag.FeatureID)
-	assert.Equal(t, Feature1Value, flag.Value)
+	assert.Equal(t, fixtures.Feature1Name, flag.FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, flag.FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, flag.Value)
 	assert.False(t, flag.IsDefault)
 
-	isEnabled, err := flags.IsFeatureEnabled(Feature1Name)
+	isEnabled, err := flags.IsFeatureEnabled(fixtures.Feature1Name)
 
 	assert.NoError(t, err)
 	assert.True(t, isEnabled)
 
-	value, err := flags.GetFeatureValue(Feature1Name)
+	value, err := flags.GetFeatureValue(fixtures.Feature1Name)
 	assert.NoError(t, err)
-	assert.Equal(t, Feature1Value, value)
+	assert.Equal(t, fixtures.Feature1Value, value)
 
 }
 func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	// Given
-	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-
-		assert.Equal(t, req.URL.Path, "/api/v1/environment-document/")
-		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
-
-		rw.Header().Set("Content-Type", "application/json")
-
-		rw.WriteHeader(http.StatusOK)
-		_, err := io.WriteString(rw, EnvironmentJson)
-
-		assert.NoError(t, err)
-	}))
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 	// When
-	client := flagsmith.NewClient(EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 	err := client.UpdateEnvironment(context.Background())
 
@@ -295,9 +170,9 @@ func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 
 	assert.Equal(t, 1, len(allFlags))
 
-	assert.Equal(t, Feature1Name, allFlags[0].FeatureName)
-	assert.Equal(t, Feature1ID, allFlags[0].FeatureID)
-	assert.Equal(t, Feature1Value, allFlags[0].Value)
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
 
 }
 
@@ -311,7 +186,7 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 
 		assert.Equal(t, req.URL.Path, "/api/v1/identities/")
-		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 
 		// Test that we sent the correct body
 		rawBody, err := ioutil.ReadAll(req.Body)
@@ -321,13 +196,13 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 		rw.Header().Set("Content-Type", "application/json")
 
 		rw.WriteHeader(http.StatusOK)
-		_, err = io.WriteString(rw, IdentityResponseJson)
+		_, err = io.WriteString(rw, fixtures.IdentityResponseJson)
 
 		assert.NoError(t, err)
 	}))
 	defer server.Close()
 	// When
-	client := flagsmith.NewClient(EnvironmentAPIKey,
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	stringTrait := flagsmith.Trait{TraitKey: "stringTrait", TraitValue: "trait_value"}
@@ -347,9 +222,9 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 
 	assert.Equal(t, 1, len(allFlags))
 
-	assert.Equal(t, Feature1Name, allFlags[0].FeatureName)
-	assert.Equal(t, Feature1ID, allFlags[0].FeatureID)
-	assert.Equal(t, Feature1Value, allFlags[0].Value)
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
 
 }
 
@@ -358,19 +233,19 @@ func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T)
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 
 		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
-		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 
 		rw.Header().Set("Content-Type", "application/json")
 
 		rw.WriteHeader(http.StatusOK)
-		_, err := io.WriteString(rw, FlagsJson)
+		_, err := io.WriteString(rw, fixtures.FlagsJson)
 
 		assert.NoError(t, err)
 	}))
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
 		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
 			return flagsmith.Flag{IsDefault: true}
 		}))
@@ -382,4 +257,51 @@ func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T)
 	flag, err := flags.GetFlag("feature_that_does_not_exist")
 	assert.NoError(t, err)
 	assert.True(t, flag.IsDefault)
+}
+
+func TestIGetIdentitySegmentsNoTraits(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	err := client.UpdateEnvironment(context.Background())
+	assert.NoError(t, err)
+
+	segments, err := client.GeIdentitySegments("test_identity", nil)
+	assert.NoError(t, err)
+
+	assert.Equal(t, 0, len(segments))
+
+}
+
+func TestIGetIdentitySegmentsWithTraits(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	err := client.UpdateEnvironment(context.Background())
+	assert.NoError(t, err)
+
+	// lifted from fixtures/EnvironmentJson
+	trait_key := "foo"
+	trait_value := "bar"
+
+	trait := flagsmith.Trait{TraitKey: trait_key, TraitValue: trait_value}
+
+	traits := []*flagsmith.Trait{&trait}
+
+	// When
+	segments, err := client.GeIdentitySegments("test_identity", traits)
+
+	// Then
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, len(segments))
+	assert.Equal(t, "Test Segment", segments[0].Name)
 }
