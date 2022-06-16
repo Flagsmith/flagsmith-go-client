@@ -3,7 +3,6 @@ package flagsmith
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"sync/atomic"
 	"time"
@@ -48,14 +47,11 @@ func NewClient(apiKey string, options ...Option) *Client {
 		opt(c)
 	}
 	if c.config.localEvaluation {
-		fmt.Println("local evaluation enabled")
 		go c.pollEnvironment(context.TODO())
 	}
-	fmt.Println("is analytics processor ", c.config.enableAnalytics)
 	// Initialize analytics processor
 	if c.config.enableAnalytics {
 		c.analyticsProcessor = NewAnalyticsProcessor(context.TODO(), c.client, c.config.baseURL, nil)
-		fmt.Println("initializing analytics processor")
 	}
 
 	return c
