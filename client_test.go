@@ -233,7 +233,10 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.NewClient(EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
+			return flagsmith.Flag{IsDefault: true}
+		}))
 
 	flags, err := client.GetEnvironmentFlags()
 
@@ -243,10 +246,22 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 	allFlags := flags.AllFlags()
 
 	assert.Equal(t, 1, len(allFlags))
+	flag, err := flags.GetFlag(Feature1Name)
 
-	assert.Equal(t, Feature1Name, allFlags[0].FeatureName)
-	assert.Equal(t, Feature1ID, allFlags[0].FeatureID)
-	assert.Equal(t, Feature1Value, allFlags[0].Value)
+	assert.NoError(t, err)
+	assert.Equal(t, Feature1Name, flag.FeatureName)
+	assert.Equal(t, Feature1ID, flag.FeatureID)
+	assert.Equal(t, Feature1Value, flag.Value)
+	assert.False(t, flag.IsDefault)
+
+	isEnabled, err := flags.IsFeatureEnabled(Feature1Name)
+
+	assert.NoError(t, err)
+	assert.True(t, isEnabled)
+
+	value, err := flags.GetFeatureValue(Feature1Name)
+	assert.NoError(t, err)
+	assert.Equal(t, Feature1Value, value)
 
 }
 func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
@@ -336,4 +351,35 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 	assert.Equal(t, Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, Feature1Value, allFlags[0].Value)
 
+}
+
+func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+
+		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
+		assert.Equal(t, EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		rw.Header().Set("Content-Type", "application/json")
+
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, FlagsJson)
+
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
+			return flagsmith.Flag{IsDefault: true}
+		}))
+
+	flags, err := client.GetEnvironmentFlags()
+	// Then
+	assert.NoError(t, err)
+
+	flag, err := flags.GetFlag("feature_that_does_not_exist")
+	assert.NoError(t, err)
+	assert.True(t, flag.IsDefault)
 }
