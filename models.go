@@ -29,7 +29,7 @@ func (t *Trait) ToTraitModel() *traits.TraitModel {
 	}
 }
 
-func MakeFlagFromFeatureState(featureState *features.FeatureStateModel, identityID string) Flag {
+func makeFlagFromFeatureState(featureState *features.FeatureStateModel, identityID string) Flag {
 	return Flag{
 		Enabled:     featureState.Enabled,
 		Value:       featureState.Value(identityID),
@@ -39,21 +39,20 @@ func MakeFlagFromFeatureState(featureState *features.FeatureStateModel, identity
 	}
 }
 
-type DefaultFlagHandlerType *func(string) Flag
 type Flags struct {
 	flags              []Flag
 	analyticsProcessor *AnalyticsProcessor
 	defaultFlagHandler func(featureName string) Flag
 }
 
-func MakeFlagsFromFeatureStates(featureStates []*features.FeatureStateModel,
+func makeFlagsFromFeatureStates(featureStates []*features.FeatureStateModel,
 	analyticsProcessor *AnalyticsProcessor,
 	defaultFlagHandler func(featureName string) Flag,
 	identityID string) Flags {
 
 	flags := make([]Flag, len(featureStates))
 	for i, featureState := range featureStates {
-		flags[i] = MakeFlagFromFeatureState(featureState, identityID)
+		flags[i] = makeFlagFromFeatureState(featureState, identityID)
 	}
 
 	return Flags{
@@ -84,7 +83,7 @@ func (jf *jsonFlag) toFlag() Flag {
 		FeatureName: jf.Feature.Name,
 	}
 }
-func MakeFlagsFromAPIFlags(flagsJson []byte, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) Flag) (Flags, error) {
+func makeFlagsFromAPIFlags(flagsJson []byte, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) Flag) (Flags, error) {
 	var jsonflags []jsonFlag
 	err := json.Unmarshal(flagsJson, &jsonflags)
 	if err != nil {
@@ -112,7 +111,7 @@ func makeFlagsfromIdentityAPIJson(jsonResponse []byte, analyticsProcessor *Analy
 	if err != nil {
 		return Flags{}, err
 	}
-	return MakeFlagsFromAPIFlags(b, analyticsProcessor, defaultFlagHandler)
+	return makeFlagsFromAPIFlags(b, analyticsProcessor, defaultFlagHandler)
 }
 
 // Returns an array of all flag objects
@@ -130,6 +129,7 @@ func (f *Flags) GetFeatureValue(featureName string) (interface{}, error) {
 
 }
 
+// Returns a boolean indicating whether a particular flag is enabled
 func (f *Flags) IsFeatureEnabled(featureName string) (bool, error) {
 	flag, err := f.GetFlag(featureName)
 	if err != nil {
@@ -138,6 +138,7 @@ func (f *Flags) IsFeatureEnabled(featureName string) (bool, error) {
 	return flag.Enabled, nil
 }
 
+// Returns a specific flag given the name of the feature
 func (f *Flags) GetFlag(featureName string) (Flag, error) {
 	var resultFlag Flag
 	for _, flag := range f.flags {

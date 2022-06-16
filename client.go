@@ -105,7 +105,7 @@ func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) 
 	if !resp.IsSuccess() {
 		return Flags{}, errors.New("Unable to get valid response from Flagsmith API.")
 	}
-	return MakeFlagsFromAPIFlags(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
+	return makeFlagsFromAPIFlags(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
 
 }
 
@@ -131,7 +131,7 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 func (c *Client) GetIdentityFlagsFromDocument(ctx context.Context, env *environments.EnvironmentModel, identifier string, traits []*Trait) (Flags, error) {
 	identity := buildIdentityModel(identifier, env.APIKey, traits)
 	featureStates := flagengine.GetIdentityFeatureStates(env, &identity)
-	flags := MakeFlagsFromFeatureStates(
+	flags := makeFlagsFromFeatureStates(
 		featureStates,
 		c.analyticsProcessor,
 		c.defaultFlagHandler,
@@ -141,7 +141,7 @@ func (c *Client) GetIdentityFlagsFromDocument(ctx context.Context, env *environm
 }
 
 func (c *Client) GetEnvironmentFlagsFromDocument(ctx context.Context, env *environments.EnvironmentModel) (Flags, error) {
-	return MakeFlagsFromFeatureStates(
+	return makeFlagsFromFeatureStates(
 		env.FeatureStates,
 		c.analyticsProcessor,
 		c.defaultFlagHandler,
