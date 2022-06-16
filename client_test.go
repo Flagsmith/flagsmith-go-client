@@ -253,12 +253,36 @@ func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T)
 		}))
 
 	flags, err := client.GetEnvironmentFlags()
+
 	// Then
 	assert.NoError(t, err)
 
 	flag, err := flags.GetFlag("feature_that_does_not_exist")
 	assert.NoError(t, err)
 	assert.True(t, flag.IsDefault)
+}
+
+func TestErrorIsReturnedIfRequestFails(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+
+		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		rw.Header().Set("Content-Type", "application/json")
+
+		rw.WriteHeader(http.StatusInternalServerError)
+		_, err := io.WriteString(rw, fixtures.FlagsJson)
+
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	_, err := client.GetEnvironmentFlags()
+	assert.Error(t, err)
 }
 
 func TestIGetIdentitySegmentsNoTraits(t *testing.T) {
