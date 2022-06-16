@@ -19,7 +19,6 @@ const EnvironmentAPIKey = "test_key"
 func TestAnalytics(t *testing.T) {
 	// First, we need to create a test server
 	// to capture the requests made to the API
-	// var actualRequestBody string
 	actualRequestBody := struct {
 		mu   sync.Mutex
 		body string
