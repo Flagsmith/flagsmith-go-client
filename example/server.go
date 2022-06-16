@@ -28,8 +28,7 @@ type TemplateData struct {
 
 func RootHandler(w http.ResponseWriter, r *http.Request) {
 	// Intialise the flagsmith client
-	client := flagsmith.NewClient(os.Getenv("FLAGSMITH_API_KEY"),
-		flagsmith.WithBaseURL("http://localhost:8000/api/v1/"))
+	client := flagsmith.NewClient(os.Getenv("FLAGSMITH_API_KEY"))
 	q := r.URL.Query()
 
 	if q.Get("identifier") != "" {
