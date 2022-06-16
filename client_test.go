@@ -181,7 +181,8 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 	expectedRequestBody := `{"identifier":"test_identity","traits":[{"trait_key":"stringTrait","trait_value":"trait_value"},` +
 		`{"trait_key":"intTrait","trait_value":1},` +
 		`{"trait_key":"floatTrait","trait_value":1.11},` +
-		`{"trait_key":"boolTrait","trait_value":true}]}`
+		`{"trait_key":"boolTrait","trait_value":true},` +
+		`{"trait_key":"NoneTrait","trait_value":null}]}`
 
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 
@@ -209,8 +210,9 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 	intTrait := flagsmith.Trait{TraitKey: "intTrait", TraitValue: 1}
 	floatTrait := flagsmith.Trait{TraitKey: "floatTrait", TraitValue: 1.11}
 	boolTrait := flagsmith.Trait{TraitKey: "boolTrait", TraitValue: true}
+	nillTrait := flagsmith.Trait{TraitKey: "NoneTrait", TraitValue: nil}
 
-	traits := []*flagsmith.Trait{&stringTrait, &intTrait, &floatTrait, &boolTrait}
+	traits := []*flagsmith.Trait{&stringTrait, &intTrait, &floatTrait, &boolTrait, &nillTrait}
 	// When
 
 	flags, err := client.GetIdentityFlags("test_identity", traits)
