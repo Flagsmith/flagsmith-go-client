@@ -285,7 +285,7 @@ func TestErrorIsReturnedIfRequestFails(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestIGetIdentitySegmentsNoTraits(t *testing.T) {
+func TestGetIdentitySegmentsNoTraits(t *testing.T) {
 	// Given
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
