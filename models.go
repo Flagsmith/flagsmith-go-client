@@ -85,11 +85,9 @@ func (jf *jsonFlag) toFlag() Flag {
 	}
 }
 func MakeFlagsFromAPIFlags(flagsJson []byte, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) Flag) (Flags, error) {
-	fmt.Println("MakeFlagsFromAPIFlags", flagsJson)
 	var jsonflags []jsonFlag
 	err := json.Unmarshal(flagsJson, &jsonflags)
 	if err != nil {
-		fmt.Println("MakeFlagsFromAPIFlags error", err)
 		return Flags{}, err
 	}
 	flags := make([]Flag, len(jsonflags))
@@ -143,7 +141,6 @@ func (f *Flags) IsFeatureEnabled(featureName string) (bool, error) {
 func (f *Flags) GetFlag(featureName string) (Flag, error) {
 	var resultFlag Flag
 	for _, flag := range f.flags {
-		fmt.Println("GetFlag", flag.FeatureName, featureName)
 		if flag.FeatureName == featureName {
 			resultFlag = flag
 		}
@@ -157,6 +154,5 @@ func (f *Flags) GetFlag(featureName string) (Flag, error) {
 	if f.analyticsProcessor != nil {
 		f.analyticsProcessor.TrackFeature(resultFlag.FeatureID)
 	}
-	fmt.Println("Getting flag for feature", featureName, resultFlag)
 	return resultFlag, nil
 }

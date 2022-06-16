@@ -102,7 +102,6 @@ func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) 
 	if err != nil {
 		return Flags{}, err
 	}
-	fmt.Println("getting environment flags from api", resp)
 	if !resp.IsSuccess() {
 		return Flags{}, errors.New("Unable to get valid response from Flagsmith API.")
 	}
@@ -119,7 +118,6 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 		SetBody(&body).
 		SetContext(ctx).
 		Post(c.config.baseURL + "identities/")
-	fmt.Println("getting identity flags from api", resp)
 	if err != nil {
 		return Flags{}, err
 	}
