@@ -303,7 +303,7 @@ func TestIGetIdentitySegmentsNoTraits(t *testing.T) {
 
 }
 
-func TestIGetIdentitySegmentsWithTraits(t *testing.T) {
+func TestGetIdentitySegmentsWithTraits(t *testing.T) {
 	// Given
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
