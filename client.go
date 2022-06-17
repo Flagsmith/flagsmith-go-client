@@ -87,7 +87,7 @@ func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segm
 		identity := buildIdentityModel(identifier, env.APIKey, traits)
 		return flagengine.GetIdentitySegments(env, &identity), nil
 	}
-	return nil, errors.New("Local evaluation required to obtain identity segments")
+	return nil, &FlagsmithClientError{msg: "flagsmith: Local evaluation required to obtain identity segments"}
 
 }
 func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) {

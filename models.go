@@ -150,7 +150,8 @@ func (f *Flags) GetFlag(featureName string) (Flag, error) {
 		if f.defaultFlagHandler != nil {
 			return f.defaultFlagHandler(featureName), nil
 		}
-		return resultFlag, fmt.Errorf("No feature found with name %s", featureName)
+		msg := fmt.Sprintf("flagsmith: No feature found with name %s", featureName)
+		return resultFlag, &FlagsmithClientError{msg}
 	}
 	if f.analyticsProcessor != nil {
 		f.analyticsProcessor.TrackFeature(resultFlag.FeatureID)
