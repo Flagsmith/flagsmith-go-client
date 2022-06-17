@@ -1,3 +1,6 @@
 [submodule "engine-test-data"]
 	path = flagengine/integration_test/engine-test-data
 	url = git@github.com:Flagsmith/engine-test-data.git
+[submodule "flagengine/engine-test-data"]
+	path = flagengine/engine-test-data
+	url = git@github.com:Flagsmith/engine-test-data.git
