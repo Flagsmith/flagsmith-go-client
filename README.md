@@ -2,7 +2,7 @@
 
 [![Go](https://github.com/flagsmith/flagsmith-go-client/workflows/Go/badge.svg)](https://github.com/flagsmith/flagsmith-go-client/actions)
 [![GoReportCard](https://goreportcard.com/badge/github.com/flagsmith/flagsmith-go-client)](https://goreportcard.com/report/github.com/flagsmith/flagsmith-go-client)
-[![GoDoc](https://godoc.org/github.com/flagsmith/flagsmith-go-client?status.svg)](https://godoc.org/github.com/flagsmith/flagsmith-go-client)
+[![GoDoc](https://godoc.org/github.com/flagsmith/flagsmith-go-client?status.svg)](https://pkg.go.dev/github.com/Flagsmith/flagsmith-go-client#section-documentation)
 
 # Flagsmith Go SDK
 
