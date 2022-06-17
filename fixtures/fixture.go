@@ -127,3 +127,20 @@ func EnvironmentDocumentHandler(rw http.ResponseWriter, req *http.Request) {
 	}
 
 }
+
+func FlagsAPIHandlerWithInternalServerError(rw http.ResponseWriter, req *http.Request) {
+	if req.URL.Path != "/api/v1/flags/" {
+		panic("Wrong path")
+	}
+	if req.Header.Get("X-Environment-Key") != EnvironmentAPIKey {
+		panic("Wrong API key")
+	}
+
+	rw.Header().Set("Content-Type", "application/json")
+
+	rw.WriteHeader(http.StatusInternalServerError)
+	_, err := io.WriteString(rw, FlagsJson)
+	if err != nil {
+		panic(err)
+	}
+}
