@@ -3,7 +3,7 @@ package features_test
 import (
 	"testing"
 
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/features"
 	"github.com/stretchr/testify/assert"
 )
 

@@ -1,9 +1,9 @@
 package identities
 
 import (
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/features"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/utils"
 )
 
 type IdentityModel struct {

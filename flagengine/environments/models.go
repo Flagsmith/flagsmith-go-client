@@ -1,9 +1,9 @@
 package environments
 
 import (
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/environments/integrations"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/projects"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/environments/integrations"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/features"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/projects"
 )
 
 type EnvironmentModel struct {

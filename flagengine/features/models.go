@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/utils"
 )
 
 type FeatureModel struct {
