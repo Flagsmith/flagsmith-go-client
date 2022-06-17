@@ -4,11 +4,11 @@ repos:
 
       hooks:
         - id: go-fmt
-#        - id: go-vet #TODO: figure out: a solution of build constraints exclude all
+        - id: go-vet
         - id: go-imports
         - id: golangci-lint
-        - id: go-critic
         - id: go-build
+        - id: go-critic
         - id: go-mod-tidy
 
 
