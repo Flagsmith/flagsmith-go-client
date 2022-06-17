@@ -62,30 +62,22 @@ func NewClient(apiKey string, options ...Option) *Client {
 
 // Returns `Flags` struct holding all the flags for the current environment
 func (c *Client) GetEnvironmentFlags() (Flags, error) {
-	return c.GetEnvironmentFlagsWithContext(c.ctx)
+	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
+		return c.GetEnvironmentFlagsFromDocument(c.ctx, env)
+
+	}
+	return c.GetEnvironmentFlagsFromAPI(c.ctx)
 }
 
 // Returns `Flags` struct holding all the flags for the current environment for a given identity. Will also
 // upsert all traits to the Flagsmith API for future evaluations. Providing a
 // trait with a value of nil will remove the trait from the identity if it exists.
 func (c *Client) GetIdentityFlags(identifier string, traits []*Trait) (Flags, error) {
-	return c.GetIdentityFlagsWithContext(c.ctx, identifier, traits)
-}
-
-func (c *Client) GetEnvironmentFlagsWithContext(ctx context.Context) (Flags, error) {
 	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
-		return c.GetEnvironmentFlagsFromDocument(ctx, env)
+		return c.GetIdentityFlagsFromDocument(c.ctx, env, identifier, traits)
 
 	}
-	return c.GetEnvironmentFlagsFromAPI(ctx)
-}
-
-func (c *Client) GetIdentityFlagsWithContext(ctx context.Context, identifier string, traits []*Trait) (Flags, error) {
-	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
-		return c.GetIdentityFlagsFromDocument(ctx, env, identifier, traits)
-
-	}
-	return c.GetIdentityFlagsFromAPI(ctx, identifier, traits)
+	return c.GetIdentityFlagsFromAPI(c.ctx, identifier, traits)
 
 }
 
