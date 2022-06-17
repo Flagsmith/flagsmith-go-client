@@ -9,12 +9,12 @@ import (
 
 	"github.com/go-resty/resty/v2"
 
-	"github.com/Flagsmith/flagsmith-go-client/flagengine"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/environments"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/segments"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/environments"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/segments"
 
-	. "github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
+	. "github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities/traits"
 )
 
 // Client provides various methods to query Flagsmith API

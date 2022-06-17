@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/features"
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/features"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/utils"
 )
 
 type SegmentConditionModel struct {

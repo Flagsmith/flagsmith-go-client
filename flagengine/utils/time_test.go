@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
+	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/utils"
 )
 
 func TestUnmarshal(t *testing.T) {
