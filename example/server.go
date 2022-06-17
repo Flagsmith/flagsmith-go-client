@@ -27,7 +27,7 @@ type TemplateData struct {
 	ButtonColour string
 }
 
-func DefualFlagHandler(featureName string) flagsmith.Flag {
+func DefaultFlagHandler(featureName string) flagsmith.Flag {
 	return flagsmith.Flag{
 		FeatureName: featureName,
 		IsDefault:   true,
@@ -43,7 +43,7 @@ func RootHandler(w http.ResponseWriter, r *http.Request) {
 	// Intialise the flagsmith client
 	client := flagsmith.NewClient(os.Getenv("FLAGSMITH_API_KEY"),
 		flagsmith.WithContext(ctx),
-		flagsmith.WithDefaultHandler(DefualFlagHandler),
+		flagsmith.WithDefaultHandler(DefaultFlagHandler),
 	)
 	q := r.URL.Query()
 
