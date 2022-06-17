@@ -1,24 +1,32 @@
 package flagsmith
 
-import "time"
-
-const (
-	// DefaultTimeout is a default timeout for HTTP client
-	DefaultTimeout = 5 * time.Second
-	// DefaultBaseURI is a default URI
-	DefaultBaseURI = "https://api.bullet-train.io/api/v1/"
+import (
+	"time"
 )
 
-// Config contains all configurable Client settings
-type Config struct {
-	BaseURI string
-	Timeout time.Duration
+const (
+	// Number of seconds to wait for a request to
+	// complete before terminating the request
+	DefaultTimeout = 10 * time.Second
+
+	// Default base URL for the API
+	DefaultBaseURL = "https://edge.api.flagsmith.com/api/v1/"
+)
+
+// config contains all configurable Client settings
+type config struct {
+	baseURL            string
+	timeout            time.Duration
+	localEvaluation    bool
+	envRefreshInterval time.Duration
+	enableAnalytics    bool
 }
 
-// DefaultConfig returns default configuration
-func DefaultConfig() Config {
-	return Config{
-		BaseURI: DefaultBaseURI,
-		Timeout: DefaultTimeout,
+// defaultConfig returns default configuration
+func defaultConfig() config {
+	return config{
+		baseURL:            DefaultBaseURL,
+		timeout:            DefaultTimeout,
+		envRefreshInterval: time.Second * 60,
 	}
 }

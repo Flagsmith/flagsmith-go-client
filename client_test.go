@@ -1,295 +1,345 @@
 package flagsmith_test
 
 import (
+	//	"context"
 	"context"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
 	flagsmith "github.com/Flagsmith/flagsmith-go-client"
+	"github.com/Flagsmith/flagsmith-go-client/fixtures"
 	"github.com/stretchr/testify/assert"
 )
 
-var (
-	apiKey               = "MgfUaRCvvZMznuQyqjnQKt"
-	testUser             = flagsmith.User{Identifier: "test_user"}
-	differentUser        = flagsmith.User{Identifier: "different_user"}
-	testFeatureName      = "test_feature"
-	testFeatureValue     = "sample feature value"
-	testUserFeatureValue = "user feature value"
-	testFlagName         = "test_flag"
-	testFlagValue        = true
-	testTraitName        = "test_trait"
-	testTraitValue       = "sample trait value"
-)
+func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
+	// Given
+	requestReceived := struct {
+		mu                sync.Mutex
+		isRequestReceived bool
+	}{}
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		requestReceived.mu.Lock()
+		requestReceived.isRequestReceived = true
+		requestReceived.mu.Unlock()
+		assert.Equal(t, req.URL.Path, "/api/v1/environment-document/")
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+	}))
+	defer server.Close()
 
-func TestGetFeatureFlags(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	flags, err := c.GetFeatures()
+	// When
+	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	assert.NoError(t, err)
-	assert.NotNil(t, flags)
-	assert.NotEmpty(t, flags)
+	// Sleep to ensure that the server has time to update the environment
+	time.Sleep(10 * time.Millisecond)
 
-	for _, flag := range flags {
-		assert.NotNil(t, flag.Feature, "Flag should have feature")
-		assert.NotNil(t, flag.Feature.Name)
-	}
+	// Then
+	requestReceived.mu.Lock()
+	assert.True(t, requestReceived.isRequestReceived)
 }
 
-func TestGetUserFeatureFlags(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	flags, err := c.GetUserFeatures(testUser)
+func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
+	// Given
+	actualEnvironmentRefreshCounter := struct {
+		mu    sync.Mutex
+		count int
+	}{}
+	expectedEnvironmentRefreshCount := 3
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		actualEnvironmentRefreshCounter.mu.Lock()
+		actualEnvironmentRefreshCounter.count++
+		actualEnvironmentRefreshCounter.mu.Unlock()
+		assert.Equal(t, req.URL.Path, "/api/v1/environment-document/")
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+	}))
+	defer server.Close()
 
-	assert.NoError(t, err)
-	assert.NotNil(t, flags)
-	assert.NotEmpty(t, flags)
+	// When
+	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+		flagsmith.WithEnvironmentRefreshInterval(100*time.Millisecond),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	for _, flag := range flags {
-		assert.NotNil(t, flag.Feature, "Flag should have feature")
-		assert.NotNil(t, flag.Feature.Name)
-	}
+	time.Sleep(250 * time.Millisecond)
+
+	// Then
+	// We should have called refresh environment 3 times
+	// one when the client starts and 2
+	// for each time the refresh interval expires
+
+	actualEnvironmentRefreshCounter.mu.Lock()
+	assert.Equal(t, expectedEnvironmentRefreshCount, actualEnvironmentRefreshCounter.count)
+
 }
 
-func TestGetFeatureFlagValue(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	val, err := c.GetValue(testFeatureName)
+func TestGetEnvironmentFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
+	defer server.Close()
 
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	err := client.UpdateEnvironment(context.Background())
+
+	// Then
 	assert.NoError(t, err)
-	assert.Equal(t, testFeatureValue, val)
+
+	flags, err := client.GetEnvironmentFlags()
+	assert.NoError(t, err)
+
+	allFlags := flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+
 }
 
-func TestGetUserFeatureFlagValue(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	val, err := c.GetUserValue(testUser, testFeatureName)
+func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+
+		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		rw.Header().Set("Content-Type", "application/json")
+
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, fixtures.FlagsJson)
+
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
+			return flagsmith.Flag{IsDefault: true}
+		}))
+
+	flags, err := client.GetEnvironmentFlags()
+
+	// Then
+	assert.NoError(t, err)
+
+	allFlags := flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+	flag, err := flags.GetFlag(fixtures.Feature1Name)
 
 	assert.NoError(t, err)
-	assert.Equal(t, testUserFeatureValue, val)
+	assert.Equal(t, fixtures.Feature1Name, flag.FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, flag.FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, flag.Value)
+	assert.False(t, flag.IsDefault)
+
+	isEnabled, err := flags.IsFeatureEnabled(fixtures.Feature1Name)
+
+	assert.NoError(t, err)
+	assert.True(t, isEnabled)
+
+	value, err := flags.GetFeatureValue(fixtures.Feature1Name)
+	assert.NoError(t, err)
+	assert.Equal(t, fixtures.Feature1Value, value)
+
+}
+func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
+	defer server.Close()
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	err := client.UpdateEnvironment(context.Background())
+
+	// Then
+	assert.NoError(t, err)
+
+	flags, err := client.GetIdentityFlags("test_identity", nil)
+
+	assert.NoError(t, err)
+
+	allFlags := flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+
 }
 
-func TestHasFeature(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	enabled, err := c.HasFeature(testFeatureName)
+func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *testing.T) {
+	// Given
+	expectedRequestBody := `{"identifier":"test_identity","traits":[{"trait_key":"stringTrait","trait_value":"trait_value"},` +
+		`{"trait_key":"intTrait","trait_value":1},` +
+		`{"trait_key":"floatTrait","trait_value":1.11},` +
+		`{"trait_key":"boolTrait","trait_value":true},` +
+		`{"trait_key":"NoneTrait","trait_value":null}]}`
 
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+
+		assert.Equal(t, req.URL.Path, "/api/v1/identities/")
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		// Test that we sent the correct body
+		rawBody, err := ioutil.ReadAll(req.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedRequestBody, string(rawBody))
+
+		rw.Header().Set("Content-Type", "application/json")
+
+		rw.WriteHeader(http.StatusOK)
+		_, err = io.WriteString(rw, fixtures.IdentityResponseJson)
+
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	stringTrait := flagsmith.Trait{TraitKey: "stringTrait", TraitValue: "trait_value"}
+	intTrait := flagsmith.Trait{TraitKey: "intTrait", TraitValue: 1}
+	floatTrait := flagsmith.Trait{TraitKey: "floatTrait", TraitValue: 1.11}
+	boolTrait := flagsmith.Trait{TraitKey: "boolTrait", TraitValue: true}
+	nillTrait := flagsmith.Trait{TraitKey: "NoneTrait", TraitValue: nil}
+
+	traits := []*flagsmith.Trait{&stringTrait, &intTrait, &floatTrait, &boolTrait, &nillTrait}
+	// When
+
+	flags, err := client.GetIdentityFlags("test_identity", traits)
+
+	// Then
 	assert.NoError(t, err)
-	assert.True(t, enabled)
+
+	allFlags := flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+
 }
 
-func TestHasUserFeature(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	enabled, err := c.HasUserFeature(testUser, testFeatureName)
+func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 
+		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		rw.Header().Set("Content-Type", "application/json")
+
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, fixtures.FlagsJson)
+
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
+			return flagsmith.Flag{IsDefault: true}
+		}))
+
+	flags, err := client.GetEnvironmentFlags()
+
+	// Then
 	assert.NoError(t, err)
-	assert.True(t, enabled)
+
+	flag, err := flags.GetFlag("feature_that_does_not_exist")
+	assert.NoError(t, err)
+	assert.True(t, flag.IsDefault)
 }
 
-func TestGetTrait(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	trait, err := c.GetTrait(testUser, testTraitName)
+func TestDefaultHandlerIsUsedWhenRequestFails(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(fixtures.FlagsAPIHandlerWithInternalServerError))
+	defer server.Close()
 
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
+			return flagsmith.Flag{IsDefault: true}
+		}))
+
+	flags, err := client.GetEnvironmentFlags()
+
+	// Then
 	assert.NoError(t, err)
-	assert.Equal(t, testTraitValue, trait.Value)
+
+	flag, err := flags.GetFlag("feature_that_does_not_exist")
+	assert.NoError(t, err)
+	assert.True(t, flag.IsDefault)
 }
 
-func TestGetTraits(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	traits, err := c.GetTraits(testUser)
+func TestFlagsmithAPIErrorIsReturnedIfRequestFailsWithoutDefaultHandler(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(fixtures.FlagsAPIHandlerWithInternalServerError))
+	defer server.Close()
 
-	assert.NoError(t, err)
-	assert.NotNil(t, traits)
-	assert.Len(t, traits, 2)
-}
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-func TestUpdateTrait(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	trait, err := c.GetTrait(differentUser, testTraitName)
-	assert.NoError(t, err)
-
-	newValue := "new value"
-
-	trait.Value = newValue
-	updated, err := c.UpdateTrait(differentUser, trait)
-	assert.NoError(t, err)
-	assert.Equal(t, trait.Value, updated.Value)
-
-	trait, err = c.GetTrait(differentUser, testTraitName)
-	assert.NoError(t, err)
-	assert.Equal(t, newValue, trait.Value)
-
-	trait.Value = "old value"
-	_, err = c.UpdateTrait(differentUser, trait)
-	assert.NoError(t, err)
-}
-
-func updateTraitsAsserts(updated []*flagsmith.Trait, err error, c *flagsmith.Client, t *testing.T) {
-	assert.NoError(t, err)
-	assert.NotEmpty(t, updated)
-	assert.Equal(t, 5, len(updated))
-	assert.Equal(t, "true", updated[0].Value)
-	assert.Equal(t, "42", updated[1].Value)
-	assert.Equal(t, "foo bar baz", updated[2].Value)
-	assert.Equal(t, "616", updated[3].Value)
-	assert.Equal(t, "3.14", updated[4].Value)
-
-	trait, err := c.GetTrait(differentUser, "boolField")
-	assert.NoError(t, err)
-	assert.Equal(t, "true", trait.Value)
-
-	trait, err = c.GetTrait(differentUser, "intField")
-	assert.NoError(t, err)
-	assert.Equal(t, "42", trait.Value)
-
-	trait, err = c.GetTrait(differentUser, "stringField")
-	assert.NoError(t, err)
-	assert.Equal(t, "foo bar baz", trait.Value)
-
-	trait, err = c.GetTrait(differentUser, "anotherField")
-	assert.NoError(t, err)
-	assert.Equal(t, "616", trait.Value)
-
-	trait, err = c.GetTrait(differentUser, "floatField")
-	assert.NoError(t, err)
-	assert.Equal(t, "3.14", trait.Value)
-}
-
-func TestBulkUpdateTraitsPointers(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-
-	traits := []*flagsmith.Trait{
-		{
-			Identity: flagsmith.User{},
-			Key:      "boolField",
-			Value:    "true",
-		},
-		{
-			Identity: flagsmith.User{},
-			Key:      "intField",
-			Value:    "42",
-		},
-		{
-			Identity: flagsmith.User{},
-			Key:      "stringField",
-			Value:    "foo bar baz",
-		},
-		{
-			Identity: flagsmith.User{},
-			Key:      "anotherField",
-			Value:    "616",
-		},
-		{
-			Identity: flagsmith.User{},
-			Key:      "floatField",
-			Value:    "3.14",
-		},
-	}
-	updated, err := c.UpdateTraits(differentUser, traits)
-	updateTraitsAsserts(updated, err, c, t)
-}
-
-func TestBulkUpdateTraitsObject(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-
-	object := struct {
-		boolField    bool
-		intField     int
-		stringField  string
-		anotherField int
-		floatField   float64
-	}{
-		true, 42, "foo bar baz", 616, 3.14,
-	}
-
-	updated, err := c.UpdateTraits(differentUser, object)
-	updateTraitsAsserts(updated, err, c, t)
-}
-
-func TestBulkUpdateTraits(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-
-	traits := []flagsmith.Trait{
-		{
-			Identity: flagsmith.User{},
-			Key:      "boolField",
-			Value:    "true",
-		},
-		{
-			Identity: flagsmith.User{},
-			Key:      "intField",
-			Value:    "42",
-		},
-		{
-			Identity: flagsmith.User{},
-			Key:      "stringField",
-			Value:    "foo bar baz",
-		},
-		{
-			Identity: flagsmith.User{},
-			Key:      "anotherField",
-			Value:    "616",
-		},
-		{
-			Identity: flagsmith.User{},
-			Key:      "floatField",
-			Value:    "3.14",
-		},
-	}
-
-	updated, err := c.UpdateTraits(differentUser, traits)
-	updateTraitsAsserts(updated, err, c, t)
-}
-
-func TestFeatureEnabled(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	enabled, err := c.FeatureEnabled(testFlagName)
-	assert.NoError(t, err)
-	assert.Equal(t, testFlagValue, enabled)
-}
-
-func TestUserFeatureEnabled(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	enabled, err := c.UserFeatureEnabled(testUser, testFlagName)
-	assert.NoError(t, err)
-	assert.Equal(t, testFlagValue, enabled)
-}
-
-func TestRemoteConfig(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-
-	// string
-	val, err := c.GetValue(testFeatureName)
-	assert.NoError(t, err)
-	strVal, ok := val.(string)
-	assert.True(t, ok)
-	assert.Equal(t, testFeatureValue, strVal)
-
-	// integer
-	val, err = c.GetValue("integer_feature")
-	assert.NoError(t, err)
-	intVal, ok := val.(int)
-	assert.True(t, ok)
-	assert.Equal(t, 200, intVal)
-
-	// bool
-	val, err = c.GetValue("boolean_feature")
-	assert.NoError(t, err)
-	boolVal, ok := val.(bool)
-	assert.True(t, ok)
-	assert.Equal(t, true, boolVal)
-}
-
-func TestGetTraitsWithContextCancel(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	traits, err := c.GetTraitsWithContext(ctx, testUser)
-
-	assert.Nil(t, traits)
+	_, err := client.GetEnvironmentFlags()
 	assert.Error(t, err)
+	_, ok := err.(*flagsmith.FlagsmithAPIError)
+	assert.True(t, ok)
 }
 
-func TestGetFeatureFlagsWithContextCancel(t *testing.T) {
-	c := flagsmith.DefaultClient(apiKey)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := c.GetFeaturesWithContext(ctx)
+func TestGetIdentitySegmentsNoTraits(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
+	defer server.Close()
 
-	assert.Error(t, err)
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	err := client.UpdateEnvironment(context.Background())
+	assert.NoError(t, err)
+
+	segments, err := client.GeIdentitySegments("test_identity", nil)
+	assert.NoError(t, err)
+
+	assert.Equal(t, 0, len(segments))
+
+}
+
+func TestGetIdentitySegmentsWithTraits(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	err := client.UpdateEnvironment(context.Background())
+	assert.NoError(t, err)
+
+	// lifted from fixtures/EnvironmentJson
+	trait_key := "foo"
+	trait_value := "bar"
+
+	trait := flagsmith.Trait{TraitKey: trait_key, TraitValue: trait_value}
+
+	traits := []*flagsmith.Trait{&trait}
+
+	// When
+	segments, err := client.GeIdentitySegments("test_identity", traits)
+
+	// Then
+	assert.NoError(t, err)
+
+	assert.Equal(t, 1, len(segments))
+	assert.Equal(t, "Test Segment", segments[0].Name)
 }

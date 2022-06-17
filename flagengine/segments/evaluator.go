@@ -1,0 +1,161 @@
+package segments
+
+import (
+	"strconv"
+	"strings"
+
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/flagengine/utils"
+)
+
+func EvaluateIdentityInSegment(
+	identity *identities.IdentityModel,
+	segment *SegmentModel,
+	overrideTraits ...*traits.TraitModel,
+) bool {
+	if len(segment.Rules) == 0 {
+		return false
+	}
+
+	traits := identity.IdentityTraits
+	if len(overrideTraits) > 0 {
+		traits = overrideTraits
+	}
+
+	for _, rule := range segment.Rules {
+		if !traitsMatchSegmentRule(traits, rule, segment.ID, identity.CompositeKey()) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func traitsMatchSegmentRule(
+	identityTraits []*traits.TraitModel,
+	rule *SegmentRuleModel,
+	segmentID int,
+	identityID string,
+) bool {
+	conditions := make([]bool, len(rule.Conditions))
+	for i, c := range rule.Conditions {
+		conditions[i] = traitsMatchSegmentCondition(identityTraits, c, segmentID, identityID)
+	}
+	matchesConditions := rule.MatchingFunction()(conditions) || len(rule.Conditions) == 0
+
+	rules := make([]bool, len(rule.Rules))
+	for i, r := range rule.Rules {
+		rules[i] = traitsMatchSegmentRule(identityTraits, r, segmentID, identityID)
+	}
+
+	return matchesConditions && utils.All(rules)
+}
+
+func traitsMatchSegmentCondition(
+	identityTraits []*traits.TraitModel,
+	condition *SegmentConditionModel,
+	segmentID int,
+	identityID string,
+) bool {
+	if condition.Operator == PercentageSplit {
+		floatValue, _ := strconv.ParseFloat(condition.Value, 64)
+		return utils.GetHashedPercentageForObjectIds([]string{strconv.Itoa(segmentID), identityID}, 1) <= floatValue
+	}
+
+	for _, trait := range identityTraits {
+		if trait.TraitKey == condition.Property {
+			return condition.MatchesTraitValue(trait.TraitValue)
+		}
+	}
+	return false
+}
+
+func match(c ConditionOperator, s1, s2 string) bool {
+	b1, e1 := strconv.ParseBool(s1)
+	b2, e2 := strconv.ParseBool(s2)
+	if e1 == nil && e2 == nil {
+		return matchBool(c, b1, b2)
+	}
+
+	i1, e1 := strconv.ParseInt(s1, 10, 64)
+	i2, e2 := strconv.ParseInt(s2, 10, 64)
+	if e1 == nil && e2 == nil {
+		return matchInt(c, i1, i2)
+	}
+
+	f1, e1 := strconv.ParseFloat(s1, 64)
+	f2, e2 := strconv.ParseFloat(s2, 64)
+	if e1 == nil && e2 == nil {
+		return matchFloat(c, f1, f2)
+	}
+
+	return matchString(c, s1, s2)
+}
+
+func matchBool(c ConditionOperator, v1, v2 bool) bool {
+	var i1, i2 int64
+	if v1 {
+		i1 = 1
+	}
+	if v2 {
+		i2 = 1
+	}
+	return matchInt(c, i1, i2)
+}
+
+func matchInt(c ConditionOperator, v1, v2 int64) bool {
+	switch c {
+	case Equal:
+		return v1 == v2
+	case GreaterThan:
+		return v1 > v2
+	case LessThan:
+		return v1 < v2
+	case LessThanInclusive:
+		return v1 <= v2
+	case GreaterThanInclusive:
+		return v1 >= v2
+	case NotEqual:
+		return v1 != v2
+	}
+	return v1 == v2
+}
+
+func matchFloat(c ConditionOperator, v1, v2 float64) bool {
+	switch c {
+	case Equal:
+		return v1 == v2
+	case GreaterThan:
+		return v1 > v2
+	case LessThan:
+		return v1 < v2
+	case LessThanInclusive:
+		return v1 <= v2
+	case GreaterThanInclusive:
+		return v1 >= v2
+	case NotEqual:
+		return v1 != v2
+	}
+	return v1 == v2
+}
+
+func matchString(c ConditionOperator, v1, v2 string) bool {
+	switch c {
+	case Contains:
+		return strings.Contains(v1, v2)
+	case Equal:
+		return v1 == v2
+	case GreaterThan:
+		return v1 > v2
+	case LessThan:
+		return v1 < v2
+	case LessThanInclusive:
+		return v1 <= v2
+	case GreaterThanInclusive:
+		return v1 >= v2
+	case NotEqual:
+		return v1 != v2
+	}
+	return v1 == v2
+}

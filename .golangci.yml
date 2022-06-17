@@ -1,0 +1,13 @@
+run:
+  timeout: 3m
+  modules-download-mode: readonly
+  skip-dirs:
+    - sample
+
+linters:
+  # enable additional linters, that are disabled by default
+  enable:
+    - gofmt
+    - goimports
+    - misspell
+
