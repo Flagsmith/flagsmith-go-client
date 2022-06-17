@@ -94,11 +94,12 @@ func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) 
 	resp, err := c.client.NewRequest().
 		SetContext(ctx).
 		Get(c.config.baseURL + "flags/")
-	if err != nil {
-		return Flags{}, err
-	}
-	if !resp.IsSuccess() {
-		return Flags{}, errors.New("Unable to get valid response from Flagsmith API.")
+
+	if err != nil || !resp.IsSuccess() {
+		if c.defaultFlagHandler != nil {
+			return Flags{defaultFlagHandler: c.defaultFlagHandler}, nil
+		}
+		return Flags{}, &FlagsmithAPIError{msg: "flagsmith: Unable to get valid response from Flagsmith API"}
 	}
 	return makeFlagsFromAPIFlags(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
 
@@ -113,11 +114,11 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 		SetBody(&body).
 		SetContext(ctx).
 		Post(c.config.baseURL + "identities/")
-	if err != nil {
-		return Flags{}, err
-	}
-	if !resp.IsSuccess() {
-		return Flags{}, errors.New("Unable to get valid response from Flagsmith API.")
+	if err != nil || !resp.IsSuccess() {
+		if c.defaultFlagHandler != nil {
+			return Flags{defaultFlagHandler: c.defaultFlagHandler}, nil
+		}
+		return Flags{}, &FlagsmithAPIError{msg: "flagsmith: Unable to get valid response from Flagsmith API"}
 	}
 	return makeFlagsfromIdentityAPIJson(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
 
@@ -150,7 +151,6 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 		defer cancel()
 		err := c.UpdateEnvironment(ctx)
 		if err != nil {
-			// TODO(tzdybal): error handling - log vs panic?
 			log.Printf("ERROR: failed to update environment: %v", err)
 		}
 	}
