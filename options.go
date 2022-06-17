@@ -1,11 +1,14 @@
 package flagsmith
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type Option func(c *Client)
 
 var _ = []Option{
-	WithBaseURI(""),
+	WithBaseURL(""),
 	WithLocalEvaluation(),
 	WithRemoteEvaluation(),
 	WithRequestTimeout(0),
@@ -15,9 +18,9 @@ var _ = []Option{
 	WithCustomHeaders(nil),
 }
 
-func WithBaseURI(uri string) Option {
+func WithBaseURL(url string) Option {
 	return func(c *Client) {
-		c.config.baseURI = uri
+		c.config.baseURL = url
 	}
 }
 
@@ -61,5 +64,17 @@ func WithRetries(count int, waitTime time.Duration) Option {
 func WithCustomHeaders(headers map[string]string) Option {
 	return func(c *Client) {
 		c.client.SetHeaders(headers)
+	}
+}
+
+func WithDefaultHandler(handler func(string) Flag) Option {
+	return func(c *Client) {
+		c.defaultFlagHandler = handler
+	}
+}
+
+func WithContext(ctx context.Context) Option {
+	return func(c *Client) {
+		c.ctx = ctx
 	}
 }

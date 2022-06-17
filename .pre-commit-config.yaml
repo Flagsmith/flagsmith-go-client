@@ -7,8 +7,8 @@ repos:
         - id: go-vet
         - id: go-imports
         - id: golangci-lint
-        - id: go-critic
         - id: go-build
+        - id: go-critic
         - id: go-mod-tidy
 
 
