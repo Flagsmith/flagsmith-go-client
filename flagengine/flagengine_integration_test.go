@@ -1,4 +1,4 @@
-package integration_test
+package flagengine_test
 
 import (
 	"encoding/json"
