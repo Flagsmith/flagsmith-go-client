@@ -46,8 +46,10 @@ func NewClient(apiKey string, options ...Option) *Client {
 	})
 	c.client.SetTimeout(time.Second * c.config.timeout)
 
+
 	for _, opt := range options {
 		opt(c)
+
 	}
 	if c.config.localEvaluation {
 		go c.pollEnvironment(c.ctx)
