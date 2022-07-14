@@ -34,7 +34,7 @@ func TestAnalytics(t *testing.T) {
 	}))
 	defer server.Close()
 
-	expectedRequstBody := "{\"1\":1,\"2\":2}"
+	expectedRequstBody := "{\"feature_1\":1,\"feature_2\":2}"
 	analyticsTimer := 10
 
 	// and, the http client
@@ -45,9 +45,9 @@ func TestAnalytics(t *testing.T) {
 	processor := NewAnalyticsProcessor(context.Background(), client, server.URL+"/api/v1/", &analyticsTimer)
 
 	// and, track some features
-	processor.TrackFeature(1)
-	processor.TrackFeature(2)
-	processor.TrackFeature(2)
+	processor.TrackFeature("feature_1")
+	processor.TrackFeature("feature_2")
+	processor.TrackFeature("feature_2")
 
 	// Next, let's sleep a little to let the processor flush the data
 	time.Sleep(50 * time.Millisecond)
