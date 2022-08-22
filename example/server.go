@@ -41,7 +41,7 @@ func RootHandler(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	// Intialise the flagsmith client
-	client := flagsmith.NewClient(os.Getenv("FLAGSMITH_API_KEY"),
+	client := flagsmith.NewClient(os.Getenv("FLAGSMITH_ENVIRONMENT_KEY"),
 		flagsmith.WithContext(ctx),
 		flagsmith.WithDefaultHandler(DefualFlagHandler),
 	)
