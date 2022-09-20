@@ -1,10 +1,8 @@
 package flagsmith_test
 
 import (
-	//	"context"
 	"context"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -190,7 +188,7 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 
 		// Test that we sent the correct body
-		rawBody, err := ioutil.ReadAll(req.Body)
+		rawBody, err := io.ReadAll(req.Body)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedRequestBody, string(rawBody))
 

@@ -2,7 +2,7 @@ package flagengine_test
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"os"
 	"sort"
 	"strconv"
 	"testing"
@@ -32,7 +32,7 @@ func TestEngine(t *testing.T) {
 		} `json:"identities_and_responses"`
 	}
 
-	testSpec, err := ioutil.ReadFile(TestData)
+	testSpec, err := os.ReadFile(TestData)
 	require.NoError(t, err)
 	require.NotEmpty(t, testSpec)
 
