@@ -2,7 +2,7 @@ package flagsmith
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -24,7 +24,7 @@ func TestAnalytics(t *testing.T) {
 		body string
 	}{}
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		actualRequestBodyRaw, err := ioutil.ReadAll(req.Body)
+		actualRequestBodyRaw, err := io.ReadAll(req.Body)
 		assert.NoError(t, err)
 		actualRequestBody.mu.Lock()
 		actualRequestBody.body = string(actualRequestBodyRaw)
