@@ -154,7 +154,7 @@ func (f *Flags) GetFlag(featureName string) (Flag, error) {
 		return resultFlag, &FlagsmithClientError{msg}
 	}
 	if f.analyticsProcessor != nil {
-		f.analyticsProcessor.TrackFeature(resultFlag.FeatureID)
+		f.analyticsProcessor.TrackFeature(resultFlag.FeatureName)
 	}
 	return resultFlag, nil
 }
