@@ -38,7 +38,7 @@ func WithRemoteEvaluation() Option {
 
 func WithRequestTimeout(timeout time.Duration) Option {
 	return func(c *Client) {
-		c.config.timeout = timeout
+		c.client.SetTimeout(timeout)
 	}
 }
 
