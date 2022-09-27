@@ -1,10 +1,8 @@
 package flagsmith_test
 
 import (
-	//	"context"
 	"context"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -190,7 +188,7 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 
 		// Test that we sent the correct body
-		rawBody, err := ioutil.ReadAll(req.Body)
+		rawBody, err := io.ReadAll(req.Body)
 		assert.NoError(t, err)
 		assert.Equal(t, expectedRequestBody, string(rawBody))
 
@@ -258,6 +256,39 @@ func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T)
 	assert.NoError(t, err)
 
 	flag, err := flags.GetFlag("feature_that_does_not_exist")
+	assert.NoError(t, err)
+	assert.True(t, flag.IsDefault)
+}
+
+func TestDefaultHandlerIsUsedWhenTimeout(t *testing.T) {
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+
+		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		rw.Header().Set("Content-Type", "application/json")
+		time.Sleep(20 * time.Millisecond)
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, fixtures.FlagsJson)
+
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithRequestTimeout(10*time.Millisecond),
+		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
+			return flagsmith.Flag{IsDefault: true}
+		}))
+
+	flags, err := client.GetEnvironmentFlags()
+
+	// Then
+	assert.NoError(t, err)
+
+	flag, err := flags.GetFlag(fixtures.Feature1Name)
 	assert.NoError(t, err)
 	assert.True(t, flag.IsDefault)
 }

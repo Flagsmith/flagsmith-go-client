@@ -14,7 +14,7 @@ const AnalyticsEndpoint = "analytics/flags/"
 
 type analyticDataStore struct {
 	mu   sync.Mutex
-	data map[int]int
+	data map[string]int
 }
 type AnalyticsProcessor struct {
 	client   *resty.Client
@@ -23,7 +23,7 @@ type AnalyticsProcessor struct {
 }
 
 func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL string, timerInMilli *int) *AnalyticsProcessor {
-	data := make(map[int]int)
+	data := make(map[string]int)
 	dataStore := analyticDataStore{data: data}
 	tickerInterval := AnalyticsTimerInMilli
 	if timerInMilli != nil {
@@ -67,12 +67,12 @@ func (a *AnalyticsProcessor) Flush(ctx context.Context) {
 	}
 
 	// clear the map
-	a.store.data = make(map[int]int)
+	a.store.data = make(map[string]int)
 }
 
-func (a *AnalyticsProcessor) TrackFeature(featureID int) {
+func (a *AnalyticsProcessor) TrackFeature(featureName string) {
 	a.store.mu.Lock()
 	defer a.store.mu.Unlock()
-	currentCount := a.store.data[featureID]
-	a.store.data[featureID] = currentCount + 1
+	currentCount := a.store.data[featureName]
+	a.store.data[featureName] = currentCount + 1
 }

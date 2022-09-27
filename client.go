@@ -44,7 +44,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 		"Accept":            "application/json",
 		"X-Environment-Key": c.apiKey,
 	})
-	c.client.SetTimeout(time.Second * c.config.timeout)
+	c.client.SetTimeout(c.config.timeout)
 
 	for _, opt := range options {
 		opt(c)
