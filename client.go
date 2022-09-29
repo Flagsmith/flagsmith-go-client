@@ -3,6 +3,7 @@ package flagsmith
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"sync/atomic"
 	"time"
@@ -91,6 +92,29 @@ func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segm
 	return nil, &FlagsmithClientError{msg: "flagsmith: Local evaluation required to obtain identity segments"}
 
 }
+
+// BulkIdentify can be used to crate/overwrite identities(with traits) in bulk
+// NOTE: This method only works with Edge API endpoint
+func (c *Client) BulkIdentify(batch []*IdentityTraits) error {
+	if len(batch) > bulkIdentifyMaxCount {
+		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: batch size must be less than %d", bulkIdentifyMaxCount)}
+	}
+
+	body := struct {
+		Data []*IdentityTraits `json:"data"`
+	}{Data: batch}
+
+	resp, err := c.client.NewRequest().
+		SetBody(&body).
+		SetContext(c.ctx).
+		Post(c.config.baseURL + "bulk-identities/")
+
+	if err != nil || !resp.IsSuccess() {
+		return &FlagsmithAPIError{msg: "flagsmith: Unable to get valid response from Flagsmith API"}
+	}
+	return nil
+}
+
 func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) {
 	resp, err := c.client.NewRequest().
 		SetContext(ctx).

@@ -2,6 +2,7 @@ package flagsmith_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -373,4 +374,72 @@ func TestGetIdentitySegmentsWithTraits(t *testing.T) {
 
 	assert.Equal(t, 1, len(segments))
 	assert.Equal(t, "Test Segment", segments[0].Name)
+}
+
+func TestBulkIdentify(t *testing.T) {
+	// Given
+	traitKey := "foo"
+	traitValue := "bar"
+	identifierOne := "test_identity_1"
+	identifierTwo := "test_identity_2"
+
+	trait := flagsmith.Trait{TraitKey: traitKey, TraitValue: traitValue}
+	data := []*flagsmith.IdentityTraits{
+		{Traits: []*flagsmith.Trait{&trait}, Identifier: identifierOne},
+		{Traits: []*flagsmith.Trait{&trait}, Identifier: identifierTwo},
+	}
+
+	expectedRequestBody := fmt.Sprintf(`{"data":[{"identifier":"%s","traits":[{"trait_key":"%s","trait_value":"%s"}]},`+
+		`{"identifier":"%s","traits":[{"trait_key":"%s","trait_value":"%s"}]}]}`,
+		identifierOne, traitKey, traitValue, identifierTwo, traitKey, traitValue)
+
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		assert.Equal(t, "POST", req.Method)
+		assert.Equal(t, req.URL.Path, "/api/v1/bulk-identities/")
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		rawBody, err := io.ReadAll(req.Body)
+		assert.Equal(t, expectedRequestBody, string(rawBody))
+		assert.NoError(t, err)
+
+		rw.Header().Set("Content-Type", "application/json")
+	}))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	// When
+	err := client.BulkIdentify(data)
+
+	// Then
+	assert.NoError(t, err)
+
+}
+
+func TestBulkIdentifyReturnsErrorIfBatchSizeIsTooLargeToProcess(t *testing.T) {
+	// Given
+	traitKey := "foo"
+	traitValue := "bar"
+	trait := flagsmith.Trait{TraitKey: traitKey, TraitValue: traitValue}
+
+	data := []*flagsmith.IdentityTraits{}
+
+	// A batch with more than 100 identities
+	for i := 0; i < 102; i++ {
+		data = append(data, &flagsmith.IdentityTraits{Traits: []*flagsmith.Trait{&trait}, Identifier: "test_identity"})
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+
+	}))
+	defer server.Close()
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	// When
+	err := client.BulkIdentify(data)
+
+	// Then
+	assert.Error(t, err)
+	assert.Equal(t, "flagsmith: batch size must be less than 100", err.Error())
+
 }
