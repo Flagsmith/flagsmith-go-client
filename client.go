@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -98,6 +99,10 @@ func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segm
 func (c *Client) BulkIdentify(batch []*IdentityTraits) error {
 	if len(batch) > bulkIdentifyMaxCount {
 		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: batch size must be less than %d", bulkIdentifyMaxCount)}
+	}
+
+	if !strings.HasPrefix(c.config.baseURL, edgeUrlPrefix) {
+		return &FlagsmithAPIError{msg: "flagsmith: BulkIdentify only works with Edge API endpoint"}
 	}
 
 	body := struct {

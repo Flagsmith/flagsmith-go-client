@@ -15,6 +15,8 @@ const (
 	bulkIdentifyMaxCount = 100
 )
 
+var edgeUrlPrefix = "https://edge"
+
 // config contains all configurable Client settings
 type config struct {
 	baseURL            string
