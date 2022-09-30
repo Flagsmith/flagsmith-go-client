@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -101,10 +100,6 @@ func (c *Client) BulkIdentify(batch []*IdentityTraits) error {
 		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: batch size must be less than %d", bulkIdentifyMaxCount)}
 	}
 
-	if !strings.HasPrefix(c.config.baseURL, edgeUrlPrefix) {
-		return &FlagsmithAPIError{msg: "flagsmith: BulkIdentify only works with Edge API endpoint"}
-	}
-
 	body := struct {
 		Data []*IdentityTraits `json:"data"`
 	}{Data: batch}
@@ -113,7 +108,9 @@ func (c *Client) BulkIdentify(batch []*IdentityTraits) error {
 		SetBody(&body).
 		SetContext(c.ctx).
 		Post(c.config.baseURL + "bulk-identities/")
-
+	if resp.StatusCode() == 404 {
+		return &FlagsmithAPIError{msg: "flagsmith: Bulk identify endpoint not found; Please make sure you are using Edge API endpoint"}
+	}
 	if err != nil || !resp.IsSuccess() {
 		return &FlagsmithAPIError{msg: "flagsmith: Unable to get valid response from Flagsmith API"}
 	}

@@ -2,6 +2,7 @@ package flagsmith_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -402,12 +403,12 @@ func TestBulkIdentifyReturnsErrorIfBatchSizeIsTooLargeToProcess(t *testing.T) {
 
 }
 
-func TestBulkIdentifyReturnsErrorIfBaseURLIsNotEdge(t *testing.T) {
+func TestBulkIdentifyReturnsErrorIfServerReturns404(t *testing.T) {
 	// Given
 	data := []*flagsmith.IdentityTraits{}
 
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-
+		rw.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
@@ -417,6 +418,46 @@ func TestBulkIdentifyReturnsErrorIfBaseURLIsNotEdge(t *testing.T) {
 
 	// Then
 	assert.Error(t, err)
-	assert.Equal(t, "flagsmith: BulkIdentify only works with Edge API endpoint", err.Error())
+	assert.Equal(t, "flagsmith: Bulk identify endpoint not found; Please make sure you are using Edge API endpoint", err.Error())
+
+}
+
+func TestBulkIdentify(t *testing.T) {
+	// Given
+	traitKey := "foo"
+	traitValue := "bar"
+	identifierOne := "test_identity_1"
+	identifierTwo := "test_identity_2"
+
+	trait := flagsmith.Trait{TraitKey: traitKey, TraitValue: traitValue}
+	data := []*flagsmith.IdentityTraits{
+		{Traits: []*flagsmith.Trait{&trait}, Identifier: identifierOne},
+		{Traits: []*flagsmith.Trait{&trait}, Identifier: identifierTwo},
+	}
+
+	expectedRequestBody := fmt.Sprintf(`{"data":[{"identifier":"%s","traits":[{"trait_key":"%s","trait_value":"%s"}]},`+
+		`{"identifier":"%s","traits":[{"trait_key":"%s","trait_value":"%s"}]}]}`,
+		identifierOne, traitKey, traitValue, identifierTwo, traitKey, traitValue)
+
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		assert.Equal(t, "POST", req.Method)
+		assert.Equal(t, req.URL.Path, "/api/v1/bulk-identities/")
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		rawBody, err := io.ReadAll(req.Body)
+		assert.Equal(t, expectedRequestBody, string(rawBody))
+		assert.NoError(t, err)
+
+		rw.Header().Set("Content-Type", "application/json")
+	}))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	// When
+	err := client.BulkIdentify(data)
+
+	// Then
+	assert.NoError(t, err)
 
 }
