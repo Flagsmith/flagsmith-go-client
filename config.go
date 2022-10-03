@@ -11,6 +11,8 @@ const (
 
 	// Default base URL for the API
 	DefaultBaseURL = "https://edge.api.flagsmith.com/api/v1/"
+
+	bulkIdentifyMaxCount = 100
 )
 
 // config contains all configurable Client settings

@@ -22,6 +22,11 @@ type Trait struct {
 	TraitValue interface{} `json:"trait_value"`
 }
 
+type IdentityTraits struct {
+	Identifier string   `json:"identifier"`
+	Traits     []*Trait `json:"traits"`
+}
+
 func (t *Trait) ToTraitModel() *traits.TraitModel {
 	return &traits.TraitModel{
 		TraitKey:   t.TraitKey,
