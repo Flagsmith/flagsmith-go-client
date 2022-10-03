@@ -93,7 +93,7 @@ func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segm
 
 }
 
-// BulkIdentify can be used to crate/overwrite identities(with traits) in bulk
+// BulkIdentify can be used to create/overwrite identities(with traits) in bulk
 // NOTE: This method only works with Edge API endpoint
 func (c *Client) BulkIdentify(batch []*IdentityTraits) error {
 	if len(batch) > bulkIdentifyMaxCount {
