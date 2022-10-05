@@ -358,6 +358,16 @@ func TestSegmentConditionMatchesTraitValue(t *testing.T) {
 		{segments.NotContains, "bar", "baz", true},
 		{segments.Regex, "foo", "[a-z]+", true},
 		{segments.Regex, "FOO", "[a-z]+", false},
+
+		{segments.Modulo, 1, "2|0", false},
+		{segments.Modulo, 2, "2|0", true},
+		{segments.Modulo, 1.1, "2.1|1.1", true},
+		{segments.Modulo, 3, "2|0", false},
+		{segments.Modulo, 34.2, "4|3", false},
+		{segments.Modulo, 35.0, "4|3", true},
+		{segments.Modulo, "foo", "4|3", false},
+		{segments.Modulo, "1.0.0", "4|3", false},
+		{segments.Modulo, false, "4|3", false},
 	}
 
 	for _, c := range cases {
