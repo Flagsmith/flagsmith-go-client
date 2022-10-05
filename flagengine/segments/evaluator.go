@@ -62,11 +62,22 @@ func traitsMatchSegmentCondition(
 		floatValue, _ := strconv.ParseFloat(condition.Value, 64)
 		return utils.GetHashedPercentageForObjectIds([]string{strconv.Itoa(segmentID), identityID}, 1) <= floatValue
 	}
-
+	var matchedTraitValue *string
 	for _, trait := range identityTraits {
 		if trait.TraitKey == condition.Property {
-			return condition.MatchesTraitValue(trait.TraitValue)
+			matchedTraitValue = &trait.TraitValue
 		}
+	}
+
+	if condition.Operator == IsNotSet {
+		return matchedTraitValue == nil
+	}
+	if condition.Operator == IsSet {
+		return matchedTraitValue != nil
+	}
+
+	if matchedTraitValue != nil {
+		return condition.MatchesTraitValue(*matchedTraitValue)
 	}
 	return false
 }
