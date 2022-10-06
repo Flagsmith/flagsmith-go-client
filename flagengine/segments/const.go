@@ -18,4 +18,5 @@ const (
 	NotEqual             ConditionOperator = "NOT EQUAL"
 	Regex                ConditionOperator = "REGEX"
 	PercentageSplit      ConditionOperator = "PERCENTAGE_SPLIT"
+	Modulo               ConditionOperator = "MODULO"
 )
