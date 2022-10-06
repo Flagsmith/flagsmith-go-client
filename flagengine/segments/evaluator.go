@@ -172,22 +172,22 @@ func matchFloat(c ConditionOperator, v1, v2 float64) bool {
 	return v1 == v2
 }
 
-func matchString(c ConditionOperator, traitValue, conditionValue string) bool {
+func matchString(c ConditionOperator, v1, v2 string) bool {
 	switch c {
 	case Contains:
-		return strings.Contains(traitValue, conditionValue)
+		return strings.Contains(v1, v2)
 	case Equal:
-		return traitValue == conditionValue
+		return v1 == v2
 	case GreaterThan:
-		return traitValue > conditionValue
+		return v1 > v2
 	case LessThan:
-		return traitValue < conditionValue
+		return v1 < v2
 	case LessThanInclusive:
-		return traitValue <= conditionValue
+		return v1 <= v2
 	case GreaterThanInclusive:
-		return traitValue >= conditionValue
+		return v1 >= v2
 	case NotEqual:
-		return traitValue != conditionValue
+		return v1 != v2
 	}
-	return traitValue == conditionValue
+	return v1 == v2
 }
