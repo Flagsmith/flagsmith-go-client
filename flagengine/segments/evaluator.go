@@ -7,6 +7,7 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities/traits"
 	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/utils"
+	"github.com/blang/semver/v4"
 )
 
 func EvaluateIdentityInSegment(
@@ -89,10 +90,40 @@ func match(c ConditionOperator, s1, s2 string) bool {
 	if e1 == nil && e2 == nil {
 		return matchFloat(c, f1, f2)
 	}
+	if strings.HasSuffix(s2, ":semver") {
+		return matchSemver(c, s1, s2[:len(s2)-7])
+
+	}
 
 	return matchString(c, s1, s2)
 }
 
+func matchSemver(c ConditionOperator, traitValue, conditionValue string) bool {
+	conditionVersion, err := semver.Make(conditionValue)
+	if err != nil {
+		return false
+	}
+	traitVersion, err := semver.Make(traitValue)
+	if err != nil {
+		return false
+	}
+	switch c {
+	case Equal:
+		return traitVersion.EQ(conditionVersion)
+	case GreaterThan:
+		return traitVersion.GT(conditionVersion)
+	case LessThan:
+		return traitVersion.LT(conditionVersion)
+	case LessThanInclusive:
+		return traitVersion.LTE(conditionVersion)
+	case GreaterThanInclusive:
+		return traitVersion.GE(conditionVersion)
+	case NotEqual:
+		return traitVersion.NE(conditionVersion)
+	}
+	return false
+
+}
 func matchBool(c ConditionOperator, v1, v2 bool) bool {
 	var i1, i2 int64
 	if v1 {
@@ -101,6 +132,7 @@ func matchBool(c ConditionOperator, v1, v2 bool) bool {
 	if v2 {
 		i2 = 1
 	}
+
 	return matchInt(c, i1, i2)
 }
 
@@ -140,22 +172,22 @@ func matchFloat(c ConditionOperator, v1, v2 float64) bool {
 	return v1 == v2
 }
 
-func matchString(c ConditionOperator, v1, v2 string) bool {
+func matchString(c ConditionOperator, traitValue, conditionValue string) bool {
 	switch c {
 	case Contains:
-		return strings.Contains(v1, v2)
+		return strings.Contains(traitValue, conditionValue)
 	case Equal:
-		return v1 == v2
+		return traitValue == conditionValue
 	case GreaterThan:
-		return v1 > v2
+		return traitValue > conditionValue
 	case LessThan:
-		return v1 < v2
+		return traitValue < conditionValue
 	case LessThanInclusive:
-		return v1 <= v2
+		return traitValue <= conditionValue
 	case GreaterThanInclusive:
-		return v1 >= v2
+		return traitValue >= conditionValue
 	case NotEqual:
-		return v1 != v2
+		return traitValue != conditionValue
 	}
-	return v1 == v2
+	return traitValue == conditionValue
 }
