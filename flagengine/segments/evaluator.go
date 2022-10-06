@@ -132,7 +132,6 @@ func matchBool(c ConditionOperator, v1, v2 bool) bool {
 	if v2 {
 		i2 = 1
 	}
-
 	return matchInt(c, i1, i2)
 }
 
