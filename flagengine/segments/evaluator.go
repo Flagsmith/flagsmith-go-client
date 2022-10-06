@@ -72,30 +72,30 @@ func traitsMatchSegmentCondition(
 	return false
 }
 
-func match(c ConditionOperator, s1, s2 string) bool {
-	b1, e1 := strconv.ParseBool(s1)
-	b2, e2 := strconv.ParseBool(s2)
+func match(c ConditionOperator, traitValue, conditionValue string) bool {
+	b1, e1 := strconv.ParseBool(traitValue)
+	b2, e2 := strconv.ParseBool(conditionValue)
 	if e1 == nil && e2 == nil {
 		return matchBool(c, b1, b2)
 	}
 
-	i1, e1 := strconv.ParseInt(s1, 10, 64)
-	i2, e2 := strconv.ParseInt(s2, 10, 64)
+	i1, e1 := strconv.ParseInt(traitValue, 10, 64)
+	i2, e2 := strconv.ParseInt(conditionValue, 10, 64)
 	if e1 == nil && e2 == nil {
 		return matchInt(c, i1, i2)
 	}
 
-	f1, e1 := strconv.ParseFloat(s1, 64)
-	f2, e2 := strconv.ParseFloat(s2, 64)
+	f1, e1 := strconv.ParseFloat(traitValue, 64)
+	f2, e2 := strconv.ParseFloat(conditionValue, 64)
 	if e1 == nil && e2 == nil {
 		return matchFloat(c, f1, f2)
 	}
-	if strings.HasSuffix(s2, ":semver") {
-		return matchSemver(c, s1, s2[:len(s2)-7])
+	if strings.HasSuffix(conditionValue, ":semver") {
+		return matchSemver(c, traitValue, conditionValue[:len(conditionValue)-7])
 
 	}
 
-	return matchString(c, s1, s2)
+	return matchString(c, traitValue, conditionValue)
 }
 
 func matchSemver(c ConditionOperator, traitValue, conditionValue string) bool {
