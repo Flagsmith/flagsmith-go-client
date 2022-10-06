@@ -91,18 +91,18 @@ func match(c ConditionOperator, traitValue, conditionValue string) bool {
 		return matchFloat(c, f1, f2)
 	}
 	if strings.HasSuffix(conditionValue, ":semver") {
-		return matchSemver(c, traitValue, conditionValue[:len(conditionValue)-7])
+		conditionVersion, err := semver.Make(conditionValue[:len(conditionValue)-7])
+		if err != nil {
+			return false
+		}
+		return matchSemver(c, traitValue, conditionVersion)
 
 	}
 
 	return matchString(c, traitValue, conditionValue)
 }
 
-func matchSemver(c ConditionOperator, traitValue, conditionValue string) bool {
-	conditionVersion, err := semver.Make(conditionValue)
-	if err != nil {
-		return false
-	}
+func matchSemver(c ConditionOperator, traitValue string, conditionVersion semver.Version) bool {
 	traitVersion, err := semver.Make(traitValue)
 	if err != nil {
 		return false
