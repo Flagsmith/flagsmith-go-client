@@ -301,6 +301,37 @@ func TestIdentityInSegmentPercentageSplit(t *testing.T) {
 	utils.MockSetHashedPercentageForObjectIds(utils.GetHashedPercentageForObjectIds)
 }
 
+func TestIdentityInSegmentIsSetAndIsNotSet(t *testing.T) {
+	cases := []struct {
+		operator       segments.ConditionOperator
+		property       string
+		identityTraits []*traits.TraitModel
+		expectedResult bool
+	}{
+		{segments.IsSet, "foo", []*traits.TraitModel{{TraitKey: "foo", TraitValue: "bar"}}, true},
+		{segments.IsSet, "foo", []*traits.TraitModel{{TraitKey: "not_foo", TraitValue: "bar"}}, false},
+		{segments.IsSet, "foo", []*traits.TraitModel{}, false},
+		{segments.IsNotSet, "foo", []*traits.TraitModel{}, true},
+		{segments.IsNotSet, "foo", []*traits.TraitModel{{TraitKey: "foo", TraitValue: "bar"}}, false},
+	}
+
+	for i, c := range cases {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+
+			cond := &segments.SegmentConditionModel{
+				Operator: c.operator,
+				Property: c.property,
+			}
+			rule := &segments.SegmentRuleModel{
+				Type:       segments.All,
+				Conditions: []*segments.SegmentConditionModel{cond},
+			}
+			segment := &segments.SegmentModel{ID: 1, Name: "IsSet or IsNot", Rules: []*segments.SegmentRuleModel{rule}}
+			doTestIdentityInSegment(t, segment, c.identityTraits, c.expectedResult)
+		})
+	}
+}
+
 func TestSegmentConditionMatchesTraitValue(t *testing.T) {
 	cases := []struct {
 		operator       segments.ConditionOperator
