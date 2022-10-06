@@ -390,6 +390,32 @@ func TestSegmentConditionMatchesTraitValue(t *testing.T) {
 		{segments.Regex, "foo", "[a-z]+", true},
 		{segments.Regex, "FOO", "[a-z]+", false},
 
+		// Semver
+		{segments.Equal, "1.2.3", "1.2.3:semver", true},
+		{segments.Equal, "1.2.4", "1.2.3:semver", false},
+		{segments.Equal, "not_a_semver", "1.2.3:semver", false},
+
+		{segments.NotEqual, "1.0.0", "1.0.0:semver", false},
+		{segments.NotEqual, "1.0.1", "1.0.0:semver", true},
+
+		{segments.GreaterThan, "1.0.1", "1.0.0:semver", true},
+		{segments.GreaterThan, "1.0.1", "1.1.0:semver", false},
+		{segments.GreaterThan, "1.0.1", "1.0.1:semver", false},
+		{segments.GreaterThan, "1.2.4", "1.2.3-pre.2+build.4:semver", true},
+
+		{segments.LessThan, "1.0.1", "1.0.0:semver", false},
+		{segments.LessThan, "1.0.1", "1.1.0:semver", true},
+		{segments.LessThan, "1.0.1", "1.0.1:semver", false},
+		{segments.LessThan, "1.2.4", "1.2.3-pre.2+build.4:semver", false},
+
+		{segments.GreaterThanInclusive, "1.0.1", "1.0.0:semver", true},
+		{segments.GreaterThanInclusive, "1.0.1", "1.2.0:semver", false},
+		{segments.GreaterThanInclusive, "1.0.1", "1.0.1:semver", true},
+		{segments.LessThanInclusive, "1.0.0", "1.0.1:semver", true},
+		{segments.LessThanInclusive, "1.0.0", "1.0.0:semver", true},
+		{segments.LessThanInclusive, "1.0.1", "1.0.0:semver", false},
+
+		// Modulo
 		{segments.Modulo, 1, "2|0", false},
 		{segments.Modulo, 2, "2|0", true},
 		{segments.Modulo, 1.1, "2.1|1.1", true},

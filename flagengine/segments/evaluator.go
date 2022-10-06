@@ -7,6 +7,7 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities/traits"
 	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/utils"
+	"github.com/blang/semver/v4"
 )
 
 func EvaluateIdentityInSegment(
@@ -82,28 +83,58 @@ func traitsMatchSegmentCondition(
 	return false
 }
 
-func match(c ConditionOperator, s1, s2 string) bool {
-	b1, e1 := strconv.ParseBool(s1)
-	b2, e2 := strconv.ParseBool(s2)
+func match(c ConditionOperator, traitValue, conditionValue string) bool {
+	b1, e1 := strconv.ParseBool(traitValue)
+	b2, e2 := strconv.ParseBool(conditionValue)
 	if e1 == nil && e2 == nil {
 		return matchBool(c, b1, b2)
 	}
 
-	i1, e1 := strconv.ParseInt(s1, 10, 64)
-	i2, e2 := strconv.ParseInt(s2, 10, 64)
+	i1, e1 := strconv.ParseInt(traitValue, 10, 64)
+	i2, e2 := strconv.ParseInt(conditionValue, 10, 64)
 	if e1 == nil && e2 == nil {
 		return matchInt(c, i1, i2)
 	}
 
-	f1, e1 := strconv.ParseFloat(s1, 64)
-	f2, e2 := strconv.ParseFloat(s2, 64)
+	f1, e1 := strconv.ParseFloat(traitValue, 64)
+	f2, e2 := strconv.ParseFloat(conditionValue, 64)
 	if e1 == nil && e2 == nil {
 		return matchFloat(c, f1, f2)
 	}
+	if strings.HasSuffix(conditionValue, ":semver") {
+		conditionVersion, err := semver.Make(conditionValue[:len(conditionValue)-7])
+		if err != nil {
+			return false
+		}
+		return matchSemver(c, traitValue, conditionVersion)
 
-	return matchString(c, s1, s2)
+	}
+
+	return matchString(c, traitValue, conditionValue)
 }
 
+func matchSemver(c ConditionOperator, traitValue string, conditionVersion semver.Version) bool {
+	traitVersion, err := semver.Make(traitValue)
+	if err != nil {
+		return false
+	}
+	switch c {
+	case Equal:
+		return traitVersion.EQ(conditionVersion)
+	case GreaterThan:
+		return traitVersion.GT(conditionVersion)
+	case LessThan:
+		return traitVersion.LT(conditionVersion)
+	case LessThanInclusive:
+		return traitVersion.LTE(conditionVersion)
+	case GreaterThanInclusive:
+		return traitVersion.GE(conditionVersion)
+	case NotEqual:
+		return traitVersion.NE(conditionVersion)
+	}
+	return false
+
+}
 func matchBool(c ConditionOperator, v1, v2 bool) bool {
 	var i1, i2 int64
 	if v1 {
