@@ -2,7 +2,9 @@ package segments
 
 import (
 	"log"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/features"
@@ -19,6 +21,8 @@ func (m *SegmentConditionModel) MatchesTraitValue(traitValue string) bool {
 	switch m.Operator {
 	case NotContains:
 		return !strings.Contains(traitValue, m.Value)
+	case Modulo:
+		return m.modulo(traitValue)
 	case Regex:
 		return m.regex(traitValue)
 	default:
@@ -34,6 +38,29 @@ func (m *SegmentConditionModel) regex(traitValue string) bool {
 		return false
 	}
 	return match
+}
+
+func (m *SegmentConditionModel) modulo(traitValue string) bool {
+	values := strings.Split(m.Value, "|")
+	if len(values) != 2 {
+		return false
+	}
+
+	divisor, err := strconv.ParseFloat(values[0], 64)
+	if err != nil {
+		return false
+	}
+
+	remainder, err := strconv.ParseFloat(values[1], 64)
+	if err != nil {
+		return false
+	}
+	traitValueFloat, err := strconv.ParseFloat(traitValue, 64)
+	if err != nil {
+		return false
+	}
+	return math.Mod(traitValueFloat, divisor) == remainder
+
 }
 
 type SegmentRuleModel struct {

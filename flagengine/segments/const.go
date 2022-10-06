@@ -20,4 +20,5 @@ const (
 	PercentageSplit      ConditionOperator = "PERCENTAGE_SPLIT"
 	IsSet                ConditionOperator = "IS_SET"
 	IsNotSet             ConditionOperator = "IS_NOT_SET"
+	Modulo               ConditionOperator = "MODULO"
 )
