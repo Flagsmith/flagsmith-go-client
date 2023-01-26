@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"sort"
 	"strconv"
-	"strings"
 
 	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/utils"
 )
@@ -25,7 +24,7 @@ type FeatureStateModel struct {
 	DjangoID                       int                                   `json:"django_id"`
 	FeatureStateUUID               string                                `json:"featurestate_uuid"`
 	MultivariateFeatureStateValues []*MultivariateFeatureStateValueModel `json:"multivariate_feature_state_values"`
-	RawValue                       string                                `json:"feature_state_value"`
+	RawValue                       interface{}                           `json:"feature_state_value"`
 }
 
 func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
@@ -36,7 +35,7 @@ func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
 		DjangoID                       int                                   `json:"django_id"`
 		FeatureStateUUID               string                                `json:"featurestate_uuid"`
 		MultivariateFeatureStateValues []*MultivariateFeatureStateValueModel `json:"multivariate_feature_state_values"`
-		RawValue                       json.RawMessage                       `json:"feature_state_value"`
+		RawValue                       interface{}                           `json:"feature_state_value"`
 	}
 
 	err := json.Unmarshal(bytes, &obj)
@@ -50,13 +49,13 @@ func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
 	fs.DjangoID = obj.DjangoID
 	fs.FeatureStateUUID = obj.FeatureStateUUID
 	fs.MultivariateFeatureStateValues = obj.MultivariateFeatureStateValues
-	fs.RawValue = strings.Trim(string(obj.RawValue), `"`)
+	fs.RawValue = obj.RawValue
 	return nil
 }
 
 type MultivariateFeatureOptionModel struct {
-	ID    int    `json:"id"`
-	Value string `json:"value"`
+	ID    int         `json:"id"`
+	Value interface{} `json:"value"`
 }
 
 type MultivariateFeatureStateValueModel struct {
