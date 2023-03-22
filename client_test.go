@@ -461,3 +461,30 @@ func TestBulkIdentify(t *testing.T) {
 	assert.NoError(t, err)
 
 }
+
+func TestWithProxyClientOption(t *testing.T) {
+
+	// Given
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithProxy(server.URL),
+		flagsmith.WithBaseURL("http://some-other-url-that-should-not-be-used"+"/api/v1/"))
+
+	err := client.UpdateEnvironment(context.Background())
+
+	// Then
+	assert.NoError(t, err)
+
+	flags, err := client.GetEnvironmentFlags()
+	assert.NoError(t, err)
+
+	allFlags := flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+
+}
