@@ -7,6 +7,21 @@ import (
 
 type Option func(c *Client)
 
+// Make sure With* functions have correct type
+var _ = []Option{
+	WithBaseURL(""),
+	WithLocalEvaluation(),
+	WithRemoteEvaluation(),
+	WithRequestTimeout(0),
+	WithEnvironmentRefreshInterval(0),
+	WithAnalytics(),
+	WithRetries(3, 1*time.Second),
+	WithCustomHeaders(nil),
+	WithDefaultHandler(nil),
+	WithContext(context.TODO()),
+	WithProxy(""),
+}
+
 func WithBaseURL(url string) Option {
 	return func(c *Client) {
 		c.config.baseURL = url
@@ -56,14 +71,6 @@ func WithCustomHeaders(headers map[string]string) Option {
 	}
 }
 
-// WithProxy returns an Option function that sets the proxy(to be used by internal resty client).
-// The proxyURL argument is a string representing the URL of the proxy server to use, e.g. "http://proxy.example.com:8080".
-func WithProxy(proxyURL string) Option {
-	return func(c *Client) {
-		c.client.SetProxy(proxyURL)
-	}
-}
-
 func WithDefaultHandler(handler func(string) Flag) Option {
 	return func(c *Client) {
 		c.defaultFlagHandler = handler
@@ -81,5 +88,13 @@ func WithContext(ctx context.Context) Option {
 func WithLogger(logger Logger) Option {
 	return func(c *Client) {
 		c.log = logger
+	}
+}
+
+// WithProxy returns an Option function that sets the proxy(to be used by internal resty client).
+// The proxyURL argument is a string representing the URL of the proxy server to use, e.g. "http://proxy.example.com:8080".
+func WithProxy(proxyURL string) Option {
+	return func(c *Client) {
+		c.client.SetProxy(proxyURL)
 	}
 }
