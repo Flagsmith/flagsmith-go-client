@@ -78,3 +78,11 @@ func WithContext(ctx context.Context) Option {
 		c.ctx = ctx
 	}
 }
+
+// Allows the client to use any logger
+// that implements the  `Logger` interface
+func WithLogger(logger Logger) Option {
+	return func(c *Client) {
+		c.log = logger
+	}
+}

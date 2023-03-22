@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"sync/atomic"
 	"time"
 
@@ -30,6 +29,7 @@ type Client struct {
 
 	client *resty.Client
 	ctx    context.Context
+	log    Logger
 }
 
 // NewClient creates instance of Client with given configuration
@@ -46,6 +46,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 		"X-Environment-Key": c.apiKey,
 	})
 	c.client.SetTimeout(c.config.timeout)
+	c.log = createLogger()
 
 	for _, opt := range options {
 		opt(c)
@@ -56,7 +57,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 	// Initialize analytics processor
 	if c.config.enableAnalytics {
-		c.analyticsProcessor = NewAnalyticsProcessor(c.ctx, c.client, c.config.baseURL, nil)
+		c.analyticsProcessor = NewAnalyticsProcessor(c.ctx, c.client, c.config.baseURL, nil, c.log)
 	}
 
 	return c
@@ -178,7 +179,7 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 		defer cancel()
 		err := c.UpdateEnvironment(ctx)
 		if err != nil {
-			log.Printf("ERROR: failed to update environment: %v", err)
+			c.log.Errorf("Failed to update environment: %v", err)
 		}
 	}
 	update()

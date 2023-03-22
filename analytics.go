@@ -2,7 +2,6 @@ package flagsmith
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
@@ -20,9 +19,10 @@ type AnalyticsProcessor struct {
 	client   *resty.Client
 	store    *analyticDataStore
 	endpoint string
+	log      Logger
 }
 
-func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL string, timerInMilli *int) *AnalyticsProcessor {
+func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL string, timerInMilli *int, log Logger) *AnalyticsProcessor {
 	data := make(map[string]int)
 	dataStore := analyticDataStore{data: data}
 	tickerInterval := AnalyticsTimerInMilli
@@ -33,6 +33,7 @@ func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL st
 		client:   client,
 		store:    &dataStore,
 		endpoint: baseURL + AnalyticsEndpoint,
+		log:      log,
 	}
 	go processor.start(ctx, tickerInterval)
 	return &processor
@@ -60,10 +61,10 @@ func (a *AnalyticsProcessor) Flush(ctx context.Context) {
 	}
 	resp, err := a.client.R().SetContext(ctx).SetBody(a.store.data).Post(a.endpoint)
 	if err != nil {
-		log.Printf("WARNING: failed to send analytics data: %v", err)
+		a.log.Warnf("Failed to send analytics data: %v", err)
 	}
 	if !resp.IsSuccess() {
-		log.Printf("WARNING: Received non 200 from server when sending analytics data")
+		a.log.Warnf("Received non 200 from server when sending analytics data")
 	}
 
 	// clear the map
