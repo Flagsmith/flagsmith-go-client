@@ -469,7 +469,7 @@ func TestWithProxyClientOption(t *testing.T) {
 	defer server.Close()
 
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithProxy(server.URL),
-		flagsmith.WithBaseURL("http://some-other-url-that-should-not-be-used"+"/api/v1/"))
+		flagsmith.WithBaseURL("http://some-other-url-that-should-not-be-used/api/v1/"))
 
 	err := client.UpdateEnvironment(context.Background())
 
