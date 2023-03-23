@@ -7,6 +7,7 @@ import (
 
 type Option func(c *Client)
 
+// Make sure With* functions have correct type
 var _ = []Option{
 	WithBaseURL(""),
 	WithLocalEvaluation(),
@@ -16,6 +17,9 @@ var _ = []Option{
 	WithAnalytics(),
 	WithRetries(3, 1*time.Second),
 	WithCustomHeaders(nil),
+	WithDefaultHandler(nil),
+	WithContext(context.TODO()),
+	WithProxy(""),
 }
 
 func WithBaseURL(url string) Option {
@@ -84,5 +88,13 @@ func WithContext(ctx context.Context) Option {
 func WithLogger(logger Logger) Option {
 	return func(c *Client) {
 		c.log = logger
+	}
+}
+
+// WithProxy returns an Option function that sets the proxy(to be used by internal resty client).
+// The proxyURL argument is a string representing the URL of the proxy server to use, e.g. "http://proxy.example.com:8080".
+func WithProxy(proxyURL string) Option {
+	return func(c *Client) {
+		c.client.SetProxy(proxyURL)
 	}
 }
