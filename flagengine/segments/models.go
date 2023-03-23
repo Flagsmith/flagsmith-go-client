@@ -1,7 +1,6 @@
 package segments
 
 import (
-	"log"
 	"math"
 	"regexp"
 	"strconv"
@@ -33,7 +32,6 @@ func (m *SegmentConditionModel) MatchesTraitValue(traitValue string) bool {
 func (m *SegmentConditionModel) regex(traitValue string) bool {
 	match, err := regexp.Match(m.Value, []byte(traitValue))
 	if err != nil {
-		log.Printf("WARNING: Invalid regex expression %v", m.Value)
 		return false
 	}
 	return match
