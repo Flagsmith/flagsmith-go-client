@@ -214,6 +214,17 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	return nil
 }
 
+// ReadEnvironment loads the currently stored environment.
+//
+// An error is returned in case nothing has been stored yet.
+func (c *Client) ReadEnvironment() (*environments.EnvironmentModel, error) {
+	env, ok := c.environment.Load().(*environments.EnvironmentModel)
+	if !ok {
+		return env, fmt.Errorf("environment storage is empty")
+	}
+	return env, nil
+}
+
 func buildIdentityModel(identifier string, apiKey string, traits []*Trait) identities.IdentityModel {
 	identityTraits := make([]*TraitModel, len(traits))
 	for i, trait := range traits {
