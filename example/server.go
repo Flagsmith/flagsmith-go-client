@@ -37,7 +37,7 @@ func DefaultFlagHandler(featureName string) flagsmith.Flag {
 }
 
 func RootHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
 	// Intialise the flagsmith client
