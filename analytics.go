@@ -47,10 +47,8 @@ func (a *AnalyticsProcessor) start(ctx context.Context, tickerInterval int) {
 			a.Flush(ctx)
 		case <-ctx.Done():
 			return
-
 		}
 	}
-
 }
 
 func (a *AnalyticsProcessor) Flush(ctx context.Context) {

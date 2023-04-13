@@ -14,7 +14,6 @@ func TestFeatureStateIsHigherSegmentPriorityTwoNullFeatureSegment(t *testing.T) 
 
 	assert.False(t, featureState1.IsHigherSegmentPriority(&featureState2))
 	assert.False(t, featureState2.IsHigherSegmentPriority(&featureState1))
-
 }
 
 func TestFeatureStateIsHigherSegmentPriorityOneNullFeatureSegment(t *testing.T) {
@@ -25,7 +24,6 @@ func TestFeatureStateIsHigherSegmentPriorityOneNullFeatureSegment(t *testing.T) 
 
 	assert.True(t, featureState1.IsHigherSegmentPriority(&featureState2))
 	assert.False(t, featureState2.IsHigherSegmentPriority(&featureState1))
-
 }
 
 func TestFeatureStateIsHigherSegmentPriority(t *testing.T) {
@@ -35,5 +33,4 @@ func TestFeatureStateIsHigherSegmentPriority(t *testing.T) {
 
 	assert.True(t, featureState1.IsHigherSegmentPriority(&featureState2))
 	assert.False(t, featureState2.IsHigherSegmentPriority(&featureState1))
-
 }

@@ -153,7 +153,6 @@ func TestEnvironmentGetFeatureStateFeatureNotFound(t *testing.T) {
 	_, _, _, env, _ := fixtures.GetFixtures()
 	fs := flagengine.GetEnvironmentFeatureState(env, "not_a_feature_name")
 	assert.Nil(t, fs)
-
 }
 
 func getEnvironmentFeatureStateForFeature(env *environments.EnvironmentModel, feature *features.FeatureModel) *features.FeatureStateModel {

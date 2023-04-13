@@ -34,8 +34,8 @@ func DefaultFlagHandler(featureName string) flagsmith.Flag {
 		Value:       `{"colour": "#FFFF00"}`,
 		Enabled:     true,
 	}
-
 }
+
 func RootHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

@@ -59,5 +59,4 @@ func TestAnalytics(t *testing.T) {
 	// and, that the data was cleared
 	processor.store.mu.Lock()
 	assert.Equal(t, 0, len(processor.store.data))
-
 }

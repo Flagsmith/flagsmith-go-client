@@ -54,7 +54,6 @@ func makeFlagsFromFeatureStates(featureStates []*features.FeatureStateModel,
 	analyticsProcessor *AnalyticsProcessor,
 	defaultFlagHandler func(featureName string) Flag,
 	identityID string) Flags {
-
 	flags := make([]Flag, len(featureStates))
 	for i, featureState := range featureStates {
 		flags[i] = makeFlagFromFeatureState(featureState, identityID)
@@ -65,7 +64,6 @@ func makeFlagsFromFeatureStates(featureStates []*features.FeatureStateModel,
 		analyticsProcessor: analyticsProcessor,
 		defaultFlagHandler: defaultFlagHandler,
 	}
-
 }
 
 type jsonFeature struct {
@@ -131,7 +129,6 @@ func (f *Flags) GetFeatureValue(featureName string) (interface{}, error) {
 		return nil, err
 	}
 	return flag.Value, nil
-
 }
 
 // Returns a boolean indicating whether a particular flag is enabled
