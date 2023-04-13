@@ -6,16 +6,16 @@ import (
 
 const (
 	// Number of seconds to wait for a request to
-	// complete before terminating the request
+	// complete before terminating the request.
 	DefaultTimeout = 10 * time.Second
 
-	// Default base URL for the API
+	// Default base URL for the API.
 	DefaultBaseURL = "https://edge.api.flagsmith.com/api/v1/"
 
 	bulkIdentifyMaxCount = 100
 )
 
-// config contains all configurable Client settings
+// config contains all configurable Client settings.
 type config struct {
 	baseURL            string
 	timeout            time.Duration
@@ -24,7 +24,7 @@ type config struct {
 	enableAnalytics    bool
 }
 
-// defaultConfig returns default configuration
+// defaultConfig returns default configuration.
 func defaultConfig() config {
 	return config{
 		baseURL:            DefaultBaseURL,

@@ -17,7 +17,7 @@ import (
 	. "github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities/traits"
 )
 
-// Client provides various methods to query Flagsmith API
+// Client provides various methods to query Flagsmith API.
 type Client struct {
 	apiKey string
 	config config
@@ -32,7 +32,7 @@ type Client struct {
 	log    Logger
 }
 
-// NewClient creates instance of Client with given configuration
+// NewClient creates instance of Client with given configuration.
 func NewClient(apiKey string, options ...Option) *Client {
 	c := &Client{
 		apiKey: apiKey,
@@ -62,7 +62,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 	return c
 }
 
-// Returns `Flags` struct holding all the flags for the current environment
+// Returns `Flags` struct holding all the flags for the current environment.
 func (c *Client) GetEnvironmentFlags() (Flags, error) {
 	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
 		return c.GetEnvironmentFlagsFromDocument(c.ctx, env)
@@ -80,7 +80,7 @@ func (c *Client) GetIdentityFlags(identifier string, traits []*Trait) (Flags, er
 	return c.GetIdentityFlagsFromAPI(c.ctx, identifier, traits)
 }
 
-// Returns an array of segments that the given identity is part of
+// Returns an array of segments that the given identity is part of.
 func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segments.SegmentModel, error) {
 	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
 		identity := buildIdentityModel(identifier, env.APIKey, traits)
@@ -90,7 +90,7 @@ func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segm
 }
 
 // BulkIdentify can be used to create/overwrite identities(with traits) in bulk
-// NOTE: This method only works with Edge API endpoint
+// NOTE: This method only works with Edge API endpoint.
 func (c *Client) BulkIdentify(batch []*IdentityTraits) error {
 	if len(batch) > bulkIdentifyMaxCount {
 		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: batch size must be less than %d", bulkIdentifyMaxCount)}
