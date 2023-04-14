@@ -125,7 +125,6 @@ func EnvironmentDocumentHandler(rw http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		panic(err)
 	}
-
 }
 
 func FlagsAPIHandlerWithInternalServerError(rw http.ResponseWriter, req *http.Request) {

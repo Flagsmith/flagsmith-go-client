@@ -7,7 +7,7 @@ import (
 
 type Option func(c *Client)
 
-// Make sure With* functions have correct type
+// Make sure With* functions have correct type.
 var _ = []Option{
 	WithBaseURL(""),
 	WithLocalEvaluation(),
@@ -83,8 +83,7 @@ func WithContext(ctx context.Context) Option {
 	}
 }
 
-// Allows the client to use any logger
-// that implements the  `Logger` interface
+// Allows the client to use any logger that implements the `Logger` interface.
 func WithLogger(logger Logger) Option {
 	return func(c *Client) {
 		c.log = logger

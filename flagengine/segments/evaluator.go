@@ -107,7 +107,6 @@ func match(c ConditionOperator, traitValue, conditionValue string) bool {
 			return false
 		}
 		return matchSemver(c, traitValue, conditionVersion)
-
 	}
 
 	return matchString(c, traitValue, conditionValue)
@@ -133,8 +132,8 @@ func matchSemver(c ConditionOperator, traitValue string, conditionVersion semver
 		return traitVersion.NE(conditionVersion)
 	}
 	return false
-
 }
+
 func matchBool(c ConditionOperator, v1, v2 bool) bool {
 	var i1, i2 int64
 	if v1 {

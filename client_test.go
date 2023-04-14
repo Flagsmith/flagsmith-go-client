@@ -72,7 +72,6 @@ func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 
 	actualEnvironmentRefreshCounter.mu.Lock()
 	assert.Equal(t, expectedEnvironmentRefreshCount, actualEnvironmentRefreshCounter.count)
-
 }
 
 func TestGetEnvironmentFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
@@ -98,13 +97,11 @@ func TestGetEnvironmentFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
-
 }
 
 func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.T) {
 	// Given
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-
 		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 
@@ -147,8 +144,8 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 	value, err := flags.GetFeatureValue(fixtures.Feature1Name)
 	assert.NoError(t, err)
 	assert.Equal(t, fixtures.Feature1Value, value)
-
 }
+
 func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	// Given
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
@@ -172,7 +169,6 @@ func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
-
 }
 
 func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *testing.T) {
@@ -184,7 +180,6 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 		`{"trait_key":"NoneTrait","trait_value":null}]}`
 
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-
 		assert.Equal(t, req.URL.Path, "/api/v1/identities/")
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 
@@ -226,13 +221,11 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
-
 }
 
 func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T) {
 	// Given
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-
 		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 
@@ -264,7 +257,6 @@ func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T)
 func TestDefaultHandlerIsUsedWhenTimeout(t *testing.T) {
 	// Given
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-
 		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 
@@ -344,7 +336,6 @@ func TestGetIdentitySegmentsNoTraits(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, 0, len(segments))
-
 }
 
 func TestGetIdentitySegmentsWithTraits(t *testing.T) {
@@ -400,7 +391,6 @@ func TestBulkIdentifyReturnsErrorIfBatchSizeIsTooLargeToProcess(t *testing.T) {
 	// Then
 	assert.Error(t, err)
 	assert.Equal(t, "flagsmith: batch size must be less than 100", err.Error())
-
 }
 
 func TestBulkIdentifyReturnsErrorIfServerReturns404(t *testing.T) {
@@ -419,7 +409,6 @@ func TestBulkIdentifyReturnsErrorIfServerReturns404(t *testing.T) {
 	// Then
 	assert.Error(t, err)
 	assert.Equal(t, "flagsmith: Bulk identify endpoint not found; Please make sure you are using Edge API endpoint", err.Error())
-
 }
 
 func TestBulkIdentify(t *testing.T) {
@@ -459,11 +448,9 @@ func TestBulkIdentify(t *testing.T) {
 
 	// Then
 	assert.NoError(t, err)
-
 }
 
 func TestWithProxyClientOption(t *testing.T) {
-
 	// Given
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
@@ -486,5 +473,4 @@ func TestWithProxyClientOption(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
-
 }

@@ -279,7 +279,6 @@ func TestIdentityInSegmentPercentageSplit(t *testing.T) {
 
 	for i, c := range cases {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-
 			cond := &segments.SegmentConditionModel{
 				Operator: segments.PercentageSplit,
 				Value:    strconv.Itoa(c.segmentSplitValue),
@@ -317,7 +316,6 @@ func TestIdentityInSegmentIsSetAndIsNotSet(t *testing.T) {
 
 	for i, c := range cases {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-
 			cond := &segments.SegmentConditionModel{
 				Operator: c.operator,
 				Property: c.property,

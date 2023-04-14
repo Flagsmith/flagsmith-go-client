@@ -17,7 +17,7 @@ import (
 	. "github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities/traits"
 )
 
-// Client provides various methods to query Flagsmith API
+// Client provides various methods to query Flagsmith API.
 type Client struct {
 	apiKey string
 	config config
@@ -32,7 +32,7 @@ type Client struct {
 	log    Logger
 }
 
-// NewClient creates instance of Client with given configuration
+// NewClient creates instance of Client with given configuration.
 func NewClient(apiKey string, options ...Option) *Client {
 	c := &Client{
 		apiKey: apiKey,
@@ -50,7 +50,6 @@ func NewClient(apiKey string, options ...Option) *Client {
 
 	for _, opt := range options {
 		opt(c)
-
 	}
 	if c.config.localEvaluation {
 		go c.pollEnvironment(c.ctx)
@@ -63,11 +62,10 @@ func NewClient(apiKey string, options ...Option) *Client {
 	return c
 }
 
-// Returns `Flags` struct holding all the flags for the current environment
+// Returns `Flags` struct holding all the flags for the current environment.
 func (c *Client) GetEnvironmentFlags() (Flags, error) {
 	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
 		return c.GetEnvironmentFlagsFromDocument(c.ctx, env)
-
 	}
 	return c.GetEnvironmentFlagsFromAPI(c.ctx)
 }
@@ -78,24 +76,21 @@ func (c *Client) GetEnvironmentFlags() (Flags, error) {
 func (c *Client) GetIdentityFlags(identifier string, traits []*Trait) (Flags, error) {
 	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
 		return c.GetIdentityFlagsFromDocument(c.ctx, env, identifier, traits)
-
 	}
 	return c.GetIdentityFlagsFromAPI(c.ctx, identifier, traits)
-
 }
 
-// Returns an array of segments that the given identity is part of
+// Returns an array of segments that the given identity is part of.
 func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segments.SegmentModel, error) {
 	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
 		identity := buildIdentityModel(identifier, env.APIKey, traits)
 		return flagengine.GetIdentitySegments(env, &identity), nil
 	}
 	return nil, &FlagsmithClientError{msg: "flagsmith: Local evaluation required to obtain identity segments"}
-
 }
 
 // BulkIdentify can be used to create/overwrite identities(with traits) in bulk
-// NOTE: This method only works with Edge API endpoint
+// NOTE: This method only works with Edge API endpoint.
 func (c *Client) BulkIdentify(batch []*IdentityTraits) error {
 	if len(batch) > bulkIdentifyMaxCount {
 		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: batch size must be less than %d", bulkIdentifyMaxCount)}
@@ -130,7 +125,6 @@ func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) 
 		return Flags{}, &FlagsmithAPIError{msg: "flagsmith: Unable to get valid response from Flagsmith API"}
 	}
 	return makeFlagsFromAPIFlags(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
-
 }
 
 func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string, traits []*Trait) (Flags, error) {
@@ -149,7 +143,6 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 		return Flags{}, &FlagsmithAPIError{msg: "flagsmith: Unable to get valid response from Flagsmith API"}
 	}
 	return makeFlagsfromIdentityAPIJson(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
-
 }
 
 func (c *Client) GetIdentityFlagsFromDocument(ctx context.Context, env *environments.EnvironmentModel, identifier string, traits []*Trait) (Flags, error) {

@@ -57,7 +57,6 @@ func (m *SegmentConditionModel) modulo(traitValue string) bool {
 		return false
 	}
 	return math.Mod(traitValueFloat, divisor) == remainder
-
 }
 
 type SegmentRuleModel struct {
