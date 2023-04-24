@@ -455,7 +455,7 @@ func TestWithProxyClientOption(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithProxy(server.URL),
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(), flagsmith.WithProxy(server.URL),
 		flagsmith.WithBaseURL("http://some-other-url-that-should-not-be-used/api/v1/"))
 
 	err := client.UpdateEnvironment(context.Background())
