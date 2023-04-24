@@ -2,6 +2,7 @@ package flagsmith_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -317,8 +318,8 @@ func TestFlagsmithAPIErrorIsReturnedIfRequestFailsWithoutDefaultHandler(t *testi
 
 	_, err := client.GetEnvironmentFlags()
 	assert.Error(t, err)
-	_, ok := err.(*flagsmith.FlagsmithAPIError)
-	assert.True(t, ok)
+	var flagErr *flagsmith.FlagsmithAPIError
+	assert.True(t, errors.As(err, &flagErr))
 }
 
 func TestGetIdentitySegmentsNoTraits(t *testing.T) {
