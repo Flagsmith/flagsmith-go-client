@@ -2,6 +2,7 @@ package flagsmith_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -317,8 +318,8 @@ func TestFlagsmithAPIErrorIsReturnedIfRequestFailsWithoutDefaultHandler(t *testi
 
 	_, err := client.GetEnvironmentFlags()
 	assert.Error(t, err)
-	_, ok := err.(*flagsmith.FlagsmithAPIError)
-	assert.True(t, ok)
+	var flagErr *flagsmith.FlagsmithAPIError
+	assert.True(t, errors.As(err, &flagErr))
 }
 
 func TestGetIdentitySegmentsNoTraits(t *testing.T) {
@@ -455,7 +456,7 @@ func TestWithProxyClientOption(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithProxy(server.URL),
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(), flagsmith.WithProxy(server.URL),
 		flagsmith.WithBaseURL("http://some-other-url-that-should-not-be-used/api/v1/"))
 
 	err := client.UpdateEnvironment(context.Background())
