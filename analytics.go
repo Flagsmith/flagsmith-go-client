@@ -2,6 +2,7 @@ package flagsmith
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -44,29 +45,32 @@ func (a *AnalyticsProcessor) start(ctx context.Context, tickerInterval int) {
 	for {
 		select {
 		case <-ticker.C:
-			a.Flush(ctx)
+			if err := a.Flush(ctx); err != nil {
+				a.log.Warnf("Failed to send analytics data: %s", err)
+			}
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (a *AnalyticsProcessor) Flush(ctx context.Context) {
+func (a *AnalyticsProcessor) Flush(ctx context.Context) error {
 	a.store.mu.Lock()
 	defer a.store.mu.Unlock()
 	if len(a.store.data) == 0 {
-		return
+		return nil
 	}
 	resp, err := a.client.R().SetContext(ctx).SetBody(a.store.data).Post(a.endpoint)
 	if err != nil {
-		a.log.Warnf("Failed to send analytics data: %v", err)
+		return err
 	}
 	if !resp.IsSuccess() {
-		a.log.Warnf("Received non 200 from server when sending analytics data")
+		return fmt.Errorf("received unexpected response from server: %s", resp.Status())
 	}
 
-	// clear the map
+	// Clear the cache in case of success.
 	a.store.data = make(map[string]int)
+	return nil
 }
 
 func (a *AnalyticsProcessor) TrackFeature(featureName string) {
