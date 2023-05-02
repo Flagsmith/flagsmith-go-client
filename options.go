@@ -10,15 +10,14 @@ type Option func(c *Client)
 // Make sure With* functions have correct type.
 var _ = []Option{
 	WithBaseURL(""),
-	WithLocalEvaluation(),
+	WithLocalEvaluation(context.TODO()),
 	WithRemoteEvaluation(),
 	WithRequestTimeout(0),
 	WithEnvironmentRefreshInterval(0),
-	WithAnalytics(),
+	WithAnalytics(context.TODO()),
 	WithRetries(3, 1*time.Second),
 	WithCustomHeaders(nil),
 	WithDefaultHandler(nil),
-	WithContext(context.TODO()),
 	WithProxy(""),
 }
 
@@ -28,9 +27,15 @@ func WithBaseURL(url string) Option {
 	}
 }
 
-func WithLocalEvaluation() Option {
+// WithLocalEvaluation enables local evaluation of the Feature flags.
+//
+// The goroutine responsible for asynchronously updating the environment makes
+// use of the context provided here, which means that if it expires the
+// background process will exit.
+func WithLocalEvaluation(ctx context.Context) Option {
 	return func(c *Client) {
 		c.config.localEvaluation = true
+		c.ctxLocalEval = ctx
 	}
 }
 
@@ -52,9 +57,15 @@ func WithEnvironmentRefreshInterval(interval time.Duration) Option {
 	}
 }
 
-func WithAnalytics() Option {
+// WithAnalytics enables tracking of the usage of the Feature flags.
+//
+// The goroutine responsible for asynchronously uploading the locally stored
+// cache uses the context provided here, which means that if it expires the
+// background process will exit.
+func WithAnalytics(ctx context.Context) Option {
 	return func(c *Client) {
 		c.config.enableAnalytics = true
+		c.ctxAnalytics = ctx
 	}
 }
 
@@ -74,12 +85,6 @@ func WithCustomHeaders(headers map[string]string) Option {
 func WithDefaultHandler(handler func(string) Flag) Option {
 	return func(c *Client) {
 		c.defaultFlagHandler = handler
-	}
-}
-
-func WithContext(ctx context.Context) Option {
-	return func(c *Client) {
-		c.ctx = ctx
 	}
 }
 

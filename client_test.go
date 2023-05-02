@@ -18,6 +18,7 @@ import (
 
 func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	requestReceived := struct {
 		mu                sync.Mutex
 		isRequestReceived bool
@@ -32,7 +33,7 @@ func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 	defer server.Close()
 
 	// When
-	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	// Sleep to ensure that the server has time to update the environment
@@ -45,6 +46,7 @@ func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 
 func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	actualEnvironmentRefreshCounter := struct {
 		mu    sync.Mutex
 		count int
@@ -60,7 +62,7 @@ func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 	defer server.Close()
 
 	// When
-	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithEnvironmentRefreshInterval(100*time.Millisecond),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
@@ -77,18 +79,19 @@ func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 
 func TestGetEnvironmentFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
-	err := client.UpdateEnvironment(context.Background())
+	err := client.UpdateEnvironment(ctx)
 
 	// Then
 	assert.NoError(t, err)
 
-	flags, err := client.GetEnvironmentFlags()
+	flags, err := client.GetEnvironmentFlags(ctx)
 	assert.NoError(t, err)
 
 	allFlags := flags.AllFlags()
@@ -102,6 +105,7 @@ func TestGetEnvironmentFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 
 func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
@@ -121,7 +125,7 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 			return flagsmith.Flag{IsDefault: true}
 		}))
 
-	flags, err := client.GetEnvironmentFlags()
+	flags, err := client.GetEnvironmentFlags(ctx)
 
 	// Then
 	assert.NoError(t, err)
@@ -149,17 +153,18 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 
 func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
-	err := client.UpdateEnvironment(context.Background())
+	err := client.UpdateEnvironment(ctx)
 
 	// Then
 	assert.NoError(t, err)
 
-	flags, err := client.GetIdentityFlags("test_identity", nil)
+	flags, err := client.GetIdentityFlags(ctx, "test_identity", nil)
 
 	assert.NoError(t, err)
 
@@ -174,6 +179,7 @@ func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 
 func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	expectedRequestBody := `{"identifier":"test_identity","traits":[{"trait_key":"stringTrait","trait_value":"trait_value"},` +
 		`{"trait_key":"intTrait","trait_value":1},` +
 		`{"trait_key":"floatTrait","trait_value":1.11},` +
@@ -210,7 +216,7 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 	traits := []*flagsmith.Trait{&stringTrait, &intTrait, &floatTrait, &boolTrait, &nillTrait}
 	// When
 
-	flags, err := client.GetIdentityFlags("test_identity", traits)
+	flags, err := client.GetIdentityFlags(ctx, "test_identity", traits)
 
 	// Then
 	assert.NoError(t, err)
@@ -226,6 +232,7 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 
 func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
@@ -245,7 +252,7 @@ func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T)
 			return flagsmith.Flag{IsDefault: true}
 		}))
 
-	flags, err := client.GetEnvironmentFlags()
+	flags, err := client.GetEnvironmentFlags(ctx)
 
 	// Then
 	assert.NoError(t, err)
@@ -257,6 +264,7 @@ func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T)
 
 func TestDefaultHandlerIsUsedWhenTimeout(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		assert.Equal(t, req.URL.Path, "/api/v1/flags/")
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
@@ -277,7 +285,7 @@ func TestDefaultHandlerIsUsedWhenTimeout(t *testing.T) {
 			return flagsmith.Flag{IsDefault: true}
 		}))
 
-	flags, err := client.GetEnvironmentFlags()
+	flags, err := client.GetEnvironmentFlags(ctx)
 
 	// Then
 	assert.NoError(t, err)
@@ -289,6 +297,7 @@ func TestDefaultHandlerIsUsedWhenTimeout(t *testing.T) {
 
 func TestDefaultHandlerIsUsedWhenRequestFails(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(fixtures.FlagsAPIHandlerWithInternalServerError))
 	defer server.Close()
 
@@ -298,7 +307,7 @@ func TestDefaultHandlerIsUsedWhenRequestFails(t *testing.T) {
 			return flagsmith.Flag{IsDefault: true}
 		}))
 
-	flags, err := client.GetEnvironmentFlags()
+	flags, err := client.GetEnvironmentFlags(ctx)
 
 	// Then
 	assert.NoError(t, err)
@@ -310,13 +319,14 @@ func TestDefaultHandlerIsUsedWhenRequestFails(t *testing.T) {
 
 func TestFlagsmithAPIErrorIsReturnedIfRequestFailsWithoutDefaultHandler(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(fixtures.FlagsAPIHandlerWithInternalServerError))
 	defer server.Close()
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	_, err := client.GetEnvironmentFlags()
+	_, err := client.GetEnvironmentFlags(ctx)
 	assert.Error(t, err)
 	var flagErr *flagsmith.FlagsmithAPIError
 	assert.True(t, errors.As(err, &flagErr))
@@ -324,13 +334,14 @@ func TestFlagsmithAPIErrorIsReturnedIfRequestFailsWithoutDefaultHandler(t *testi
 
 func TestGetIdentitySegmentsNoTraits(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	err := client.UpdateEnvironment(context.Background())
+	err := client.UpdateEnvironment(ctx)
 	assert.NoError(t, err)
 
 	segments, err := client.GeIdentitySegments("test_identity", nil)
@@ -341,13 +352,14 @@ func TestGetIdentitySegmentsNoTraits(t *testing.T) {
 
 func TestGetIdentitySegmentsWithTraits(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(),
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	err := client.UpdateEnvironment(context.Background())
+	err := client.UpdateEnvironment(ctx)
 	assert.NoError(t, err)
 
 	// lifted from fixtures/EnvironmentJson
@@ -370,6 +382,7 @@ func TestGetIdentitySegmentsWithTraits(t *testing.T) {
 
 func TestBulkIdentifyReturnsErrorIfBatchSizeIsTooLargeToProcess(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	traitKey := "foo"
 	traitValue := "bar"
 	trait := flagsmith.Trait{TraitKey: traitKey, TraitValue: traitValue}
@@ -387,7 +400,7 @@ func TestBulkIdentifyReturnsErrorIfBatchSizeIsTooLargeToProcess(t *testing.T) {
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	// When
-	err := client.BulkIdentify(data)
+	err := client.BulkIdentify(ctx, data)
 
 	// Then
 	assert.Error(t, err)
@@ -396,6 +409,7 @@ func TestBulkIdentifyReturnsErrorIfBatchSizeIsTooLargeToProcess(t *testing.T) {
 
 func TestBulkIdentifyReturnsErrorIfServerReturns404(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	data := []*flagsmith.IdentityTraits{}
 
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
@@ -405,7 +419,7 @@ func TestBulkIdentifyReturnsErrorIfServerReturns404(t *testing.T) {
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	// When
-	err := client.BulkIdentify(data)
+	err := client.BulkIdentify(ctx, data)
 
 	// Then
 	assert.Error(t, err)
@@ -414,6 +428,7 @@ func TestBulkIdentifyReturnsErrorIfServerReturns404(t *testing.T) {
 
 func TestBulkIdentify(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	traitKey := "foo"
 	traitValue := "bar"
 	identifierOne := "test_identity_1"
@@ -445,7 +460,7 @@ func TestBulkIdentify(t *testing.T) {
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	// When
-	err := client.BulkIdentify(data)
+	err := client.BulkIdentify(ctx, data)
 
 	// Then
 	assert.NoError(t, err)
@@ -453,18 +468,19 @@ func TestBulkIdentify(t *testing.T) {
 
 func TestWithProxyClientOption(t *testing.T) {
 	// Given
+	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(), flagsmith.WithProxy(server.URL),
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx), flagsmith.WithProxy(server.URL),
 		flagsmith.WithBaseURL("http://some-other-url-that-should-not-be-used/api/v1/"))
 
-	err := client.UpdateEnvironment(context.Background())
+	err := client.UpdateEnvironment(ctx)
 
 	// Then
 	assert.NoError(t, err)
 
-	flags, err := client.GetEnvironmentFlags()
+	flags, err := client.GetEnvironmentFlags(ctx)
 	assert.NoError(t, err)
 
 	allFlags := flags.AllFlags()

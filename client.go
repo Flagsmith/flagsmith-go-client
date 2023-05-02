@@ -27,9 +27,10 @@ type Client struct {
 	analyticsProcessor *AnalyticsProcessor
 	defaultFlagHandler func(string) Flag
 
-	client *resty.Client
-	ctx    context.Context
-	log    Logger
+	client       *resty.Client
+	ctxLocalEval context.Context
+	ctxAnalytics context.Context
+	log          Logger
 }
 
 // NewClient creates instance of Client with given configuration.
@@ -38,7 +39,6 @@ func NewClient(apiKey string, options ...Option) *Client {
 		apiKey: apiKey,
 		config: defaultConfig(),
 		client: resty.New(),
-		ctx:    context.Background(),
 	}
 
 	c.client.SetHeaders(map[string]string{
@@ -52,11 +52,11 @@ func NewClient(apiKey string, options ...Option) *Client {
 		opt(c)
 	}
 	if c.config.localEvaluation {
-		go c.pollEnvironment(c.ctx)
+		go c.pollEnvironment(c.ctxLocalEval)
 	}
 	// Initialize analytics processor
 	if c.config.enableAnalytics {
-		c.analyticsProcessor = NewAnalyticsProcessor(c.ctx, c.client, c.config.baseURL, nil, c.log)
+		c.analyticsProcessor = NewAnalyticsProcessor(c.ctxAnalytics, c.client, c.config.baseURL, nil, c.log)
 	}
 
 	return c
@@ -67,13 +67,13 @@ func NewClient(apiKey string, options ...Option) *Client {
 // If local evaluation is enabled this function will not call the Flagsmith API
 // directly, but instead read the asynchronously updated local environment or
 // use the default flag handler in case it has not yet been updated.
-func (c *Client) GetEnvironmentFlags() (f Flags, err error) {
+func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 	if c.config.localEvaluation {
 		if f, err = c.getEnvironmentFlagsFromEnvironment(); err == nil {
 			return f, nil
 		}
 	} else {
-		if f, err = c.GetEnvironmentFlagsFromAPI(c.ctx); err == nil {
+		if f, err = c.GetEnvironmentFlagsFromAPI(ctx); err == nil {
 			return f, nil
 		}
 	}
@@ -93,13 +93,13 @@ func (c *Client) GetEnvironmentFlags() (f Flags, err error) {
 // If local evaluation is enabled this function will not call the Flagsmith API
 // directly, but instead read the asynchronously updated local environment or
 // use the default flag handler in case it has not yet been updated.
-func (c *Client) GetIdentityFlags(identifier string, traits []*Trait) (f Flags, err error) {
+func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits []*Trait) (f Flags, err error) {
 	if c.config.localEvaluation {
 		if f, err = c.getIdentityFlagsFromEnvironment(identifier, traits); err == nil {
 			return f, nil
 		}
 	} else {
-		if f, err = c.GetIdentityFlagsFromAPI(c.ctx, identifier, traits); err == nil {
+		if f, err = c.GetIdentityFlagsFromAPI(ctx, identifier, traits); err == nil {
 			return f, nil
 		}
 	}
@@ -120,7 +120,7 @@ func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segm
 
 // BulkIdentify can be used to create/overwrite identities(with traits) in bulk
 // NOTE: This method only works with Edge API endpoint.
-func (c *Client) BulkIdentify(batch []*IdentityTraits) error {
+func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) error {
 	if len(batch) > bulkIdentifyMaxCount {
 		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: batch size must be less than %d", bulkIdentifyMaxCount)}
 	}
@@ -131,7 +131,7 @@ func (c *Client) BulkIdentify(batch []*IdentityTraits) error {
 
 	resp, err := c.client.NewRequest().
 		SetBody(&body).
-		SetContext(c.ctx).
+		SetContext(ctx).
 		Post(c.config.baseURL + "bulk-identities/")
 	if resp.StatusCode() == 404 {
 		return &FlagsmithAPIError{msg: "flagsmith: Bulk identify endpoint not found; Please make sure you are using Edge API endpoint"}
