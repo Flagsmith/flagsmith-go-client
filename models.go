@@ -47,12 +47,12 @@ func makeFlagFromFeatureState(featureState *features.FeatureStateModel, identity
 type Flags struct {
 	flags              []Flag
 	analyticsProcessor *AnalyticsProcessor
-	defaultFlagHandler func(featureName string) Flag
+	defaultFlagHandler func(featureName string) (Flag, error)
 }
 
 func makeFlagsFromFeatureStates(featureStates []*features.FeatureStateModel,
 	analyticsProcessor *AnalyticsProcessor,
-	defaultFlagHandler func(featureName string) Flag,
+	defaultFlagHandler func(featureName string) (Flag, error),
 	identityID string) Flags {
 	flags := make([]Flag, len(featureStates))
 	for i, featureState := range featureStates {
@@ -86,7 +86,7 @@ func (jf *jsonFlag) toFlag() Flag {
 		FeatureName: jf.Feature.Name,
 	}
 }
-func makeFlagsFromAPIFlags(flagsJson []byte, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) Flag) (Flags, error) {
+func makeFlagsFromAPIFlags(flagsJson []byte, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) (Flag, error)) (Flags, error) {
 	var jsonflags []jsonFlag
 	err := json.Unmarshal(flagsJson, &jsonflags)
 	if err != nil {
@@ -102,7 +102,7 @@ func makeFlagsFromAPIFlags(flagsJson []byte, analyticsProcessor *AnalyticsProces
 		defaultFlagHandler: defaultFlagHandler,
 	}, err
 }
-func makeFlagsfromIdentityAPIJson(jsonResponse []byte, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) Flag) (Flags, error) {
+func makeFlagsfromIdentityAPIJson(jsonResponse []byte, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) (Flag, error)) (Flags, error) {
 	resonse := struct {
 		Flags interface{} `json:"flags"`
 	}{}
@@ -150,7 +150,7 @@ func (f *Flags) GetFlag(featureName string) (Flag, error) {
 	}
 	if resultFlag.FeatureID == 0 {
 		if f.defaultFlagHandler != nil {
-			return f.defaultFlagHandler(featureName), nil
+			return f.defaultFlagHandler(featureName)
 		}
 		return resultFlag, &FlagsmithClientError{fmt.Sprintf("flagsmith: No feature found with name %q", featureName)}
 	}

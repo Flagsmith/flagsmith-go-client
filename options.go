@@ -71,7 +71,7 @@ func WithCustomHeaders(headers map[string]string) Option {
 	}
 }
 
-func WithDefaultHandler(handler func(string) Flag) Option {
+func WithDefaultHandler(handler func(string) (Flag, error)) Option {
 	return func(c *Client) {
 		c.defaultFlagHandler = handler
 	}

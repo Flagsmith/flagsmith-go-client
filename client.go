@@ -25,7 +25,7 @@ type Client struct {
 	environment atomic.Value
 
 	analyticsProcessor *AnalyticsProcessor
-	defaultFlagHandler func(string) Flag
+	defaultFlagHandler func(string) (Flag, error)
 
 	client *resty.Client
 	ctx    context.Context

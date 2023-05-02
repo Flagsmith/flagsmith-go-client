@@ -117,8 +117,8 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
-		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
-			return flagsmith.Flag{IsDefault: true}
+		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
+			return flagsmith.Flag{IsDefault: true}, nil
 		}))
 
 	flags, err := client.GetEnvironmentFlags()
@@ -241,8 +241,8 @@ func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T)
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
-		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
-			return flagsmith.Flag{IsDefault: true}
+		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
+			return flagsmith.Flag{IsDefault: true}, nil
 		}))
 
 	flags, err := client.GetEnvironmentFlags()
@@ -273,8 +273,8 @@ func TestDefaultHandlerIsUsedWhenTimeout(t *testing.T) {
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
 		flagsmith.WithRequestTimeout(10*time.Millisecond),
-		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
-			return flagsmith.Flag{IsDefault: true}
+		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
+			return flagsmith.Flag{IsDefault: true}, nil
 		}))
 
 	flags, err := client.GetEnvironmentFlags()
@@ -294,8 +294,8 @@ func TestDefaultHandlerIsUsedWhenRequestFails(t *testing.T) {
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
-		flagsmith.WithDefaultHandler(func(featureName string) flagsmith.Flag {
-			return flagsmith.Flag{IsDefault: true}
+		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
+			return flagsmith.Flag{IsDefault: true}, nil
 		}))
 
 	flags, err := client.GetEnvironmentFlags()

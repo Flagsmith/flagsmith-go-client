@@ -27,13 +27,13 @@ type TemplateData struct {
 	ButtonColour string
 }
 
-func DefaultFlagHandler(featureName string) flagsmith.Flag {
+func DefaultFlagHandler(featureName string) (flagsmith.Flag, error) {
 	return flagsmith.Flag{
 		FeatureName: featureName,
 		IsDefault:   true,
 		Value:       `{"colour": "#FFFF00"}`,
 		Enabled:     true,
-	}
+	}, nil
 }
 
 func RootHandler(w http.ResponseWriter, r *http.Request) {
