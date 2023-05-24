@@ -10,11 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine"
-	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/environments"
-	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/features"
-	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities"
-	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine"
+	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/environments"
+	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/features"
+	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities"
+	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities/traits"
 )
 
 const TestData = "./engine-test-data/data/environment_n9fbf9h3v4fFgH3U3ngWhb.json"

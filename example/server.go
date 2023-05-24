@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"os"
 
-	flagsmith "github.com/Flagsmith/flagsmith-go-client/v2"
+	flagsmith "github.com/Flagsmith/flagsmith-go-client/v3"
 )
 
 func main() {
