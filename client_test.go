@@ -328,7 +328,7 @@ func TestFlagsmithAPIErrorIsReturnedIfRequestFailsWithoutDefaultHandler(t *testi
 
 	_, err := client.GetEnvironmentFlags(ctx)
 	assert.Error(t, err)
-	var flagErr *flagsmith.FlagsmithAPIError
+	var flagErr *flagsmith.FlagsmithClientError
 	assert.True(t, errors.As(err, &flagErr))
 }
 
