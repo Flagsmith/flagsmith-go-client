@@ -80,7 +80,7 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 	if c.defaultFlagHandler != nil {
 		return Flags{defaultFlagHandler: c.defaultFlagHandler}, nil
 	}
-	return Flags{}, fmt.Errorf("%w and no default handler present", err)
+	return Flags{}, &FlagsmithClientError{msg: fmt.Sprintf("Failed to fetch flags with error: %s", err)}
 }
 
 // Returns `Flags` struct holding all the flags for the current environment for
@@ -106,7 +106,7 @@ func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits
 	if c.defaultFlagHandler != nil {
 		return Flags{defaultFlagHandler: c.defaultFlagHandler}, nil
 	}
-	return Flags{}, fmt.Errorf("%w and no default handler present", err)
+	return Flags{}, &FlagsmithClientError{msg: fmt.Sprintf("Failed to fetch flags with error :%s", err)}
 }
 
 // Returns an array of segments that the given identity is part of.
