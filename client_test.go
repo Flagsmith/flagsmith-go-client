@@ -344,7 +344,7 @@ func TestGetIdentitySegmentsNoTraits(t *testing.T) {
 	err := client.UpdateEnvironment(ctx)
 	assert.NoError(t, err)
 
-	segments, err := client.GeIdentitySegments("test_identity", nil)
+	segments, err := client.GetIdentitySegments("test_identity", nil)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 0, len(segments))
@@ -371,7 +371,7 @@ func TestGetIdentitySegmentsWithTraits(t *testing.T) {
 	traits := []*flagsmith.Trait{&trait}
 
 	// When
-	segments, err := client.GeIdentitySegments("test_identity", traits)
+	segments, err := client.GetIdentitySegments("test_identity", traits)
 
 	// Then
 	assert.NoError(t, err)

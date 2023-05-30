@@ -106,11 +106,11 @@ func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits
 	if c.defaultFlagHandler != nil {
 		return Flags{defaultFlagHandler: c.defaultFlagHandler}, nil
 	}
-	return Flags{}, &FlagsmithClientError{msg: fmt.Sprintf("Failed to fetch flags with error :%s", err)}
+	return Flags{}, &FlagsmithClientError{msg: fmt.Sprintf("Failed to fetch flags with error: %s", err)}
 }
 
 // Returns an array of segments that the given identity is part of.
-func (c *Client) GeIdentitySegments(identifier string, traits []*Trait) ([]*segments.SegmentModel, error) {
+func (c *Client) GetIdentitySegments(identifier string, traits []*Trait) ([]*segments.SegmentModel, error) {
 	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
 		identity := buildIdentityModel(identifier, env.APIKey, traits)
 		return flagengine.GetIdentitySegments(env, &identity), nil
