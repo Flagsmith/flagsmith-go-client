@@ -105,7 +105,7 @@ func getIdentityFeatureStatesMap(
 		}
 	}
 
-	for _, fs := range identity.GetIdentityFeatures() {
+	for _, fs := range identity.IdentityFeatures {
 		if _, ok := featureStates[fs.Feature.ID]; ok {
 			featureStates[fs.Feature.ID] = fs
 		}
