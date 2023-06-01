@@ -13,7 +13,7 @@ type IdentityModel struct {
 	CreatedDate       utils.ISOTime                 `json:"created_date"`
 	IdentityUUID      string                        `json:"identity_uuid"`
 	IdentityTraits    []*traits.TraitModel          `json:"identity_traits"`
-	IdentityFeatures  []*features.FeatureStateModel `json:"identity_features"` // TODO(tzdybal): for some reason it's Set (not list) in Java impl
+	IdentityFeatures  []*features.FeatureStateModel `json:"identity_features"`
 	CompositeKey_     string                        `json:"composite_key"`
 }
 
@@ -22,17 +22,4 @@ func (i *IdentityModel) CompositeKey() string {
 		i.CompositeKey_ = i.EnvironmentAPIKey + "_" + i.Identifier
 	}
 	return i.CompositeKey_
-}
-
-func (i *IdentityModel) GetIdentityFeatures() []*features.FeatureStateModel {
-	unique := make(map[int]*features.FeatureStateModel)
-	for _, feat := range i.IdentityFeatures {
-		if _, ok := unique[feat.Feature.ID]; ok {
-			panic("hell")
-		} else {
-			unique[feat.Feature.ID] = feat
-		}
-	}
-
-	return i.IdentityFeatures
 }
