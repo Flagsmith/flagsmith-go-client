@@ -297,7 +297,7 @@ func TestIdentityInSegmentPercentageSplit(t *testing.T) {
 			assert.Equal(t, c.expectedResult, result)
 		})
 	}
-	utils.MockSetHashedPercentageForObjectIds(utils.GetHashedPercentageForObjectIds)
+	utils.ResetMocks()
 }
 
 func TestIdentityInSegmentPercentageSplitUsesDjangoID(t *testing.T) {
