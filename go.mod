@@ -1,4 +1,4 @@
-module github.com/Flagsmith/flagsmith-go-client/v2
+module github.com/Flagsmith/flagsmith-go-client/v3
 
 go 1.19
 

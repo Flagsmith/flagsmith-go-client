@@ -4,9 +4,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities"
-	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/identities/traits"
-	"github.com/Flagsmith/flagsmith-go-client/v2/flagengine/utils"
+	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities"
+	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/utils"
 	"github.com/blang/semver/v4"
 )
 
