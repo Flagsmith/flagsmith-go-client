@@ -24,8 +24,12 @@ func EvaluateIdentityInSegment(
 		traits = overrideTraits
 	}
 
+	identityHashKey := identity.CompositeKey()
+	if identity.DjangoID != 0 {
+		identityHashKey = strconv.Itoa(identity.DjangoID)
+	}
 	for _, rule := range segment.Rules {
-		if !traitsMatchSegmentRule(traits, rule, segment.ID, identity.CompositeKey()) {
+		if !traitsMatchSegmentRule(traits, rule, segment.ID, identityHashKey) {
 			return false
 		}
 	}

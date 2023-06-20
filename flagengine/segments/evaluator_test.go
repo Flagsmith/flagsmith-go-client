@@ -297,7 +297,42 @@ func TestIdentityInSegmentPercentageSplit(t *testing.T) {
 			assert.Equal(t, c.expectedResult, result)
 		})
 	}
-	utils.MockSetHashedPercentageForObjectIds(utils.GetHashedPercentageForObjectIds)
+	utils.ResetMocks()
+}
+
+func TestIdentityInSegmentPercentageSplitUsesDjangoID(t *testing.T) {
+	cases := []struct {
+		identity       *identities.IdentityModel
+		expectedResult bool
+	}{
+		{&identities.IdentityModel{
+			DjangoID:          1,
+			Identifier:        "Test",
+			EnvironmentAPIKey: "key",
+		}, false},
+		{&identities.IdentityModel{
+			Identifier:        "Test",
+			EnvironmentAPIKey: "key",
+		}, true},
+	}
+
+	for i, c := range cases {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			cond := &segments.SegmentConditionModel{
+				Operator: segments.PercentageSplit,
+				Value:    "50",
+			}
+			rule := &segments.SegmentRuleModel{
+				Type:       segments.All,
+				Conditions: []*segments.SegmentConditionModel{cond},
+			}
+			segment := &segments.SegmentModel{ID: 1, Name: "% split", Rules: []*segments.SegmentRuleModel{rule}}
+
+			result := segments.EvaluateIdentityInSegment(c.identity, segment)
+
+			assert.Equal(t, result, c.expectedResult)
+		})
+	}
 }
 
 func TestIdentityInSegmentIsSetAndIsNotSet(t *testing.T) {

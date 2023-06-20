@@ -35,3 +35,7 @@ var hashedPercentageForObjectIdsFunc = getHashedPercentageForObjectIds
 func MockSetHashedPercentageForObjectIds(fn func([]string, int) float64) {
 	hashedPercentageForObjectIdsFunc = fn
 }
+
+func ResetMocks() {
+	hashedPercentageForObjectIdsFunc = getHashedPercentageForObjectIds
+}
