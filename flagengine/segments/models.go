@@ -18,6 +18,8 @@ type SegmentConditionModel struct {
 
 func (m *SegmentConditionModel) MatchesTraitValue(traitValue string) bool {
 	switch m.Operator {
+	case In:
+		return strings.Contains(m.Value, traitValue)
 	case NotContains:
 		return !strings.Contains(traitValue, m.Value)
 	case Modulo:

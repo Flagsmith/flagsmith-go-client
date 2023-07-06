@@ -458,6 +458,15 @@ func TestSegmentConditionMatchesTraitValue(t *testing.T) {
 		{segments.Modulo, "foo", "4|3", false},
 		{segments.Modulo, "1.0.0", "4|3", false},
 		{segments.Modulo, false, "4|3", false},
+
+		// In
+		{segments.In, "foo", "", false},
+		{segments.In, "foo", "foo, bar", true},
+		{segments.In, "bar", "foo, bar", true},
+		{segments.In, "foo", "foo", true},
+		{segments.In, 1, "1,2,3,4", true},
+		{segments.In, 1, "", false},
+		{segments.In, 1, "1", true},
 	}
 
 	for _, c := range cases {
