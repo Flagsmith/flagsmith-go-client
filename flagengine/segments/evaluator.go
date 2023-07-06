@@ -189,6 +189,10 @@ func matchString(c ConditionOperator, v1, v2 string) bool {
 	switch c {
 	case Contains:
 		return strings.Contains(v1, v2)
+	case NotContains:
+		return !strings.Contains(v1, v2)
+	case In:
+		return strings.Contains(v2, v1)
 	case Equal:
 		return v1 == v2
 	case GreaterThan:
