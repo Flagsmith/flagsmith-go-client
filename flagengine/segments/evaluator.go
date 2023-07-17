@@ -8,6 +8,7 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities/traits"
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/utils"
 	"github.com/blang/semver/v4"
+	"golang.org/x/exp/slices"
 )
 
 func EvaluateIdentityInSegment(
@@ -192,7 +193,7 @@ func matchString(c ConditionOperator, v1, v2 string) bool {
 	case NotContains:
 		return !strings.Contains(v1, v2)
 	case In:
-		return strings.Contains(v2, v1)
+		return slices.Contains(strings.Split(v2, ","), v1)
 	case Equal:
 		return v1 == v2
 	case GreaterThan:
