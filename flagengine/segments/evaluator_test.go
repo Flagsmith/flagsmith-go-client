@@ -461,8 +461,9 @@ func TestSegmentConditionMatchesTraitValue(t *testing.T) {
 
 		// In
 		{segments.In, "foo", "", false},
-		{segments.In, "foo", "foo, bar", true},
-		{segments.In, "bar", "foo, bar", true},
+		{segments.In, "foo", "foo,bar", true},
+		{segments.In, "bar", "foo,bar", true},
+		{segments.In, "ba", "foo,bar", false},
 		{segments.In, "foo", "foo", true},
 		{segments.In, 1, "1,2,3,4", true},
 		{segments.In, 1, "", false},
