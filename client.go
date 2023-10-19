@@ -132,6 +132,7 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 	resp, err := c.client.NewRequest().
 		SetBody(&body).
 		SetContext(ctx).
+		ForceContentType("application/json").
 		Post(c.config.baseURL + "bulk-identities/")
 	if resp.StatusCode() == 404 {
 		return &FlagsmithAPIError{msg: "flagsmith: Bulk identify endpoint not found; Please make sure you are using Edge API endpoint"}
@@ -150,6 +151,7 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) {
 	resp, err := c.client.NewRequest().
 		SetContext(ctx).
+		ForceContentType("application/json").
 		Get(c.config.baseURL + "flags/")
 	if err != nil {
 		return Flags{}, &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)}
@@ -170,6 +172,7 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 	resp, err := c.client.NewRequest().
 		SetBody(&body).
 		SetContext(ctx).
+		ForceContentType("application/json").
 		Post(c.config.baseURL + "identities/")
 	if err != nil {
 		return Flags{}, &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)}
@@ -237,6 +240,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		SetContext(ctx).
 		SetResult(&env).
 		SetError(&e).
+		ForceContentType("application/json").
 		Get(c.config.baseURL + "environment-document/")
 
 	if err != nil {
