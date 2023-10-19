@@ -51,6 +51,8 @@ func NewClient(apiKey string, options ...Option) *Client {
 	for _, opt := range options {
 		opt(c)
 	}
+	c.client.SetLogger(c.log)
+
 	if c.config.localEvaluation {
 		go c.pollEnvironment(c.ctxLocalEval)
 	}
