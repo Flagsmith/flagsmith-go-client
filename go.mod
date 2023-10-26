@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/blang/semver/v4 v4.0.0
 	github.com/go-resty/resty/v2 v2.10.0
-	github.com/google/uuid v1.3.1
+	github.com/google/uuid v1.4.0
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1
 )
