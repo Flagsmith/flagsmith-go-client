@@ -35,7 +35,7 @@ type Client struct {
 }
 
 // NewClient creates instance of Client with given configuration.
-func NewClient(apiKey string, options ...Option) (*Client, error) {
+func NewClient(apiKey string, options ...Option) *Client {
 	c := &Client{
 		apiKey: apiKey,
 		config: defaultConfig(),
@@ -56,7 +56,7 @@ func NewClient(apiKey string, options ...Option) (*Client, error) {
 
 	if c.config.localEvaluation {
 		if !strings.HasPrefix(apiKey, "ser.") {
-			return nil, errors.New("In order to use local evaluation, please generate a server key in the environment settings page.")
+			panic("In order to use local evaluation, please generate a server key in the environment settings page.")
 		}
 
 		go c.pollEnvironment(c.ctxLocalEval)
@@ -66,7 +66,7 @@ func NewClient(apiKey string, options ...Option) (*Client, error) {
 		c.analyticsProcessor = NewAnalyticsProcessor(c.ctxAnalytics, c.client, c.config.baseURL, nil, c.log)
 	}
 
-	return c, nil
+	return c
 }
 
 // Returns `Flags` struct holding all the flags for the current environment.
