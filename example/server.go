@@ -13,14 +13,7 @@ import (
 )
 
 func main() {
-	// Intialise the flagsmith client
-	client := flagsmith.NewClient(os.Getenv("FLAGSMITH_ENVIRONMENT_KEY"),
-		flagsmith.WithDefaultHandler(DefaultFlagHandler),
-	)
-
-	h := Handler{client}
-
-	http.HandleFunc("/", h.RootHandler)
+	http.HandleFunc("/", RootHandler)
 
 	fmt.Printf("Starting server at port 5000\n")
 	if err := http.ListenAndServe(":5000", nil); err != nil {
@@ -43,14 +36,14 @@ func DefaultFlagHandler(featureName string) (flagsmith.Flag, error) {
 	}, nil
 }
 
-type Handler struct {
-	client *flagsmith.Client
-}
-
-func (h Handler) RootHandler(w http.ResponseWriter, r *http.Request) {
+func RootHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
+	// Intialise the flagsmith client
+	client := flagsmith.NewClient(os.Getenv("FLAGSMITH_ENVIRONMENT_KEY"),
+		flagsmith.WithDefaultHandler(DefaultFlagHandler),
+	)
 	q := r.URL.Query()
 
 	if q.Get("identifier") != "" {
@@ -63,7 +56,7 @@ func (h Handler) RootHandler(w http.ResponseWriter, r *http.Request) {
 			traits = []*flagsmith.Trait{&trait}
 		}
 
-		flags, _ := h.client.GetIdentityFlags(ctx, identifier, traits)
+		flags, _ := client.GetIdentityFlags(ctx, identifier, traits)
 
 		showButton, _ := flags.IsFeatureEnabled("secret_button")
 		buttonData, _ := flags.GetFeatureValue("secret_button")
@@ -82,7 +75,7 @@ func (h Handler) RootHandler(w http.ResponseWriter, r *http.Request) {
 		_ = t.Execute(w, templateData)
 		return
 	}
-	flags, _ := h.client.GetEnvironmentFlags(ctx)
+	flags, _ := client.GetEnvironmentFlags(ctx)
 
 	showButton, _ := flags.IsFeatureEnabled("secret_button")
 
