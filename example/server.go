@@ -14,12 +14,9 @@ import (
 
 func main() {
 	// Intialise the flagsmith client
-	client, err := flagsmith.NewClient(os.Getenv("FLAGSMITH_ENVIRONMENT_KEY"),
+	client := flagsmith.NewClient(os.Getenv("FLAGSMITH_ENVIRONMENT_KEY"),
 		flagsmith.WithDefaultHandler(DefaultFlagHandler),
 	)
-	if err != nil {
-		panic(err)
-	}
 
 	h := Handler{client}
 
