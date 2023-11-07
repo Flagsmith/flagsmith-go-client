@@ -6,7 +6,7 @@ import (
 )
 
 const BaseURL = "http://localhost:8000/api/v1/"
-const EnvironmentAPIKey = "test_key"
+const EnvironmentAPIKey = "ser.test_key"
 const Feature1Value = "some_value"
 const Feature1Name = "feature_1"
 const Feature1ID = 1

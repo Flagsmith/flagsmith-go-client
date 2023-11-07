@@ -16,6 +16,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestClientErrorsIfLocalEvaluationWithNonServerSideKey(t *testing.T) {
+	// When, Then
+	assert.Panics(t, func() {
+		_ = flagsmith.NewClient("key", flagsmith.WithLocalEvaluation(context.Background()))
+	})
+}
+
 func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 	// Given
 	ctx := context.Background()

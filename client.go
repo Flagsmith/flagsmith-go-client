@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -54,6 +55,10 @@ func NewClient(apiKey string, options ...Option) *Client {
 	c.client.SetLogger(c.log)
 
 	if c.config.localEvaluation {
+		if !strings.HasPrefix(apiKey, "ser.") {
+			panic("In order to use local evaluation, please generate a server key in the environment settings page.")
+		}
+
 		go c.pollEnvironment(c.ctxLocalEval)
 	}
 	// Initialize analytics processor
