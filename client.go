@@ -8,12 +8,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-resty/resty/v2"
-
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine"
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/environments"
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/segments"
+	"github.com/Flagsmith/flagsmith-go-client/v3/internal/flaghttp"
 
 	. "github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities/traits"
 )
@@ -28,7 +27,7 @@ type Client struct {
 	analyticsProcessor *AnalyticsProcessor
 	defaultFlagHandler func(string) (Flag, error)
 
-	client       *resty.Client
+	client       flaghttp.Client
 	ctxLocalEval context.Context
 	ctxAnalytics context.Context
 	log          Logger
@@ -39,7 +38,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 	c := &Client{
 		apiKey: apiKey,
 		config: defaultConfig(),
-		client: resty.New(),
+		client: flaghttp.NewClient(),
 	}
 
 	c.client.SetHeaders(map[string]string{
