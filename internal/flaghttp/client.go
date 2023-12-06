@@ -70,6 +70,10 @@ func (c *client) SetLogger(l Logger) Client {
 }
 
 func (c *client) SetProxy(proxyURL string) Client {
+	if proxyURL == "" {
+		return c
+	}
+
 	u, err := url.Parse(proxyURL)
 	if err != nil {
 		c.logger.Warnf("Failed to parse proxy URL: %s", err)
