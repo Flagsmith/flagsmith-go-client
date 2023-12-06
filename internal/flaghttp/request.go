@@ -115,6 +115,10 @@ func (r *request) do(method, url string) (Response, error) {
 		req.Header[k] = v
 	}
 
+	if r.body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
 	res, err := client.Do(req)
 	if err != nil {
 		if r.client.retryCount > 0 && r.retryCount < r.client.retryCount {
