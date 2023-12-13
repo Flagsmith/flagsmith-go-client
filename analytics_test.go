@@ -9,8 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/Flagsmith/flagsmith-go-client/v3/internal/flaghttp"
 )
 
 const BaseURL = "http://localhost:8000/api/v1/"
@@ -38,7 +39,7 @@ func TestAnalytics(t *testing.T) {
 	analyticsTimer := 10
 
 	// and, the http client
-	client := resty.New()
+	client := flaghttp.NewClient()
 	client.SetHeader("X-Environment-Key", EnvironmentAPIKey)
 
 	// Now let's create the processor
