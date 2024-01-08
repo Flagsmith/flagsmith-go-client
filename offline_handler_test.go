@@ -17,7 +17,6 @@ func TestNewLocalFileHandler(t *testing.T) {
 	// Then
 	assert.NoError(t, err)
 	assert.NotNil(t, offlineHandler)
-
 }
 
 func TestLocalFileHandlerGetEnvironment(t *testing.T) {

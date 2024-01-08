@@ -571,7 +571,6 @@ func TestOfflineMode(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
-
 }
 
 func TestOfflineHandlerIsUsedWhenRequestFails(t *testing.T) {
@@ -614,5 +613,4 @@ func TestOfflineHandlerIsUsedWhenRequestFails(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
-
 }

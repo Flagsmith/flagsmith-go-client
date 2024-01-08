@@ -69,7 +69,6 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 	if c.offlineHandler != nil {
 		c.environment.Store(c.offlineHandler.GetEnvironment())
-
 	}
 
 	// Initialize analytics processor
