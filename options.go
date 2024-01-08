@@ -102,3 +102,14 @@ func WithProxy(proxyURL string) Option {
 		c.client.SetProxy(proxyURL)
 	}
 }
+
+func WithOfflineHandler(handler OfflineHandler) Option {
+	return func(c *Client) {
+		c.offlineHandler = handler
+	}
+}
+func WithOfflineMode() Option {
+	return func(c *Client) {
+		c.config.offlineMode = true
+	}
+}
