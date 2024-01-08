@@ -15,6 +15,7 @@ type LocalFileHandler struct {
 	environment *environments.EnvironmentModel
 }
 
+// NewLocalFileHandler creates a new LocalFileHandler with the given path
 func NewLocalFileHandler(environmentDocumentPath string) (*LocalFileHandler, error) {
 	// Read the environment document from the specified path
 	environmentDocument, err := os.ReadFile(environmentDocumentPath)

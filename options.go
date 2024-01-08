@@ -103,11 +103,15 @@ func WithProxy(proxyURL string) Option {
 	}
 }
 
+// WithOfflineHandler returns an Option function that sets the offline handler.
 func WithOfflineHandler(handler OfflineHandler) Option {
 	return func(c *Client) {
 		c.offlineHandler = handler
 	}
 }
+
+// WithOfflineMode returns an Option function that enables the offline mode.
+// NOTE: before using this option, you should set the offline handler.
 func WithOfflineMode() Option {
 	return func(c *Client) {
 		c.config.offlineMode = true

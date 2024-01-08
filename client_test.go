@@ -560,7 +560,7 @@ func TestOfflineMode(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
 
-	// And GetIdentityFlags should work as well
+	// And GetIdentityFlags works as well
 	flags, err = client.GetIdentityFlags(ctx, "test_identity", nil)
 	assert.NoError(t, err)
 
@@ -587,6 +587,7 @@ func TestOfflineHandlerIsUsedWhenRequestFails(t *testing.T) {
 	}))
 	defer server.Close()
 
+	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithOfflineHandler(offlineHandler),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
@@ -601,4 +602,17 @@ func TestOfflineHandlerIsUsedWhenRequestFails(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+
+	// And GetIdentityFlags works as well
+	flags, err = client.GetIdentityFlags(ctx, "test_identity", nil)
+	assert.NoError(t, err)
+
+	allFlags = flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+
 }
