@@ -54,6 +54,19 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 	c.client.SetLogger(c.log)
 
+	if c.config.offlineMode && c.offlineHandler == nil {
+		panic("offline handler must be provided to use offline mode.")
+	}
+	if c.defaultFlagHandler != nil && c.offlineHandler != nil {
+		panic("default flag handler and offline handler cannot be used together.")
+	}
+	if c.config.localEvaluation && c.offlineHandler != nil {
+		panic("local evaluation and offline handler cannot be used together.")
+	}
+	if c.offlineHandler != nil {
+		c.environment.Store(c.offlineHandler.GetEnvironment())
+	}
+
 	if c.config.localEvaluation {
 		if !strings.HasPrefix(apiKey, "ser.") {
 			panic("In order to use local evaluation, please generate a server key in the environment settings page.")
@@ -61,16 +74,6 @@ func NewClient(apiKey string, options ...Option) *Client {
 
 		go c.pollEnvironment(c.ctxLocalEval)
 	}
-	if c.config.offlineMode && c.offlineHandler == nil {
-		panic("offline handler must be provided to use offline mode.")
-	}
-	if c.defaultFlagHandler != nil && c.offlineHandler != nil {
-		panic("default flag handler and offline handler cannot be used together.")
-	}
-	if c.offlineHandler != nil {
-		c.environment.Store(c.offlineHandler.GetEnvironment())
-	}
-
 	// Initialize analytics processor
 	if c.config.enableAnalytics {
 		c.analyticsProcessor = NewAnalyticsProcessor(c.ctxAnalytics, c.client, c.config.baseURL, nil, c.log)

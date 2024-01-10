@@ -61,6 +61,27 @@ func TestClientErrorsIfDefaultHandlerAndOfflineHandlerAreBothSet(t *testing.T) {
 			return flagsmith.Flag{IsDefault: true}, nil
 		}))
 }
+func TestClientErrorsIfLocalEvaluationModeAndOfflineHandlerAreBothSet(t *testing.T) {
+	// Given
+	envJsonPath := "./fixtures/environment.json"
+	offlineHandler, err := flagsmith.NewLocalFileHandler(envJsonPath)
+	assert.NoError(t, err)
+
+	// When
+	defer func() {
+		if r := recover(); r != nil {
+			// Then
+			errMsg := fmt.Sprintf("%v", r)
+			expectedErrMsg := "local evaluation and offline handler cannot be used together."
+			assert.Equal(t, expectedErrMsg, errMsg, "Unexpected error message")
+		}
+	}()
+
+	// Trigger panic
+	_ = flagsmith.NewClient("key",
+		flagsmith.WithOfflineHandler(offlineHandler),
+		flagsmith.WithLocalEvaluation(context.Background()))
+}
 
 func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 	// Given
