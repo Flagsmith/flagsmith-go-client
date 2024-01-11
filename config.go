@@ -22,6 +22,7 @@ type config struct {
 	localEvaluation    bool
 	envRefreshInterval time.Duration
 	enableAnalytics    bool
+	offlineMode        bool
 }
 
 // defaultConfig returns default configuration.

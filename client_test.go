@@ -23,6 +23,66 @@ func TestClientErrorsIfLocalEvaluationWithNonServerSideKey(t *testing.T) {
 	})
 }
 
+func TestClientErrorsIfOfflineModeWithoutOfflineHandler(t *testing.T) {
+	// When
+	defer func() {
+		if r := recover(); r != nil {
+			// Then
+			errMsg := fmt.Sprintf("%v", r)
+			expectedErrMsg := "offline handler must be provided to use offline mode."
+			assert.Equal(t, expectedErrMsg, errMsg, "Unexpected error message")
+		}
+	}()
+
+	// Trigger panic
+	_ = flagsmith.NewClient("key", flagsmith.WithOfflineMode())
+}
+
+func TestClientErrorsIfDefaultHandlerAndOfflineHandlerAreBothSet(t *testing.T) {
+	// Given
+	envJsonPath := "./fixtures/environment.json"
+	offlineHandler, err := flagsmith.NewLocalFileHandler(envJsonPath)
+	assert.NoError(t, err)
+
+	// When
+	defer func() {
+		if r := recover(); r != nil {
+			// Then
+			errMsg := fmt.Sprintf("%v", r)
+			expectedErrMsg := "default flag handler and offline handler cannot be used together."
+			assert.Equal(t, expectedErrMsg, errMsg, "Unexpected error message")
+		}
+	}()
+
+	// Trigger panic
+	_ = flagsmith.NewClient("key",
+		flagsmith.WithOfflineHandler(offlineHandler),
+		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
+			return flagsmith.Flag{IsDefault: true}, nil
+		}))
+}
+func TestClientErrorsIfLocalEvaluationModeAndOfflineHandlerAreBothSet(t *testing.T) {
+	// Given
+	envJsonPath := "./fixtures/environment.json"
+	offlineHandler, err := flagsmith.NewLocalFileHandler(envJsonPath)
+	assert.NoError(t, err)
+
+	// When
+	defer func() {
+		if r := recover(); r != nil {
+			// Then
+			errMsg := fmt.Sprintf("%v", r)
+			expectedErrMsg := "local evaluation and offline handler cannot be used together."
+			assert.Equal(t, expectedErrMsg, errMsg, "Unexpected error message")
+		}
+	}()
+
+	// Trigger panic
+	_ = flagsmith.NewClient("key",
+		flagsmith.WithOfflineHandler(offlineHandler),
+		flagsmith.WithLocalEvaluation(context.Background()))
+}
+
 func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 	// Given
 	ctx := context.Background()
@@ -491,6 +551,83 @@ func TestWithProxyClientOption(t *testing.T) {
 	assert.NoError(t, err)
 
 	allFlags := flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+}
+
+func TestOfflineMode(t *testing.T) {
+	// Given
+	ctx := context.Background()
+
+	envJsonPath := "./fixtures/environment.json"
+	offlineHandler, err := flagsmith.NewLocalFileHandler(envJsonPath)
+	assert.NoError(t, err)
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithOfflineMode(), flagsmith.WithOfflineHandler(offlineHandler))
+
+	// Then
+	flags, err := client.GetEnvironmentFlags(ctx)
+	assert.NoError(t, err)
+
+	allFlags := flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+
+	// And GetIdentityFlags works as well
+	flags, err = client.GetIdentityFlags(ctx, "test_identity", nil)
+	assert.NoError(t, err)
+
+	allFlags = flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+}
+
+func TestOfflineHandlerIsUsedWhenRequestFails(t *testing.T) {
+	// Given
+	ctx := context.Background()
+
+	envJsonPath := "./fixtures/environment.json"
+	offlineHandler, err := flagsmith.NewLocalFileHandler(envJsonPath)
+	assert.NoError(t, err)
+
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithOfflineHandler(offlineHandler),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	// Then
+	flags, err := client.GetEnvironmentFlags(ctx)
+	assert.NoError(t, err)
+
+	allFlags := flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+
+	// And GetIdentityFlags works as well
+	flags, err = client.GetIdentityFlags(ctx, "test_identity", nil)
+	assert.NoError(t, err)
+
+	allFlags = flags.AllFlags()
 
 	assert.Equal(t, 1, len(allFlags))
 

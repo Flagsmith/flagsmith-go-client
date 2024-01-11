@@ -27,10 +27,11 @@ type Client struct {
 	analyticsProcessor *AnalyticsProcessor
 	defaultFlagHandler func(string) (Flag, error)
 
-	client       flaghttp.Client
-	ctxLocalEval context.Context
-	ctxAnalytics context.Context
-	log          Logger
+	client         flaghttp.Client
+	ctxLocalEval   context.Context
+	ctxAnalytics   context.Context
+	log            Logger
+	offlineHandler OfflineHandler
 }
 
 // NewClient creates instance of Client with given configuration.
@@ -53,6 +54,19 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 	c.client.SetLogger(c.log)
 
+	if c.config.offlineMode && c.offlineHandler == nil {
+		panic("offline handler must be provided to use offline mode.")
+	}
+	if c.defaultFlagHandler != nil && c.offlineHandler != nil {
+		panic("default flag handler and offline handler cannot be used together.")
+	}
+	if c.config.localEvaluation && c.offlineHandler != nil {
+		panic("local evaluation and offline handler cannot be used together.")
+	}
+	if c.offlineHandler != nil {
+		c.environment.Store(c.offlineHandler.GetEnvironment())
+	}
+
 	if c.config.localEvaluation {
 		if !strings.HasPrefix(apiKey, "ser.") {
 			panic("In order to use local evaluation, please generate a server key in the environment settings page.")
@@ -74,7 +88,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 // directly, but instead read the asynchronously updated local environment or
 // use the default flag handler in case it has not yet been updated.
 func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
-	if c.config.localEvaluation {
+	if c.config.localEvaluation || c.config.offlineMode {
 		if f, err = c.getEnvironmentFlagsFromEnvironment(); err == nil {
 			return f, nil
 		}
@@ -83,7 +97,9 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 			return f, nil
 		}
 	}
-	if c.defaultFlagHandler != nil {
+	if c.offlineHandler != nil {
+		return c.getEnvironmentFlagsFromEnvironment()
+	} else if c.defaultFlagHandler != nil {
 		return Flags{defaultFlagHandler: c.defaultFlagHandler}, nil
 	}
 	return Flags{}, &FlagsmithClientError{msg: fmt.Sprintf("Failed to fetch flags with error: %s", err)}
@@ -100,7 +116,7 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 // directly, but instead read the asynchronously updated local environment or
 // use the default flag handler in case it has not yet been updated.
 func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits []*Trait) (f Flags, err error) {
-	if c.config.localEvaluation {
+	if c.config.localEvaluation || c.config.offlineMode {
 		if f, err = c.getIdentityFlagsFromEnvironment(identifier, traits); err == nil {
 			return f, nil
 		}
@@ -109,7 +125,9 @@ func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits
 			return f, nil
 		}
 	}
-	if c.defaultFlagHandler != nil {
+	if c.offlineHandler != nil {
+		return c.getIdentityFlagsFromEnvironment(identifier, traits)
+	} else if c.defaultFlagHandler != nil {
 		return Flags{defaultFlagHandler: c.defaultFlagHandler}, nil
 	}
 	return Flags{}, &FlagsmithClientError{msg: fmt.Sprintf("Failed to fetch flags with error: %s", err)}
