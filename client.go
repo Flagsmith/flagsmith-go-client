@@ -50,7 +50,9 @@ func NewClient(apiKey string, options ...Option) *Client {
 	c.log = createLogger()
 
 	for _, opt := range options {
-		opt(c)
+		if opt != nil {
+			opt(c)
+		}
 	}
 	c.client.SetLogger(c.log)
 
