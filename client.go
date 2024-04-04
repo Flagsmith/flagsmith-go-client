@@ -277,11 +277,11 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		return errors.New(e["detail"])
 	}
 	c.environment.Store(&env)
-	ids := make(map[string]identities.IdentityModel)
+	identitiesWithOverrides := make(map[string]identities.IdentityModel)
 	for _, id := range env.IdentityOverrides {
-		ids[id.Identifier] = *id
+		identitiesWithOverrides[id.Identifier] = *id
 	}
-	c.identitiesWithOverrides.Store(ids)
+	c.identitiesWithOverrides.Store(identitiesWithOverrides)
 
 	return nil
 }
@@ -292,11 +292,11 @@ func (c *Client) getIdentityModel(identifier string, apiKey string, traits []*Tr
 		identityTraits[i] = trait.ToTraitModel()
 	}
 
-	ids, _ := c.identitiesWithOverrides.Load().(map[string]identities.IdentityModel)
-	id, ok := ids[identifier]
+	identitiesWithOverrides, _ := c.identitiesWithOverrides.Load().(map[string]identities.IdentityModel)
+	identity, ok := identitiesWithOverrides[identifier]
 	if ok {
-		id.IdentityTraits = identityTraits
-		return id
+		identity.IdentityTraits = identityTraits
+		return identity
 	}
 
 	return identities.IdentityModel{
