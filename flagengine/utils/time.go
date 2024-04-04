@@ -3,19 +3,19 @@ package utils
 import (
 	"strings"
 	"time"
-)
 
-const iso8601 = "2006-01-02T15:04:05.999999"
+	"github.com/itlightning/dateparse"
+)
 
 type ISOTime struct {
 	time.Time
 }
 
 func (i *ISOTime) UnmarshalJSON(bytes []byte) (err error) {
-	i.Time, err = time.Parse(iso8601, strings.Trim(string(bytes), `"`))
+	i.Time, err = dateparse.ParseAny(strings.Trim(string(bytes), `"`))
 	return
 }
 
 func (i *ISOTime) MarshalJSON() ([]byte, error) {
-	return []byte(`"` + i.Time.Format(iso8601) + `"`), nil
+	return []byte(`"` + i.Time.Format(time.RFC3339) + `"`), nil
 }
