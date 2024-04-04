@@ -22,7 +22,8 @@ type Client struct {
 	apiKey string
 	config config
 
-	environment atomic.Value
+	environment             atomic.Value
+	identitiesWithOverrides atomic.Value
 
 	analyticsProcessor *AnalyticsProcessor
 	defaultFlagHandler func(string) (Flag, error)
@@ -138,7 +139,7 @@ func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits
 // Returns an array of segments that the given identity is part of.
 func (c *Client) GetIdentitySegments(identifier string, traits []*Trait) ([]*segments.SegmentModel, error) {
 	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
-		identity := buildIdentityModel(identifier, env.APIKey, traits)
+		identity := c.getIdentityModel(identifier, env.APIKey, traits)
 		return flagengine.GetIdentitySegments(env, &identity), nil
 	}
 	return nil, &FlagsmithClientError{msg: "flagsmith: Local evaluation required to obtain identity segments"}
@@ -214,7 +215,7 @@ func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits []*Tr
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	identity := buildIdentityModel(identifier, env.APIKey, traits)
+	identity := c.getIdentityModel(identifier, env.APIKey, traits)
 	featureStates := flagengine.GetIdentityFeatureStates(env, &identity)
 	flags := makeFlagsFromFeatureStates(
 		featureStates,
@@ -276,15 +277,28 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		return errors.New(e["detail"])
 	}
 	c.environment.Store(&env)
+	ids := make(map[string]identities.IdentityModel)
+	for _, id := range env.IdentityOverrides {
+		ids[id.Identifier] = *id
+	}
+	c.identitiesWithOverrides.Store(ids)
 
 	return nil
 }
 
-func buildIdentityModel(identifier string, apiKey string, traits []*Trait) identities.IdentityModel {
+func (c *Client) getIdentityModel(identifier string, apiKey string, traits []*Trait) identities.IdentityModel {
 	identityTraits := make([]*TraitModel, len(traits))
 	for i, trait := range traits {
 		identityTraits[i] = trait.ToTraitModel()
 	}
+
+	ids, _ := c.identitiesWithOverrides.Load().(map[string]identities.IdentityModel)
+	id, ok := ids[identifier]
+	if ok {
+		id.IdentityTraits = identityTraits
+		return id
+	}
+
 	return identities.IdentityModel{
 		Identifier:        identifier,
 		IdentityTraits:    identityTraits,
