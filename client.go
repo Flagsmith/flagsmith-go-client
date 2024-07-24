@@ -107,6 +107,10 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 	return Flags{}, &FlagsmithClientError{msg: fmt.Sprintf("Failed to fetch flags with error: %s", err)}
 }
 
+type GetIdentityFlagsOpts struct {
+	Transient bool `json:"transient,omitempty"`
+}
+
 // Returns `Flags` struct holding all the flags for the current environment for
 // a given identity.
 //
@@ -117,13 +121,13 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 // If local evaluation is enabled this function will not call the Flagsmith API
 // directly, but instead read the asynchronously updated local environment or
 // use the default flag handler in case it has not yet been updated.
-func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits []*Trait) (f Flags, err error) {
+func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits []*Trait, opts *GetIdentityFlagsOpts) (f Flags, err error) {
 	if c.config.localEvaluation || c.config.offlineMode {
 		if f, err = c.getIdentityFlagsFromEnvironment(identifier, traits); err == nil {
 			return f, nil
 		}
 	} else {
-		if f, err = c.GetIdentityFlagsFromAPI(ctx, identifier, traits); err == nil {
+		if f, err = c.GetIdentityFlagsFromAPI(ctx, identifier, traits, opts); err == nil {
 			return f, nil
 		}
 	}
@@ -196,11 +200,15 @@ func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) 
 
 // GetIdentityFlagsFromAPI tries to contact the Flagsmith API to get the latest identity flags.
 // Will return an error in case of failure or unexpected response.
-func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string, traits []*Trait) (Flags, error) {
+func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string, traits []*Trait, opts *GetIdentityFlagsOpts) (Flags, error) {
 	body := struct {
 		Identifier string   `json:"identifier"`
 		Traits     []*Trait `json:"traits,omitempty"`
+		GetIdentityFlagsOpts
 	}{Identifier: identifier, Traits: traits}
+	if opts != nil {
+		body.Transient = opts.Transient
+	}
 	resp, err := c.client.NewRequest().
 		SetBody(&body).
 		SetContext(ctx).
