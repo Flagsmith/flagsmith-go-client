@@ -101,8 +101,6 @@ func TestIdentityGetAllFeatureStatesSegmentsOnly(t *testing.T) {
 }
 
 func TestIdentityGetAllFeatureStatesWithTraits(t *testing.T) {
-	// t.Parallel()
-
 	feature1, _, segment, env, identity := fixtures.GetFixtures()
 
 	envWithSegmentOverride := fixtures.EnvironmentWithSegmentOverride(env, fixtures.SegmentOverrideFs(segment, feature1), segment)
