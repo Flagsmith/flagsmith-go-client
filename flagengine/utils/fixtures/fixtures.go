@@ -14,15 +14,15 @@ import (
 )
 
 const (
-	SegmentConditionProperty     = "foo"
-	SegmentConditionStringValaue = "bar"
+	SegmentConditionProperty    = "foo"
+	SegmentConditionStringValue = "bar"
 )
 
 func SegmentCondition() *segments.SegmentConditionModel {
 	return &segments.SegmentConditionModel{
 		Operator: segments.Equal,
 		Property: SegmentConditionProperty,
-		Value:    SegmentConditionStringValaue,
+		Value:    SegmentConditionStringValue,
 	}
 }
 
