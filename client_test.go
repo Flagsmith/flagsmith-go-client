@@ -96,6 +96,13 @@ func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 		requestReceived.mu.Unlock()
 		assert.Equal(t, req.URL.Path, "/api/v1/environment-document/")
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, fixtures.EnvironmentJson)
+		if err != nil {
+			panic(err)
+		}
 	}))
 	defer server.Close()
 
@@ -125,6 +132,13 @@ func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 		actualEnvironmentRefreshCounter.mu.Unlock()
 		assert.Equal(t, req.URL.Path, "/api/v1/environment-document/")
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, fixtures.EnvironmentJson)
+		if err != nil {
+			panic(err)
+		}
 	}))
 	defer server.Close()
 
