@@ -2,7 +2,6 @@ package flagsmith
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -11,10 +10,9 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine"
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/environments"
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities"
-	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/segments"
-	"github.com/Flagsmith/flagsmith-go-client/v3/internal/flaghttp"
-
 	. "github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/segments"
+	"github.com/go-resty/resty/v2"
 )
 
 // Client provides various methods to query Flagsmith API.
@@ -28,7 +26,7 @@ type Client struct {
 	analyticsProcessor *AnalyticsProcessor
 	defaultFlagHandler func(string) (Flag, error)
 
-	client         flaghttp.Client
+	client         *resty.Client
 	ctxLocalEval   context.Context
 	ctxAnalytics   context.Context
 	log            Logger
@@ -40,7 +38,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 	c := &Client{
 		apiKey: apiKey,
 		config: defaultConfig(),
-		client: flaghttp.NewClient(),
+		client: resty.New(),
 	}
 
 	c.client.SetHeaders(map[string]string{
@@ -262,19 +260,17 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 
 func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	var env environments.EnvironmentModel
-	e := make(map[string]string)
-	_, err := c.client.NewRequest().
+	resp, err := c.client.NewRequest().
 		SetContext(ctx).
 		SetResult(&env).
-		SetError(&e).
 		ForceContentType("application/json").
 		Get(c.config.baseURL + "environment-document/")
 
 	if err != nil {
-		return err
+		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)}
 	}
-	if len(e) > 0 {
-		return errors.New(e["detail"])
+	if resp.StatusCode() != 200 {
+		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())}
 	}
 	c.environment.Store(&env)
 	identitiesWithOverrides := make(map[string]identities.IdentityModel)

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Flagsmith/flagsmith-go-client/v3/internal/flaghttp"
+	"github.com/go-resty/resty/v2"
 )
 
 const AnalyticsTimerInMilli = 10 * 1000
@@ -17,13 +17,13 @@ type analyticDataStore struct {
 	data map[string]int
 }
 type AnalyticsProcessor struct {
-	client   flaghttp.Client
+	client   *resty.Client
 	store    *analyticDataStore
 	endpoint string
 	log      Logger
 }
 
-func NewAnalyticsProcessor(ctx context.Context, client flaghttp.Client, baseURL string, timerInMilli *int, log Logger) *AnalyticsProcessor {
+func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL string, timerInMilli *int, log Logger) *AnalyticsProcessor {
 	data := make(map[string]int)
 	dataStore := analyticDataStore{data: data}
 	tickerInterval := AnalyticsTimerInMilli
