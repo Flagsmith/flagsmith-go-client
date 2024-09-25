@@ -26,11 +26,12 @@ type Client struct {
 	analyticsProcessor *AnalyticsProcessor
 	defaultFlagHandler func(string) (Flag, error)
 
-	client         *resty.Client
-	ctxLocalEval   context.Context
-	ctxAnalytics   context.Context
-	log            Logger
-	offlineHandler OfflineHandler
+	client           *resty.Client
+	ctxLocalEval     context.Context
+	ctxAnalytics     context.Context
+	log              Logger
+	offlineHandler   OfflineHandler
+	pollErrorHandler func(error)
 }
 
 // NewClient creates instance of Client with given configuration.
@@ -244,6 +245,9 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 		err := c.UpdateEnvironment(ctx)
 		if err != nil {
 			c.log.Errorf("Failed to update environment: %v", err)
+			if c.pollErrorHandler != nil {
+			    c.pollErrorHandler(err)
+			}
 		}
 	}
 	update()

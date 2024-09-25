@@ -675,3 +675,35 @@ func TestOfflineHandlerIsUsedWhenRequestFails(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
 }
+
+func TestPollErrorHandlerIsUsedWhenPollFails(t *testing.T) {
+    // Given
+    ctx := context.Background()
+    expectedErrorMessage := "flagsmith: unexpected response from Flagsmith API: 500 Internal Server Error"
+    var capturedError error
+
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithEnvironmentRefreshInterval(time.Duration(2)*time.Second),
+		flagsmith.WithPollErrorHandler(func(err error) {
+		    capturedError = err
+		}),
+	)
+
+    // when
+    go func() { flagsmith.PollEnvironment(client, ctx) }()
+
+    // stop method in 2 seconds
+    time.Sleep(1 * time.Second)
+    ctx.Done()
+
+    // Then
+    assert.NotNil(t, capturedError)
+    assert.Contains(t, capturedError.Error(), expectedErrorMessage)
+}

@@ -117,3 +117,10 @@ func WithOfflineMode() Option {
 		c.config.offlineMode = true
 	}
 }
+
+// WithPollErrorHandler provides a way to handle errors that occur during polling of environment
+func WithPollErrorHandler(handler func(err error)) Option {
+    return func(c *Client) {
+        c.pollErrorHandler = handler
+    }
+}
