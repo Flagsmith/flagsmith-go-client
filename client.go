@@ -26,12 +26,12 @@ type Client struct {
 	analyticsProcessor *AnalyticsProcessor
 	defaultFlagHandler func(string) (Flag, error)
 
-	client           *resty.Client
-	ctxLocalEval     context.Context
-	ctxAnalytics     context.Context
-	log              Logger
-	offlineHandler   OfflineHandler
-	pollErrorHandler func(error)
+	client         *resty.Client
+	ctxLocalEval   context.Context
+	ctxAnalytics   context.Context
+	log            Logger
+	offlineHandler OfflineHandler
+	errorHandler   func(handler FlagsmithErrorHandler)
 }
 
 // NewClient creates instance of Client with given configuration.
@@ -245,9 +245,6 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 		err := c.UpdateEnvironment(ctx)
 		if err != nil {
 			c.log.Errorf("Failed to update environment: %v", err)
-			if c.pollErrorHandler != nil {
-			    c.pollErrorHandler(err)
-			}
 		}
 	}
 	update()
@@ -271,10 +268,18 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		Get(c.config.baseURL + "environment-document/")
 
 	if err != nil {
-		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)}
+		f := &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)}
+		if c.errorHandler != nil {
+			c.errorHandler(FlagsmithErrorHandler{err, resp.StatusCode(), resp.Status()})
+		}
+		return f
 	}
 	if resp.StatusCode() != 200 {
-		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())}
+		f := &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())}
+		if c.errorHandler != nil {
+			c.errorHandler(FlagsmithErrorHandler{err, resp.StatusCode(), resp.Status()})
+		}
+		return f
 	}
 	c.environment.Store(&env)
 	identitiesWithOverrides := make(map[string]identities.IdentityModel)

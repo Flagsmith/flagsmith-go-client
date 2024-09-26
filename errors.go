@@ -8,6 +8,12 @@ type FlagsmithAPIError struct {
 	msg string
 }
 
+type FlagsmithErrorHandler struct {
+	Err                error
+	ResponseStatusCode int
+	ResponseStatus     string
+}
+
 func (e FlagsmithClientError) Error() string {
 	return e.msg
 }
