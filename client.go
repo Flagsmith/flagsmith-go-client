@@ -31,7 +31,7 @@ type Client struct {
 	ctxAnalytics   context.Context
 	log            Logger
 	offlineHandler OfflineHandler
-	errorHandler   func(handler FlagsmithErrorHandler)
+	errorHandler   func(handler *FlagsmithAPIError)
 }
 
 // NewClient creates instance of Client with given configuration.
@@ -148,7 +148,8 @@ func (c *Client) GetIdentitySegments(identifier string, traits []*Trait) ([]*seg
 // NOTE: This method only works with Edge API endpoint.
 func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) error {
 	if len(batch) > bulkIdentifyMaxCount {
-		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: batch size must be less than %d", bulkIdentifyMaxCount)}
+		msg := fmt.Sprintf("flagsmith: batch size must be less than %d", bulkIdentifyMaxCount)
+		return &FlagsmithAPIError{Msg: msg}
 	}
 
 	body := struct {
@@ -161,13 +162,16 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 		ForceContentType("application/json").
 		Post(c.config.baseURL + "bulk-identities/")
 	if resp.StatusCode() == 404 {
-		return &FlagsmithAPIError{msg: "flagsmith: Bulk identify endpoint not found; Please make sure you are using Edge API endpoint"}
+		msg := "flagsmith: Bulk identify endpoint not found; Please make sure you are using Edge API endpoint"
+		return &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
 	}
 	if err != nil {
-		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)}
+		msg := fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)
+		return &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
 	}
 	if !resp.IsSuccess() {
-		return &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())}
+		msg := fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())
+		return &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
 	}
 	return nil
 }
@@ -180,10 +184,12 @@ func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) 
 		ForceContentType("application/json").
 		Get(c.config.baseURL + "flags/")
 	if err != nil {
-		return Flags{}, &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)}
+		msg := fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)
+		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
 	}
 	if !resp.IsSuccess() {
-		return Flags{}, &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())}
+		msg := fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())
+		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
 	}
 	return makeFlagsFromAPIFlags(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
 }
@@ -201,10 +207,12 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 		ForceContentType("application/json").
 		Post(c.config.baseURL + "identities/")
 	if err != nil {
-		return Flags{}, &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)}
+		msg := fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)
+		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
 	}
 	if !resp.IsSuccess() {
-		return Flags{}, &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())}
+		msg := fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())
+		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
 	}
 	return makeFlagsfromIdentityAPIJson(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
 }
@@ -268,16 +276,18 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		Get(c.config.baseURL + "environment-document/")
 
 	if err != nil {
-		f := &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)}
+		msg := fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)
+		f := &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
 		if c.errorHandler != nil {
-			c.errorHandler(FlagsmithErrorHandler{err, resp.StatusCode(), resp.Status()})
+			c.errorHandler(f)
 		}
 		return f
 	}
 	if resp.StatusCode() != 200 {
-		f := &FlagsmithAPIError{msg: fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())}
+		msg := fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())
+		f := &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
 		if c.errorHandler != nil {
-			c.errorHandler(FlagsmithErrorHandler{err, resp.StatusCode(), resp.Status()})
+			c.errorHandler(f)
 		}
 		return f
 	}

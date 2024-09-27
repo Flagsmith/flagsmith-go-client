@@ -691,8 +691,7 @@ func TestPollErrorHandlerIsUsedWhenPollFails(t *testing.T) {
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
-		flagsmith.WithEnvironmentRefreshInterval(time.Duration(2)*time.Second),
-		flagsmith.WithErrorHandler(func(handler flagsmith.FlagsmithErrorHandler) {
+		flagsmith.WithErrorHandler(func(handler *flagsmith.FlagsmithAPIError) {
 			capturedError = handler.Err
 			statusCode = handler.ResponseStatusCode
 			status = handler.ResponseStatus

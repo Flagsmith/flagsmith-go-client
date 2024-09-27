@@ -5,10 +5,7 @@ type FlagsmithClientError struct {
 }
 
 type FlagsmithAPIError struct {
-	msg string
-}
-
-type FlagsmithErrorHandler struct {
+	Msg                string
 	Err                error
 	ResponseStatusCode int
 	ResponseStatus     string
@@ -19,5 +16,5 @@ func (e FlagsmithClientError) Error() string {
 }
 
 func (e FlagsmithAPIError) Error() string {
-	return e.msg
+	return e.Msg
 }
