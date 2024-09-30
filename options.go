@@ -117,3 +117,10 @@ func WithOfflineMode() Option {
 		c.config.offlineMode = true
 	}
 }
+
+// WithErrorHandler provides a way to handle errors that occur during update of an environment.
+func WithErrorHandler(handler func(handler *FlagsmithAPIError)) Option {
+	return func(c *Client) {
+		c.errorHandler = handler
+	}
+}

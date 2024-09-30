@@ -675,3 +675,34 @@ func TestOfflineHandlerIsUsedWhenRequestFails(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
 }
+
+func TestPollErrorHandlerIsUsedWhenPollFails(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	var capturedError error
+	var statusCode int
+	var status string
+
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithErrorHandler(func(handler *flagsmith.FlagsmithAPIError) {
+			capturedError = handler.Err
+			statusCode = handler.ResponseStatusCode
+			status = handler.ResponseStatus
+		}),
+	)
+
+	// when
+	_ = client.UpdateEnvironment(ctx)
+
+	// Then
+	assert.Equal(t, capturedError, nil)
+	assert.Equal(t, statusCode, 500)
+	assert.Equal(t, status, "500 Internal Server Error")
+}
