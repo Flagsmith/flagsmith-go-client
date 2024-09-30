@@ -12,7 +12,7 @@ This is the SDK for go for [https://flagsmith.com/](https://flagsmith.com/).
 
 ## Adding to your project
 
-For full documentation visit [https://docs.flagsmith.com/clients/server-side](https://docs.flagsmith.com/clients/server-side).
+For full documentation visit [https://docs.flagsmith.com/clients/server-side?language=go](https://docs.flagsmith.com/clients/server-side?language=go).
 
 ## Contributing
 
