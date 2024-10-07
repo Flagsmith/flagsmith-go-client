@@ -39,6 +39,17 @@ type Client struct {
 	errorHandler   func(handler *FlagsmithAPIError)
 }
 
+// Returns context with provided EvaluationContext instance set.
+func WithEvaluationContext(ctx context.Context, ec EvaluationContext) context.Context {
+	return context.WithValue(ctx, contextKeyEvaluationContext, ec)
+}
+
+// Retrieve EvaluationContext instance from context.
+func GetEvaluationContextFromCtx(ctx context.Context) (ec EvaluationContext, ok bool) {
+	ec, ok = ctx.Value(contextKeyEvaluationContext).(EvaluationContext)
+	return ec, ok
+}
+
 // NewClient creates instance of Client with given configuration.
 func NewClient(apiKey string, options ...Option) *Client {
 	c := &Client{
@@ -104,7 +115,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 // * `EvaluationContext.Feature` is not yet supported.
 func (c *Client) GetFlags(ctx context.Context, ec *EvaluationContext) (f Flags, err error) {
 	if ec != nil {
-		ctx = context.WithValue(ctx, contextKeyEvaluationContext, ec)
+		ctx = WithEvaluationContext(ctx, *ec)
 		if ec.Identity != nil {
 			return c.GetIdentityFlags(ctx, ec.Identity.Identifier, mapIdentityEvaluationContextToTraits(*ec.Identity))
 		}
@@ -212,9 +223,9 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 // Will return an error in case of failure or unexpected response.
 func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) {
 	req := c.client.NewRequest()
-	maybeEc := ctx.Value(contextKeyEvaluationContext)
-	if maybeEc != nil {
-		envCtx := maybeEc.(*EvaluationContext).Environment
+	ec, ok := GetEvaluationContextFromCtx(ctx)
+	if ok {
+		envCtx := ec.Environment
 		if envCtx != nil {
 			req.SetHeader(EnvironmentKeyHeader, envCtx.APIKey)
 		}
@@ -243,9 +254,8 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 		Transient  *bool    `json:"transient,omitempty"`
 	}{Identifier: identifier, Traits: traits}
 	req := c.client.NewRequest()
-	maybeEc := ctx.Value(contextKeyEvaluationContext)
-	if maybeEc != nil {
-		ec := maybeEc.(*EvaluationContext)
+	ec, ok := GetEvaluationContextFromCtx(ctx)
+	if ok {
 		envCtx := ec.Environment
 		if envCtx != nil {
 			req.SetHeader(EnvironmentKeyHeader, envCtx.APIKey)
