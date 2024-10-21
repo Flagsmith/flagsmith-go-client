@@ -1,7 +1,9 @@
 run:
   timeout: 3m
   modules-download-mode: readonly
-  skip-dirs:
+
+issues:
+  exclude-dirs:
     - sample
 
 linters:
@@ -13,4 +15,3 @@ linters:
     - goimports
     - misspell
     - whitespace
-

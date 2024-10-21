@@ -20,11 +20,13 @@ type Flag struct {
 type Trait struct {
 	TraitKey   string      `json:"trait_key"`
 	TraitValue interface{} `json:"trait_value"`
+	Transient  bool        `json:"transient,omitempty"`
 }
 
 type IdentityTraits struct {
 	Identifier string   `json:"identifier"`
 	Traits     []*Trait `json:"traits"`
+	Transient  bool     `json:"transient,omitempty"`
 }
 
 func (t *Trait) ToTraitModel() *traits.TraitModel {

@@ -10,10 +10,15 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine"
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/environments"
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities"
-	. "github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities/traits"
 	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/segments"
 	"github.com/go-resty/resty/v2"
+
+	enginetraits "github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities/traits"
 )
+
+type contextKey string
+
+var contextKeyEvaluationContext = contextKey("evaluationContext")
 
 // Client provides various methods to query Flagsmith API.
 type Client struct {
@@ -34,6 +39,17 @@ type Client struct {
 	errorHandler   func(handler *FlagsmithAPIError)
 }
 
+// Returns context with provided EvaluationContext instance set.
+func WithEvaluationContext(ctx context.Context, ec EvaluationContext) context.Context {
+	return context.WithValue(ctx, contextKeyEvaluationContext, ec)
+}
+
+// Retrieve EvaluationContext instance from context.
+func GetEvaluationContextFromCtx(ctx context.Context) (ec EvaluationContext, ok bool) {
+	ec, ok = ctx.Value(contextKeyEvaluationContext).(EvaluationContext)
+	return ec, ok
+}
+
 // NewClient creates instance of Client with given configuration.
 func NewClient(apiKey string, options ...Option) *Client {
 	c := &Client{
@@ -43,8 +59,8 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 
 	c.client.SetHeaders(map[string]string{
-		"Accept":            "application/json",
-		"X-Environment-Key": c.apiKey,
+		"Accept":             "application/json",
+		EnvironmentKeyHeader: c.apiKey,
 	})
 	c.client.SetTimeout(c.config.timeout)
 	c.log = createLogger()
@@ -86,9 +102,34 @@ func NewClient(apiKey string, options ...Option) *Client {
 
 // Returns `Flags` struct holding all the flags for the current environment.
 //
+// Provide `EvaluationContext` to evaluate flags for a specific environment or identity.
+//
 // If local evaluation is enabled this function will not call the Flagsmith API
 // directly, but instead read the asynchronously updated local environment or
 // use the default flag handler in case it has not yet been updated.
+//
+// Notes:
+//
+// * `EvaluationContext.Environment` is ignored in local evaluation mode.
+//
+// * `EvaluationContext.Feature` is not yet supported.
+func (c *Client) GetFlags(ctx context.Context, ec *EvaluationContext) (f Flags, err error) {
+	if ec != nil {
+		ctx = WithEvaluationContext(ctx, *ec)
+		if ec.Identity != nil {
+			return c.GetIdentityFlags(ctx, ec.Identity.Identifier, mapIdentityEvaluationContextToTraits(*ec.Identity))
+		}
+	}
+	return c.GetEnvironmentFlags(ctx)
+}
+
+// Returns `Flags` struct holding all the flags for the current environment.
+//
+// If local evaluation is enabled this function will not call the Flagsmith API
+// directly, but instead read the asynchronously updated local environment or
+// use the default flag handler in case it has not yet been updated.
+//
+// Deprecated: Use `GetFlags` instead.
 func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 	if c.config.localEvaluation || c.config.offlineMode {
 		if f, err = c.getEnvironmentFlagsFromEnvironment(); err == nil {
@@ -117,6 +158,8 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 // If local evaluation is enabled this function will not call the Flagsmith API
 // directly, but instead read the asynchronously updated local environment or
 // use the default flag handler in case it has not yet been updated.
+//
+// Deprecated: Use `GetFlags` providing `EvaluationContext.Identity` instead.
 func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits []*Trait) (f Flags, err error) {
 	if c.config.localEvaluation || c.config.offlineMode {
 		if f, err = c.getIdentityFlagsFromEnvironment(identifier, traits); err == nil {
@@ -179,7 +222,15 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 // GetEnvironmentFlagsFromAPI tries to contact the Flagsmith API to get the latest environment data.
 // Will return an error in case of failure or unexpected response.
 func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) {
-	resp, err := c.client.NewRequest().
+	req := c.client.NewRequest()
+	ec, ok := GetEvaluationContextFromCtx(ctx)
+	if ok {
+		envCtx := ec.Environment
+		if envCtx != nil {
+			req.SetHeader(EnvironmentKeyHeader, envCtx.APIKey)
+		}
+	}
+	resp, err := req.
 		SetContext(ctx).
 		ForceContentType("application/json").
 		Get(c.config.baseURL + "flags/")
@@ -200,8 +251,22 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 	body := struct {
 		Identifier string   `json:"identifier"`
 		Traits     []*Trait `json:"traits,omitempty"`
+		Transient  *bool    `json:"transient,omitempty"`
 	}{Identifier: identifier, Traits: traits}
-	resp, err := c.client.NewRequest().
+	req := c.client.NewRequest()
+	ec, ok := GetEvaluationContextFromCtx(ctx)
+	if ok {
+		envCtx := ec.Environment
+		if envCtx != nil {
+			req.SetHeader(EnvironmentKeyHeader, envCtx.APIKey)
+		}
+		idCtx := ec.Identity
+		if idCtx != nil {
+			// `Identifier` and `Traits` had been set by `GetFlags` earlier.
+			body.Transient = &idCtx.Transient
+		}
+	}
+	resp, err := req.
 		SetBody(&body).
 		SetContext(ctx).
 		ForceContentType("application/json").
@@ -302,7 +367,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 }
 
 func (c *Client) getIdentityModel(identifier string, apiKey string, traits []*Trait) identities.IdentityModel {
-	identityTraits := make([]*TraitModel, len(traits))
+	identityTraits := make([]*enginetraits.TraitModel, len(traits))
 	for i, trait := range traits {
 		identityTraits[i] = trait.ToTraitModel()
 	}
