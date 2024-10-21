@@ -236,7 +236,7 @@ func TestGetFlagsTransientTraits(t *testing.T) {
 	expectedRequestBody := `{"identifier":"test_identity","traits":` +
 		`[{"trait_key":"NullTrait","trait_value":null},` +
 		`{"trait_key":"StringTrait","trait_value":"value"},` +
-		`{"trait_key":"TransientTrait","trait_value":"value","transient":true}],"transient":false}`
+		`{"trait_key":"TransientTrait","trait_value":"value","transient":true}]}`
 	server := getTestHttpServer(t, "/api/v1/identities/", fixtures.EnvironmentAPIKey, &expectedRequestBody, fixtures.IdentityResponseJson)
 	defer server.Close()
 

@@ -16,6 +16,9 @@ func mapTraitEvaluationContextToTrait(tKey string, tCtx *TraitEvaluationContext)
 	if tCtx == nil {
 		return &Trait{TraitKey: tKey, TraitValue: nil}
 	}
+	if tCtx.Transient == nil {
+		return &Trait{TraitKey: tKey, TraitValue: tCtx.Value}
+	}
 	return &Trait{TraitKey: tKey, TraitValue: tCtx.Value, Transient: *tCtx.Transient}
 }
 
