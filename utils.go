@@ -16,7 +16,7 @@ func mapTraitEvaluationContextToTrait(tKey string, tCtx *TraitEvaluationContext)
 	if tCtx == nil {
 		return &Trait{TraitKey: tKey, TraitValue: nil}
 	}
-	return &Trait{TraitKey: tKey, TraitValue: tCtx.Value, Transient: tCtx.Transient}
+	return &Trait{TraitKey: tKey, TraitValue: tCtx.Value, Transient: *tCtx.Transient}
 }
 
 func sortedKeys[Map ~map[string]V, V any](m Map) []string {

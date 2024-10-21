@@ -9,7 +9,7 @@ func getTraitEvaluationContext(v interface{}) TraitEvaluationContext {
 }
 
 func NewTraitEvaluationContext(value interface{}, transient bool) TraitEvaluationContext {
-	return TraitEvaluationContext{Value: value, Transient: transient}
+	return TraitEvaluationContext{Value: value, Transient: &transient}
 }
 
 func NewEvaluationContext(identifier string, traits map[string]interface{}) EvaluationContext {
@@ -20,7 +20,7 @@ func NewEvaluationContext(identifier string, traits map[string]interface{}) Eval
 		traitsCtx[tKey] = &tCtx
 	}
 	ec.Identity = &IdentityEvaluationContext{
-		Identifier: identifier,
+		Identifier: &identifier,
 		Traits:     traitsCtx,
 	}
 	return ec
@@ -28,6 +28,7 @@ func NewEvaluationContext(identifier string, traits map[string]interface{}) Eval
 
 func NewTransientEvaluationContext(identifier string, traits map[string]interface{}) EvaluationContext {
 	ec := NewEvaluationContext(identifier, traits)
-	ec.Identity.Transient = true
+	var transient = true
+	ec.Identity.Transient = &transient
 	return ec
 }

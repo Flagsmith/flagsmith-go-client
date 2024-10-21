@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/environments"
+	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
 )
 
 type OfflineHandler interface {

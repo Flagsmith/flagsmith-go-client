@@ -7,13 +7,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine"
-	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/environments"
-	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities"
-	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/segments"
+	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine"
+	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
+	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities"
+	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/segments"
 	"github.com/go-resty/resty/v2"
 
-	enginetraits "github.com/Flagsmith/flagsmith-go-client/v3/flagengine/identities/traits"
+	enginetraits "github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
 )
 
 type contextKey string
@@ -117,7 +117,7 @@ func (c *Client) GetFlags(ctx context.Context, ec *EvaluationContext) (f Flags, 
 	if ec != nil {
 		ctx = WithEvaluationContext(ctx, *ec)
 		if ec.Identity != nil {
-			return c.GetIdentityFlags(ctx, ec.Identity.Identifier, mapIdentityEvaluationContextToTraits(*ec.Identity))
+			return c.GetIdentityFlags(ctx, *ec.Identity.Identifier, mapIdentityEvaluationContextToTraits(*ec.Identity))
 		}
 	}
 	return c.GetEnvironmentFlags(ctx)
@@ -263,7 +263,7 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 		idCtx := ec.Identity
 		if idCtx != nil {
 			// `Identifier` and `Traits` had been set by `GetFlags` earlier.
-			body.Transient = &idCtx.Transient
+			body.Transient = idCtx.Transient
 		}
 	}
 	resp, err := req.

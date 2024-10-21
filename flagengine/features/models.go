@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/Flagsmith/flagsmith-go-client/v3/flagengine/utils"
+	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/utils"
 )
 
 type FeatureModel struct {
