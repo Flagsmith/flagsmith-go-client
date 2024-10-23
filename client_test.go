@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	flagsmith "github.com/Flagsmith/flagsmith-go-client/v3"
-	"github.com/Flagsmith/flagsmith-go-client/v3/fixtures"
+	flagsmith "github.com/Flagsmith/flagsmith-go-client/v4"
+	"github.com/Flagsmith/flagsmith-go-client/v4/fixtures"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -204,6 +204,8 @@ func TestGetFlags(t *testing.T) {
 
 func TestGetFlagsTransientIdentity(t *testing.T) {
 	// Given
+	identifier := "transient"
+	transient := true
 	ctx := context.Background()
 	expectedRequestBody := `{"identifier":"transient","transient":true}`
 	server := getTestHttpServer(t, "/api/v1/identities/", fixtures.EnvironmentAPIKey, &expectedRequestBody, fixtures.IdentityResponseJson)
@@ -212,7 +214,7 @@ func TestGetFlagsTransientIdentity(t *testing.T) {
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	flags, err := client.GetFlags(ctx, &flagsmith.EvaluationContext{Identity: &flagsmith.IdentityEvaluationContext{Identifier: "transient", Transient: true}})
+	flags, err := client.GetFlags(ctx, &flagsmith.EvaluationContext{Identity: &flagsmith.IdentityEvaluationContext{Identifier: &identifier, Transient: &transient}})
 
 	// Then
 	assert.NoError(t, err)
@@ -228,11 +230,13 @@ func TestGetFlagsTransientIdentity(t *testing.T) {
 
 func TestGetFlagsTransientTraits(t *testing.T) {
 	// Given
+	identifier := "test_identity"
+	transient := true
 	ctx := context.Background()
 	expectedRequestBody := `{"identifier":"test_identity","traits":` +
 		`[{"trait_key":"NullTrait","trait_value":null},` +
 		`{"trait_key":"StringTrait","trait_value":"value"},` +
-		`{"trait_key":"TransientTrait","trait_value":"value","transient":true}],"transient":false}`
+		`{"trait_key":"TransientTrait","trait_value":"value","transient":true}]}`
 	server := getTestHttpServer(t, "/api/v1/identities/", fixtures.EnvironmentAPIKey, &expectedRequestBody, fixtures.IdentityResponseJson)
 	defer server.Close()
 
@@ -243,13 +247,13 @@ func TestGetFlagsTransientTraits(t *testing.T) {
 		ctx,
 		&flagsmith.EvaluationContext{
 			Identity: &flagsmith.IdentityEvaluationContext{
-				Identifier: "test_identity",
+				Identifier: &identifier,
 				Traits: map[string]*flagsmith.TraitEvaluationContext{
 					"NullTrait":   nil,
 					"StringTrait": {Value: "value"},
 					"TransientTrait": {
 						Value:     "value",
-						Transient: true,
+						Transient: &transient,
 					},
 				},
 			},
@@ -289,6 +293,7 @@ func TestGetFlagsEnvironmentEvaluationContextFlags(t *testing.T) {
 
 func TestGetFlagsEnvironmentEvaluationContextIdentity(t *testing.T) {
 	// Given
+	identifier := "test_identity"
 	ctx := context.Background()
 	expectedEnvKey := "different"
 	server := getTestHttpServer(t, "/api/v1/identities/", expectedEnvKey, nil, fixtures.IdentityResponseJson)
@@ -301,7 +306,7 @@ func TestGetFlagsEnvironmentEvaluationContextIdentity(t *testing.T) {
 		ctx,
 		&flagsmith.EvaluationContext{
 			Environment: &flagsmith.EnvironmentEvaluationContext{APIKey: expectedEnvKey},
-			Identity:    &flagsmith.IdentityEvaluationContext{Identifier: "test_identity"},
+			Identity:    &flagsmith.IdentityEvaluationContext{Identifier: &identifier},
 		})
 
 	// Then

@@ -15,12 +15,12 @@ type FeatureEvaluationContext struct {
 }
 
 type IdentityEvaluationContext struct {
-	Identifier string                             `json:"identifier,omitempty"`
+	Identifier *string                            `json:"identifier,omitempty"`
 	Traits     map[string]*TraitEvaluationContext `json:"traits,omitempty"`
-	Transient  bool                               `json:"transient,omitempty"`
+	Transient  *bool                              `json:"transient,omitempty"`
 }
 
 type TraitEvaluationContext struct {
-	Transient bool        `json:"transient,omitempty"`
+	Transient *bool       `json:"transient,omitempty"`
 	Value     interface{} `json:"value"`
 }
