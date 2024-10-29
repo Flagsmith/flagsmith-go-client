@@ -144,6 +144,10 @@ func (f *Flags) IsFeatureEnabled(featureName string) (bool, error) {
 
 // Returns a specific flag given the name of the feature.
 func (f *Flags) GetFlag(featureName string) (Flag, error) {
+	if f.analyticsProcessor != nil {
+		f.analyticsProcessor.TrackFeature(featureName)
+	}
+
 	var resultFlag Flag
 	for _, flag := range f.flags {
 		if flag.FeatureName == featureName {
@@ -155,9 +159,6 @@ func (f *Flags) GetFlag(featureName string) (Flag, error) {
 			return f.defaultFlagHandler(featureName)
 		}
 		return resultFlag, &FlagsmithClientError{fmt.Sprintf("flagsmith: No feature found with name %q", featureName)}
-	}
-	if f.analyticsProcessor != nil {
-		f.analyticsProcessor.TrackFeature(resultFlag.FeatureName)
 	}
 	return resultFlag, nil
 }
