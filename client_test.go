@@ -10,7 +10,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
 	flagsmith "github.com/Flagsmith/flagsmith-go-client/v4"
 	"github.com/Flagsmith/flagsmith-go-client/v4/fixtures"
 	"github.com/stretchr/testify/assert"
@@ -865,14 +864,18 @@ func TestPollErrorHandlerIsUsedWhenPollFails(t *testing.T) {
 
 func TestRealtime(t *testing.T) {
 	// Given
-	requestCount := 0
 	mux := http.NewServeMux()
+	requestCount := struct {
+		mu    sync.Mutex
+		count int
+	}{}
+
 	mux.HandleFunc("/api/v1/environment-document/", func(rw http.ResponseWriter, req *http.Request) {
 		assert.Equal(t, "GET", req.Method)
-		fmt.Println(req.URL.Path)
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
-
-		requestCount += 1
+		requestCount.mu.Lock()
+		requestCount.count++
+		requestCount.mu.Unlock()
 
 		rw.Header().Set("Content-Type", "application/json")
 		rw.WriteHeader(http.StatusOK)
@@ -936,7 +939,8 @@ func TestRealtime(t *testing.T) {
 	// (After the second sse event)
 	time.Sleep(10 * time.Millisecond)
 
-	assert.Equal(t, 2, requestCount)
+	requestCount.mu.Lock()
+	assert.Equal(t, 2, requestCount.count)
 }
 func sendUpdatedAtSSEEvent(rw http.ResponseWriter, flusher http.Flusher, updatedAt float64) {
 	// Format the SSE event with the provided updatedAt value

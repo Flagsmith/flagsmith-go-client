@@ -28,6 +28,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 			resp, err := http.Get(stream_url)
 			if err != nil {
 				c.log.Errorf("Error connecting to realtime server: %v", err)
+				continue
 			}
 			defer resp.Body.Close()
 
@@ -38,11 +39,13 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 					parsedTime, err := parseUpdatedAtFromSSE(line)
 					if err != nil {
 						c.log.Errorf("Error reading realtime stream: %v", err)
+						return
 					}
 					if parsedTime.After(envUpdatedAt) {
 						err = c.UpdateEnvironment(ctx)
 						if err != nil {
 							c.log.Errorf("Failed to update the environment: %v", err)
+							continue
 						}
 						env, _ := c.environment.Load().(*environments.EnvironmentModel)
 
@@ -51,7 +54,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 				}
 			}
 			if err := scanner.Err(); err != nil {
-				c.log.Errorf("Error realtime stream: %v", err)
+				c.log.Errorf("Error reading realtime stream: %v", err)
 			}
 		}
 	}
