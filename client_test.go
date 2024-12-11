@@ -200,6 +200,7 @@ func TestGetFlags(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+
 }
 
 func TestGetFlagsTransientIdentity(t *testing.T) {
@@ -860,4 +861,97 @@ func TestPollErrorHandlerIsUsedWhenPollFails(t *testing.T) {
 	assert.Equal(t, capturedError, nil)
 	assert.Equal(t, statusCode, 500)
 	assert.Equal(t, status, "500 Internal Server Error")
+}
+
+func TestRealtime(t *testing.T) {
+	// Given
+	requestCount := 0
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/environment-document/", func(rw http.ResponseWriter, req *http.Request) {
+		assert.Equal(t, "GET", req.Method)
+		fmt.Println(req.URL.Path)
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
+
+		requestCount += 1
+
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, fixtures.EnvironmentJson)
+		if err != nil {
+			panic(err)
+		}
+		assert.NoError(t, err)
+	})
+	mux.HandleFunc(fmt.Sprintf("/sse/environments/%s/stream", fixtures.ClientAPIKey), func(rw http.ResponseWriter, req *http.Request) {
+		assert.Equal(t, "GET", req.Method)
+
+		// Set the necessary headers for SSE
+		rw.Header().Set("Content-Type", "text/event-stream")
+		rw.Header().Set("Cache-Control", "no-cache")
+		rw.Header().Set("Connection", "keep-alive")
+
+		// Flush headers to the client
+		flusher, _ := rw.(http.Flusher)
+		flusher.Flush()
+
+		// Use an `updated_at` value that is older than the `updated_at` set on the environment document
+		// to ensure an older timestamp does not trigger an update.
+		sendUpdatedAtSSEEvent(rw, flusher, 1640995200.079725)
+		time.Sleep(10 * time.Millisecond)
+
+		// Update the `updated_at`(to trigger the environment update)
+		sendUpdatedAtSSEEvent(rw, flusher, 1733480514.079725)
+		time.Sleep(10 * time.Millisecond)
+	})
+
+	ctx := context.Background()
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithRealtime(),
+		flagsmith.WithRealtimeBaseURL(server.URL+"/"),
+	)
+	// Sleep to ensure that the server has time to update the environment
+	time.Sleep(10 * time.Millisecond)
+
+	flags, err := client.GetFlags(ctx, nil)
+
+	// Then
+	assert.NoError(t, err)
+
+	allFlags := flags.AllFlags()
+
+	assert.Equal(t, 1, len(allFlags))
+
+	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
+	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
+	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+
+	// Sleep to ensure that the server has time to update the environment
+	// (After the second sse event)
+	time.Sleep(10 * time.Millisecond)
+
+	assert.Equal(t, 2, requestCount)
+}
+func sendUpdatedAtSSEEvent(rw http.ResponseWriter, flusher http.Flusher, updatedAt float64) {
+	// Format the SSE event with the provided updatedAt value
+	sseEvent := fmt.Sprintf(`event: environment_updated
+data: {"updated_at": %f}
+
+`, updatedAt)
+
+	// Write the SSE event to the response
+	_, err := io.WriteString(rw, sseEvent)
+	if err != nil {
+		http.Error(rw, "Failed to send SSE event", http.StatusInternalServerError)
+		return
+	}
+
+	// Flush the event to the client
+	flusher.Flush()
 }

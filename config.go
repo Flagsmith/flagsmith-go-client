@@ -13,6 +13,7 @@ const (
 	DefaultBaseURL = "https://edge.api.flagsmith.com/api/v1/"
 
 	bulkIdentifyMaxCount = 100
+	DefaultRealtimeBaseUrl = "https://realtime.flagsmith.com/"
 )
 
 // config contains all configurable Client settings.
@@ -23,6 +24,8 @@ type config struct {
 	envRefreshInterval time.Duration
 	enableAnalytics    bool
 	offlineMode        bool
+	realtimeBaseUrl    string
+	useRealtime        bool
 }
 
 // defaultConfig returns default configuration.
@@ -31,5 +34,6 @@ func defaultConfig() config {
 		baseURL:            DefaultBaseURL,
 		timeout:            DefaultTimeout,
 		envRefreshInterval: time.Second * 60,
+		realtimeBaseUrl:    DefaultRealtimeBaseUrl,
 	}
 }

@@ -89,14 +89,16 @@ func NewClient(apiKey string, options ...Option) *Client {
 		if !strings.HasPrefix(apiKey, "ser.") {
 			panic("In order to use local evaluation, please generate a server key in the environment settings page.")
 		}
-
-		go c.pollEnvironment(c.ctxLocalEval)
+		if c.config.useRealtime {
+			go c.startRealtimeUpdates(c.ctxLocalEval)
+		} else {
+			go c.pollEnvironment(c.ctxLocalEval)
+		}
 	}
 	// Initialize analytics processor
 	if c.config.enableAnalytics {
 		c.analyticsProcessor = NewAnalyticsProcessor(c.ctxAnalytics, c.client, c.config.baseURL, nil, c.log)
 	}
-
 	return c
 }
 
@@ -331,7 +333,6 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 		}
 	}
 }
-
 func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	var env environments.EnvironmentModel
 	resp, err := c.client.NewRequest().
