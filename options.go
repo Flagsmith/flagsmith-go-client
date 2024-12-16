@@ -2,6 +2,7 @@ package flagsmith
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,8 @@ var _ = []Option{
 	WithCustomHeaders(nil),
 	WithDefaultHandler(nil),
 	WithProxy(""),
+	WithRealtime(),
+	WithRealtimeBaseURL(""),
 }
 
 func WithBaseURL(url string) Option {
@@ -122,5 +125,24 @@ func WithOfflineMode() Option {
 func WithErrorHandler(handler func(handler *FlagsmithAPIError)) Option {
 	return func(c *Client) {
 		c.errorHandler = handler
+	}
+}
+
+// WithRealtime returns an Option function that enables real-time updates for the Client.
+// NOTE: Before enabling real-time updates, ensure that local evaluation is enabled.
+func WithRealtime() Option {
+	return func(c *Client) {
+		c.config.useRealtime = true
+	}
+}
+
+// WithRealtimeBaseURL returns an Option function for configuring the real-time base URL of the Client.
+func WithRealtimeBaseURL(url string) Option {
+	return func(c *Client) {
+		// Ensure the URL ends with a trailing slash
+		if !strings.HasSuffix(url, "/") {
+			url += "/"
+		}
+		c.config.realtimeBaseUrl = url
 	}
 }

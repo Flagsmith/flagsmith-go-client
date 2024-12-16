@@ -12,10 +12,12 @@ const Feature1Name = "feature_1"
 const Feature1ID = 1
 
 const Feature1OverriddenValue = "some-overridden-value"
+const ClientAPIKey = "B62qaMZNwfiqT76p38ggrQ"
 
 const EnvironmentJson = `
 {
 	"api_key": "B62qaMZNwfiqT76p38ggrQ",
+	"updated_at": "2023-12-06T10:21:54.079725Z",
 	"project": {
 		"name": "Test project",
 		"organisation": {

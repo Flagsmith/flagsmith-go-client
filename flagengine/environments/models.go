@@ -4,6 +4,7 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/projects"
+	"time"
 )
 
 type EnvironmentModel struct {
@@ -12,4 +13,5 @@ type EnvironmentModel struct {
 	Project           *projects.ProjectModel        `json:"project"`
 	FeatureStates     []*features.FeatureStateModel `json:"feature_states"`
 	IdentityOverrides []*identities.IdentityModel   `json:"identity_overrides"`
+	UpdatedAt         time.Time                     `json:"updated_at"`
 }
