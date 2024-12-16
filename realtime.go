@@ -39,7 +39,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 					parsedTime, err := parseUpdatedAtFromSSE(line)
 					if err != nil {
 						c.log.Errorf("Error reading realtime stream: %v", err)
-						return
+						continue
 					}
 					if parsedTime.After(envUpdatedAt) {
 						err = c.UpdateEnvironment(ctx)
