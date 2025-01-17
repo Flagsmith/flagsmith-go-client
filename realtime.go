@@ -31,10 +31,10 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 				time.Sleep(c.client.RetryWaitTime)
 				continue
 			}
+			defer resp.Body.Close()
 			if resp.Header.Get("Content-Type") != "text/event-stream" {
 				panic("realtime server did not open an SSE connection")
 			}
-			defer resp.Body.Close()
 
 			scanner := bufio.NewScanner(resp.Body)
 			for scanner.Scan() {
