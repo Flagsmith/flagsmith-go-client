@@ -2,5 +2,4 @@ repos:
   - repo: https://github.com/golangci/golangci-lint
     rev: v1.63.4
     hooks:
-      - id: golangci-lint
-        args: ["--verbose", "-c", "./.golangci.yml"]
+      - id: golangci-lint-full
