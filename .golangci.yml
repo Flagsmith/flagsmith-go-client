@@ -15,3 +15,8 @@ linters:
     - goimports
     - misspell
     - whitespace
+
+# Additional dependencies
+additional_dependencies:
+  - github.com/blang/semver/v4
+  - github.com/go-resty/resty/v2

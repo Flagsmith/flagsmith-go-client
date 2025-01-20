@@ -3,3 +3,4 @@ repos:
     rev: v1.63.4
     hooks:
       - id: golangci-lint
+        args: ["--verbose", "-c", "./.golangci.yml"]
