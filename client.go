@@ -91,9 +91,8 @@ func NewClient(apiKey string, options ...Option) *Client {
 		}
 		if c.config.useRealtime {
 			go c.startRealtimeUpdates(c.ctxLocalEval)
-		} else {
-			go c.pollEnvironment(c.ctxLocalEval)
 		}
+		go c.pollEnvironment(c.ctxLocalEval)
 	}
 	// Initialize analytics processor
 	if c.config.enableAnalytics {
