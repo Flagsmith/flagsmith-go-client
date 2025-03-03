@@ -28,9 +28,13 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 			resp, err := http.Get(stream_url)
 			if err != nil {
 				c.log.Errorf("Error connecting to realtime server: %v", err)
+				time.Sleep(c.client.RetryWaitTime)
 				continue
 			}
 			defer resp.Body.Close()
+			if resp.Header.Get("Content-Type") != "text/event-stream" {
+				panic("realtime server did not open an SSE connection")
+			}
 
 			scanner := bufio.NewScanner(resp.Body)
 			for scanner.Scan() {
