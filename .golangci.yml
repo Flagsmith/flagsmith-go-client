@@ -15,4 +15,3 @@ linters:
     - goimports
     - misspell
     - whitespace
-
