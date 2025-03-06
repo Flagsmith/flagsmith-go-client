@@ -21,6 +21,7 @@ jobs:
         uses: golangci/golangci-lint-action@v6.5.0
         with:
           skip-cache: "true"
+          skip-save-cache: "true"
           cache-invalidation-interval: -1
           version: latest
           args: --verbose
