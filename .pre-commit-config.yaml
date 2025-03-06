@@ -3,6 +3,3 @@ repos:
     rev: v1.64.6
     hooks:
       - id: golangci-lint-full
-
-ci:
-  skip: [golangci-lint-full]
