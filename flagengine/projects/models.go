@@ -9,6 +9,6 @@ type ProjectModel struct {
 	ID                int                              `json:"id"`
 	Name              string                           `json:"name"`
 	HideDisabledFlags bool                             `json:"hide_disabled_flags"`
-	Organization      *organisations.OrganisationModel `json:"organization"`
+	Organisation      *organisations.OrganisationModel `json:"organisation"`
 	Segments          []*segments.SegmentModel         `json:"segments"`
 }
