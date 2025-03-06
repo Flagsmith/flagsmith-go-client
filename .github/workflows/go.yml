@@ -40,5 +40,8 @@ jobs:
     - name: Build
       run: go build -v ./...
 
+    - name: Lint
+      uses: golangci/golangci-lint-action@v6.5.0
+
     - name: Test
       run: go test -v -race ./...
