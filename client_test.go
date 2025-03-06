@@ -201,7 +201,6 @@ func TestGetFlags(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
 
 }
-
 func TestGetFlagsTransientIdentity(t *testing.T) {
 	// Given
 	identifier := "transient"
