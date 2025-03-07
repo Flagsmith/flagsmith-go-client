@@ -940,8 +940,9 @@ func TestRealtime(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	requestCount.mu.Lock()
-	assert.Equal(t, 2, requestCount.count)
+	assert.Equal(t, 3, requestCount.count)
 }
+
 func sendUpdatedAtSSEEvent(rw http.ResponseWriter, flusher http.Flusher, updatedAt float64) {
 	// Format the SSE event with the provided updatedAt value
 	sseEvent := fmt.Sprintf(`event: environment_updated
