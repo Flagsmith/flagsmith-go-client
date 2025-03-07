@@ -12,7 +12,7 @@ const (
 	// Default base URL for the API.
 	DefaultBaseURL = "https://edge.api.flagsmith.com/api/v1/"
 
-	bulkIdentifyMaxCount = 100
+	BulkIdentifyMaxCount   = 100
 	DefaultRealtimeBaseUrl = "https://realtime.flagsmith.com/"
 )
 

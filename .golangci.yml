@@ -1,17 +1,23 @@
-run:
-  timeout: 3m
-  modules-download-mode: readonly
-
-issues:
-  exclude-dirs:
-    - sample
-
+linters-settings:
+  misspell:
+    locale: UK
 linters:
-  # enable additional linters, that are disabled by default
   enable:
     - contextcheck
+    - errcheck
     - godot
     - gofmt
     - goimports
+    - gosimple
+    - govet
+    - ineffassign
     - misspell
+    - staticcheck
+    - unused
     - whitespace
+  disable-all: true
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+run:
+  timeout: 5m

@@ -1,10 +1,11 @@
 package environments
 
 import (
+	"time"
+
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/projects"
-	"time"
 )
 
 type EnvironmentModel struct {

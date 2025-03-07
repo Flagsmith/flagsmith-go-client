@@ -41,7 +41,7 @@ func Segment(rule *segments.SegmentRuleModel) *segments.SegmentModel {
 	}
 }
 
-func Organization() *organisations.OrganisationModel {
+func Organisation() *organisations.OrganisationModel {
 	return &organisations.OrganisationModel{
 		ID:               1,
 		Name:             "test Org",
@@ -55,7 +55,7 @@ func Project(org *organisations.OrganisationModel, segment *segments.SegmentMode
 	return &projects.ProjectModel{
 		ID:                1,
 		Name:              "Test Project",
-		Organization:      org,
+		Organisation:      org,
 		HideDisabledFlags: false,
 		Segments:          []*segments.SegmentModel{segment},
 	}
@@ -146,7 +146,7 @@ func EnvironmentWithSegmentOverride(
 func GetFixtures() (*features.FeatureModel, *features.FeatureModel, *segments.SegmentModel, *environments.EnvironmentModel, *identities.IdentityModel) {
 	feature1 := Feature1()
 	feature2 := Feature2()
-	org := Organization()
+	org := Organisation()
 	cond := SegmentCondition()
 	rule := SegmentRule(cond)
 	segment := Segment(rule)

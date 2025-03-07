@@ -27,7 +27,7 @@ func NewLocalFileHandler(environmentDocumentPath string) (*LocalFileHandler, err
 		return nil, err
 	}
 
-	// Create and initialize the LocalFileHandler
+	// Create and initialise the LocalFileHandler
 	handler := &LocalFileHandler{
 		environment: &environment,
 	}

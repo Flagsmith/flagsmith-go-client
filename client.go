@@ -95,7 +95,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 			go c.pollEnvironment(c.ctxLocalEval)
 		}
 	}
-	// Initialize analytics processor
+	// Initialise analytics processor
 	if c.config.enableAnalytics {
 		c.analyticsProcessor = NewAnalyticsProcessor(c.ctxAnalytics, c.client, c.config.baseURL, nil, c.log)
 	}
@@ -192,8 +192,8 @@ func (c *Client) GetIdentitySegments(identifier string, traits []*Trait) ([]*seg
 // BulkIdentify can be used to create/overwrite identities(with traits) in bulk
 // NOTE: This method only works with Edge API endpoint.
 func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) error {
-	if len(batch) > bulkIdentifyMaxCount {
-		msg := fmt.Sprintf("flagsmith: batch size must be less than %d", bulkIdentifyMaxCount)
+	if len(batch) > BulkIdentifyMaxCount {
+		msg := fmt.Sprintf("flagsmith: batch size must be less than %d", BulkIdentifyMaxCount)
 		return &FlagsmithAPIError{Msg: msg}
 	}
 

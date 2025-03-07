@@ -10,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+
 	flagsmith "github.com/Flagsmith/flagsmith-go-client/v4"
 	"github.com/Flagsmith/flagsmith-go-client/v4/fixtures"
 	"github.com/stretchr/testify/assert"
@@ -199,7 +200,6 @@ func TestGetFlags(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
-
 }
 
 func TestGetFlagsTransientIdentity(t *testing.T) {
