@@ -31,7 +31,7 @@ func (s restySlogLogger) Debugf(format string, v ...interface{}) {
 }
 
 func defaultLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	return slog.New(slog.NewJSONHandler(os.Stderr, nil)).WithGroup("flagsmith")
 }
 
 func newRestyLogRequestMiddleware(logger *slog.Logger) resty.RequestMiddleware {

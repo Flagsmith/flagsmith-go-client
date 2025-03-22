@@ -61,7 +61,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 
 	if c.log == nil {
-		c.log = defaultLogger().WithGroup("flagsmith")
+		c.log = defaultLogger()
 	}
 	c.client = resty.
 		New().
