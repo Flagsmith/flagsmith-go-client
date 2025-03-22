@@ -4,22 +4,16 @@ import (
 	"sort"
 )
 
-func mapIdentityEvaluationContextToTraits(ic IdentityEvaluationContext) []*Trait {
-	traits := make([]*Trait, len(ic.Traits))
+func mapIdentityEvaluationContextToTraits(ic IdentityEvaluationContext) []Trait {
+	traits := make([]Trait, len(ic.Traits))
 	for i, tKey := range sortedKeys(ic.Traits) {
-		traits[i] = mapTraitEvaluationContextToTrait(tKey, ic.Traits[tKey])
+		traits[i] = Trait{
+			TraitKey:   tKey,
+			TraitValue: ic.Traits[tKey].Value,
+			Transient:  ic.Traits[tKey].Transient,
+		}
 	}
 	return traits
-}
-
-func mapTraitEvaluationContextToTrait(tKey string, tCtx *TraitEvaluationContext) *Trait {
-	if tCtx == nil {
-		return &Trait{TraitKey: tKey, TraitValue: nil}
-	}
-	if tCtx.Transient == nil {
-		return &Trait{TraitKey: tKey, TraitValue: tCtx.Value}
-	}
-	return &Trait{TraitKey: tKey, TraitValue: tCtx.Value, Transient: *tCtx.Transient}
 }
 
 func sortedKeys[Map ~map[string]V, V any](m Map) []string {

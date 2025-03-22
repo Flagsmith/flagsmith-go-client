@@ -204,17 +204,15 @@ func TestGetFlags(t *testing.T) {
 
 func TestGetFlagsTransientIdentity(t *testing.T) {
 	// Given
-	identifier := "transient"
-	transient := true
 	ctx := context.Background()
-	expectedRequestBody := `{"identifier":"transient","transient":true}`
+	expectedRequestBody := `{"identifier":"","transient":true}`
 	server := getTestHttpServer(t, "/api/v1/identities/", fixtures.EnvironmentAPIKey, &expectedRequestBody, fixtures.IdentityResponseJson)
 	defer server.Close()
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	flags, err := client.GetFlags(ctx, &flagsmith.EvaluationContext{Identity: &flagsmith.IdentityEvaluationContext{Identifier: &identifier, Transient: &transient}})
+	flags, err := client.GetFlags(ctx, flagsmith.NewTransientEvaluationContext(map[string]interface{}{}))
 
 	// Then
 	assert.NoError(t, err)
@@ -230,8 +228,6 @@ func TestGetFlagsTransientIdentity(t *testing.T) {
 
 func TestGetFlagsTransientTraits(t *testing.T) {
 	// Given
-	identifier := "test_identity"
-	transient := true
 	ctx := context.Background()
 	expectedRequestBody := `{"identifier":"test_identity","traits":` +
 		`[{"trait_key":"NullTrait","trait_value":null},` +
@@ -245,15 +241,15 @@ func TestGetFlagsTransientTraits(t *testing.T) {
 
 	flags, err := client.GetFlags(
 		ctx,
-		&flagsmith.EvaluationContext{
-			Identity: &flagsmith.IdentityEvaluationContext{
-				Identifier: &identifier,
-				Traits: map[string]*flagsmith.TraitEvaluationContext{
-					"NullTrait":   nil,
+		flagsmith.EvaluationContext{
+			Identity: flagsmith.IdentityEvaluationContext{
+				Identifier: "test_identity",
+				Traits: map[string]flagsmith.TraitEvaluationContext{
+					"NullTrait":   {Value: nil},
 					"StringTrait": {Value: "value"},
 					"TransientTrait": {
 						Value:     "value",
-						Transient: &transient,
+						Transient: true,
 					},
 				},
 			},
@@ -293,8 +289,6 @@ func TestGetFlagsEnvironmentEvaluationContextFlags(t *testing.T) {
 
 func TestGetFlagsEnvironmentEvaluationContextIdentity(t *testing.T) {
 	// Given
-	identifier := "test_identity"
-	ctx := context.Background()
 	expectedEnvKey := "different"
 	server := getTestHttpServer(t, "/api/v1/identities/", expectedEnvKey, nil, fixtures.IdentityResponseJson)
 	defer server.Close()
@@ -303,11 +297,9 @@ func TestGetFlagsEnvironmentEvaluationContextIdentity(t *testing.T) {
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	_, err := client.GetFlags(
-		ctx,
-		&flagsmith.EvaluationContext{
-			Environment: &flagsmith.EnvironmentEvaluationContext{APIKey: expectedEnvKey},
-			Identity:    &flagsmith.IdentityEvaluationContext{Identifier: &identifier},
-		})
+		context.Background(),
+		flagsmith.NewEvaluationContext("test_identity", map[string]interface{}{}),
+	)
 
 	// Then
 	assert.NoError(t, err)
@@ -469,16 +461,16 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	stringTrait := flagsmith.Trait{TraitKey: "stringTrait", TraitValue: "trait_value"}
-	intTrait := flagsmith.Trait{TraitKey: "intTrait", TraitValue: 1}
-	floatTrait := flagsmith.Trait{TraitKey: "floatTrait", TraitValue: 1.11}
-	boolTrait := flagsmith.Trait{TraitKey: "boolTrait", TraitValue: true}
-	nillTrait := flagsmith.Trait{TraitKey: "NoneTrait", TraitValue: nil}
+	traits := map[string]interface{}{
+		"stringTrait": "trait_value",
+		"intTrait":    1,
+		"floatTrait":  1.11,
+		"boolTrait":   true,
+		"NoneTrait":   nil,
+	}
 
-	traits := []*flagsmith.Trait{&stringTrait, &intTrait, &floatTrait, &boolTrait, &nillTrait}
 	// When
-
-	flags, err := client.GetIdentityFlags(ctx, "test_identity", traits)
+	flags, err := client.GetFlags(ctx, flagsmith.NewEvaluationContext("test_identity", traits))
 
 	// Then
 	assert.NoError(t, err)
@@ -600,13 +592,17 @@ func TestGetIdentitySegmentsNoTraits(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
-		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.NewClient(
+		fixtures.EnvironmentAPIKey,
+		flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+	)
 
 	err := client.UpdateEnvironment(ctx)
 	assert.NoError(t, err)
 
-	segments, err := client.GetIdentitySegments("test_identity", nil)
+	ec := flagsmith.NewEvaluationContext("test_identity", nil)
+	segments, err := client.GetIdentitySegments(ec)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 0, len(segments))
@@ -625,15 +621,12 @@ func TestGetIdentitySegmentsWithTraits(t *testing.T) {
 	assert.NoError(t, err)
 
 	// lifted from fixtures/EnvironmentJson
-	trait_key := "foo"
-	trait_value := "bar"
-
-	trait := flagsmith.Trait{TraitKey: trait_key, TraitValue: trait_value}
-
-	traits := []*flagsmith.Trait{&trait}
+	ec := flagsmith.NewEvaluationContext("test_identity", map[string]interface{}{
+		"foo": "bar",
+	})
 
 	// When
-	segments, err := client.GetIdentitySegments("test_identity", traits)
+	segments, err := client.GetIdentitySegments(ec)
 
 	// Then
 	assert.NoError(t, err)
@@ -666,7 +659,7 @@ func TestBulkIdentifyReturnsErrorIfBatchSizeIsTooLargeToProcess(t *testing.T) {
 
 	// Then
 	assert.Error(t, err)
-	assert.Equal(t, "flagsmith: batch size must be less than 100", err.Error())
+	assert.Equal(t, "batch size must be less than 100", err.Error())
 }
 
 func TestBulkIdentifyReturnsErrorIfServerReturns404(t *testing.T) {
@@ -922,7 +915,7 @@ func TestRealtime(t *testing.T) {
 	// Sleep to ensure that the server has time to update the environment
 	time.Sleep(10 * time.Millisecond)
 
-	flags, err := client.GetFlags(ctx, nil)
+	flags, err := client.GetEnvironmentFlags(ctx)
 
 	// Then
 	assert.NoError(t, err)
