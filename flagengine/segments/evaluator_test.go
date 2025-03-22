@@ -165,25 +165,25 @@ func TestIdentityInSegment(t *testing.T) {
 
 	cases := []struct {
 		segment        *segments.SegmentModel
-		identityTraits []*traits.Trait
+		identityTraits []*traits.TraitModel
 		expected       bool
 	}{
 		{empty_segment, nil, false},
 		{segment_single_condition, nil, false},
 		{
 			segment_single_condition,
-			[]*traits.Trait{{Key: trait_key_1, Value: trait_value_1}},
+			[]*traits.TraitModel{{Key: trait_key_1, Value: trait_value_1}},
 			true,
 		},
 		{segment_multiple_conditions_all, nil, false},
 		{
 			segment_multiple_conditions_all,
-			[]*traits.Trait{{Key: trait_key_1, Value: trait_value_1}},
+			[]*traits.TraitModel{{Key: trait_key_1, Value: trait_value_1}},
 			false,
 		},
 		{
 			segment_multiple_conditions_all,
-			[]*traits.Trait{
+			[]*traits.TraitModel{
 				{Key: trait_key_1, Value: trait_value_1},
 				{Key: trait_key_2, Value: trait_value_2},
 			},
@@ -192,17 +192,17 @@ func TestIdentityInSegment(t *testing.T) {
 		{segment_multiple_conditions_any, nil, false},
 		{
 			segment_multiple_conditions_any,
-			[]*traits.Trait{{Key: trait_key_1, Value: trait_value_1}},
+			[]*traits.TraitModel{{Key: trait_key_1, Value: trait_value_1}},
 			true,
 		},
 		{
 			segment_multiple_conditions_any,
-			[]*traits.Trait{{Key: trait_key_2, Value: trait_value_2}},
+			[]*traits.TraitModel{{Key: trait_key_2, Value: trait_value_2}},
 			true,
 		},
 		{
 			segment_multiple_conditions_all,
-			[]*traits.Trait{
+			[]*traits.TraitModel{
 				{Key: trait_key_1, Value: trait_value_1},
 				{Key: trait_key_2, Value: trait_value_2},
 			},
@@ -211,14 +211,14 @@ func TestIdentityInSegment(t *testing.T) {
 		{segment_nested_rules, nil, false},
 		{
 			segment_nested_rules,
-			[]*traits.Trait{
+			[]*traits.TraitModel{
 				{Key: trait_key_1, Value: trait_value_1},
 			},
 			false,
 		},
 		{
 			segment_nested_rules,
-			[]*traits.Trait{
+			[]*traits.TraitModel{
 				{Key: trait_key_1, Value: trait_value_1},
 				{Key: trait_key_2, Value: trait_value_2},
 				{Key: trait_key_3, Value: trait_value_3},
@@ -228,14 +228,14 @@ func TestIdentityInSegment(t *testing.T) {
 		{segment_conditions_and_nested_rules, nil, false},
 		{
 			segment_conditions_and_nested_rules,
-			[]*traits.Trait{
+			[]*traits.TraitModel{
 				{Key: trait_key_1, Value: trait_value_1},
 			},
 			false,
 		},
 		{
 			segment_conditions_and_nested_rules,
-			[]*traits.Trait{
+			[]*traits.TraitModel{
 				{Key: trait_key_1, Value: trait_value_1},
 				{Key: trait_key_2, Value: trait_value_2},
 				{Key: trait_key_3, Value: trait_value_3},
@@ -251,7 +251,7 @@ func TestIdentityInSegment(t *testing.T) {
 	}
 }
 
-func doTestIdentityInSegment(t *testing.T, segment *segments.SegmentModel, identityTraits []*traits.Trait, expected bool) {
+func doTestIdentityInSegment(t *testing.T, segment *segments.SegmentModel, identityTraits []*traits.TraitModel, expected bool) {
 	t.Helper()
 
 	identity := &identities.IdentityModel{
@@ -339,14 +339,14 @@ func TestIdentityInSegmentIsSetAndIsNotSet(t *testing.T) {
 	cases := []struct {
 		operator       segments.ConditionOperator
 		property       string
-		identityTraits []*traits.Trait
+		identityTraits []*traits.TraitModel
 		expectedResult bool
 	}{
-		{segments.IsSet, "foo", []*traits.Trait{{Key: "foo", Value: "bar"}}, true},
-		{segments.IsSet, "foo", []*traits.Trait{{Key: "not_foo", Value: "bar"}}, false},
-		{segments.IsSet, "foo", []*traits.Trait{}, false},
-		{segments.IsNotSet, "foo", []*traits.Trait{}, true},
-		{segments.IsNotSet, "foo", []*traits.Trait{{Key: "foo", Value: "bar"}}, false},
+		{segments.IsSet, "foo", []*traits.TraitModel{{Key: "foo", Value: "bar"}}, true},
+		{segments.IsSet, "foo", []*traits.TraitModel{{Key: "not_foo", Value: "bar"}}, false},
+		{segments.IsSet, "foo", []*traits.TraitModel{}, false},
+		{segments.IsNotSet, "foo", []*traits.TraitModel{}, true},
+		{segments.IsNotSet, "foo", []*traits.TraitModel{{Key: "foo", Value: "bar"}}, false},
 	}
 
 	for i, c := range cases {

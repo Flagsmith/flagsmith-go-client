@@ -14,7 +14,7 @@ import (
 func EvaluateIdentityInSegment(
 	identity *identities.IdentityModel,
 	segment *SegmentModel,
-	overrideTraits ...*traits.Trait,
+	overrideTraits ...*traits.TraitModel,
 ) bool {
 	if len(segment.Rules) == 0 {
 		return false
@@ -39,7 +39,7 @@ func EvaluateIdentityInSegment(
 }
 
 func traitsMatchSegmentRule(
-	identityTraits []*traits.Trait,
+	identityTraits []*traits.TraitModel,
 	rule *SegmentRuleModel,
 	segmentID int,
 	identityID string,
@@ -59,7 +59,7 @@ func traitsMatchSegmentRule(
 }
 
 func traitsMatchSegmentCondition(
-	identityTraits []*traits.Trait,
+	identityTraits []*traits.TraitModel,
 	condition *SegmentConditionModel,
 	segmentID int,
 	identityID string,

@@ -97,18 +97,18 @@ func Identity(env *environments.EnvironmentModel) *identities.IdentityModel {
 	}
 }
 
-func TraitMatchingSegment(segCond *segments.SegmentConditionModel) *traits.Trait {
-	return &traits.Trait{
+func TraitMatchingSegment(segCond *segments.SegmentConditionModel) *traits.TraitModel {
+	return &traits.TraitModel{
 		Key:   segCond.Property,
 		Value: segCond.Value,
 	}
 }
 
-func IdentityInSegment(trait *traits.Trait, env *environments.EnvironmentModel) *identities.IdentityModel {
+func IdentityInSegment(trait *traits.TraitModel, env *environments.EnvironmentModel) *identities.IdentityModel {
 	return &identities.IdentityModel{
 		Identifier:        "identity_2",
 		EnvironmentAPIKey: env.APIKey,
-		IdentityTraits:    []*traits.Trait{trait},
+		IdentityTraits:    []*traits.TraitModel{trait},
 	}
 }
 

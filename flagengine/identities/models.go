@@ -12,7 +12,7 @@ type IdentityModel struct {
 	EnvironmentAPIKey string                        `json:"environment_api_key"`
 	CreatedDate       utils.ISOTime                 `json:"created_date"`
 	IdentityUUID      string                        `json:"identity_uuid"`
-	IdentityTraits    []*traits.Trait               `json:"identity_traits"`
+	IdentityTraits    []*traits.TraitModel          `json:"identity_traits"`
 	IdentityFeatures  []*features.FeatureStateModel `json:"identity_features"`
 	CompositeKey_     string                        `json:"composite_key"`
 }

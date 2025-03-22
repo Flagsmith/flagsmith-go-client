@@ -338,7 +338,7 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 }
 
 func (c *Client) getIdentityModel(identifier string, apiKey string, traits map[string]interface{}) identities.IdentityModel {
-	identityTraits := make([]*enginetraits.Trait, 0, len(traits))
+	identityTraits := make([]*enginetraits.TraitModel, 0, len(traits))
 	for k, v := range traits {
 		identityTraits = append(identityTraits, enginetraits.NewTrait(k, v))
 	}

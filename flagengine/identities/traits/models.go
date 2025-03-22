@@ -6,18 +6,18 @@ import (
 	"strings"
 )
 
-// Trait is a flagsmith.Trait with a serialised Value.
-type Trait struct {
+// TraitModel is a flagsmith.Trait with a serialised Value.
+type TraitModel struct {
 	Key   string `json:"trait_key"`
 	Value string `json:"trait_value"`
 }
 
-// NewTrait serialises value into a Trait using fmt.Sprint.
-func NewTrait(key string, value interface{}) *Trait {
-	return &Trait{key, fmt.Sprint(value)}
+// NewTrait serialises value into a TraitModel using fmt.Sprint.
+func NewTrait(key string, value interface{}) *TraitModel {
+	return &TraitModel{key, fmt.Sprint(value)}
 }
 
-func (t *Trait) UnmarshalJSON(bytes []byte) error {
+func (t *TraitModel) UnmarshalJSON(bytes []byte) error {
 	var obj struct {
 		Key string          `json:"trait_key"`
 		Val json.RawMessage `json:"trait_value"`

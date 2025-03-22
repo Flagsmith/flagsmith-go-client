@@ -26,7 +26,7 @@ func TestEngine(t *testing.T) {
 		TestCases   []struct {
 			Identity identities.IdentityModel `json:"identity"`
 			Response struct {
-				Traits []traits.Trait               `json:"traits"`
+				Traits []traits.TraitModel          `json:"traits"`
 				Flags  []features.FeatureStateModel `json:"flags"`
 			} `json:"response"`
 		} `json:"identities_and_responses"`
