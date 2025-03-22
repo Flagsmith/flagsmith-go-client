@@ -144,17 +144,17 @@ func MustNewClient(apiKey string, options ...Option) *Client {
 //	}
 func (c *Client) GetFlags(ctx context.Context, ec EvaluationContext) (f Flags, err error) {
 	if ec.identifier != "" {
-		if c.config.offlineMode && c.offlineHandler != nil || c.config.localEvaluation {
-			f, err = c.getIdentityFlagsFromEnvironment(ec.identifier, ec.traits)
-		} else {
-			f, err = c.getIdentityFlagsFromAPI(ctx, ec.identifier, ec.traits)
-		}
-		if err != nil && c.defaultFlagHandler != nil {
-			f = Flags{defaultFlagHandler: c.defaultFlagHandler}
-		}
-		return f, err
+		f, err = c.GetIdentityFlags(ctx, ec.identifier, ec.traits)
+	} else {
+		f, err = c.GetEnvironmentFlags(ctx)
 	}
-	return c.GetEnvironmentFlags(ctx)
+	if err == nil {
+		return f, nil
+	} else if c.defaultFlagHandler != nil {
+		return Flags{defaultFlagHandler: c.defaultFlagHandler}, nil
+	} else {
+		return Flags{}, errors.New("GetFlags failed and no default flag handler was provided")
+	}
 }
 
 // UpdateEnvironment fetches the current environment state from the Flagsmith API. It is called periodically when using
@@ -223,30 +223,26 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 
 // GetEnvironmentFlags evaluates and returns the feature flags, using the current environment as the evaluation context.
 //
-// Use [Client.GetFlags] to evaluate the flags for an identity.
+// Deprecated: Use [Client.GetFlags] instead.
 func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 	if c.config.localEvaluation || c.config.offlineMode {
-		if f, err = c.getEnvironmentFlagsFromEnvironment(); err == nil {
-			return f, nil
-		}
+		f, err = c.getEnvironmentFlagsFromEnvironment()
 	} else {
-		if f, err = c.getEnvironmentFlagsFromAPI(ctx); err == nil {
-			return f, nil
-		}
+		f, err = c.getEnvironmentFlagsFromAPI(ctx)
 	}
-	if c.offlineHandler != nil {
-		return c.getEnvironmentFlagsFromEnvironment()
-	} else if c.defaultFlagHandler != nil {
-		return Flags{defaultFlagHandler: c.defaultFlagHandler}, nil
-	}
-	return Flags{}, &FlagsmithClientError{msg: fmt.Sprintf("Failed to fetch flags with error: %s", err)}
+	return f, err
 }
 
 // GetIdentityFlags evaluates and returns the flags for an identity.
 //
 // Deprecated: Use GetFlags instead.
 func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits map[string]interface{}) (f Flags, err error) {
-	return c.GetFlags(ctx, NewEvaluationContext(identifier, traits))
+	if c.config.offlineMode && c.offlineHandler != nil || c.config.localEvaluation {
+		f, err = c.getIdentityFlagsFromEnvironment(identifier, traits)
+	} else {
+		f, err = c.getIdentityFlagsFromAPI(ctx, identifier, traits)
+	}
+	return f, err
 }
 
 // getEnvironmentFlagsFromAPI tries to contact the Flagsmith API to get the latest environment data.

@@ -3,7 +3,6 @@ package flagsmith_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -491,7 +490,7 @@ func TestDefaultHandlerIsUsedWhenTimeout(t *testing.T) {
 			return flagsmith.Flag{}, nil
 		}))
 
-	flags, err := client.GetEnvironmentFlags(ctx)
+	flags, err := client.GetFlags(ctx, flagsmith.EvaluationContext{})
 
 	// Then
 	assert.NoError(t, err)
@@ -513,7 +512,7 @@ func TestDefaultHandlerIsUsedWhenRequestFails(t *testing.T) {
 			return flagsmith.Flag{}, nil
 		}))
 
-	flags, err := client.GetEnvironmentFlags(ctx)
+	flags, err := client.GetFlags(ctx, flagsmith.EvaluationContext{})
 
 	// Then
 	assert.NoError(t, err)
@@ -532,10 +531,8 @@ func TestFlagsmithAPIErrorIsReturnedIfRequestFailsWithoutDefaultHandler(t *testi
 	// When
 	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	_, err := client.GetEnvironmentFlags(ctx)
-	assert.Error(t, err)
-	var flagErr *flagsmith.FlagsmithClientError
-	assert.True(t, errors.As(err, &flagErr))
+	_, err := client.GetFlags(ctx, flagsmith.EvaluationContext{})
+	assert.ErrorContains(t, err, "GetFlags failed and no default flag handler was provided")
 }
 
 func TestGetIdentitySegmentsNoTraits(t *testing.T) {
