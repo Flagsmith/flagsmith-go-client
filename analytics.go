@@ -53,9 +53,7 @@ func (a *AnalyticsProcessor) start(ctx context.Context, tickerInterval int) {
 					slog.Int("status", resp.StatusCode),
 					slog.String("url", resp.Request.URL.String()),
 				)
-				return
 			}
-			a.store.data = make(map[string]int)
 		case <-ctx.Done():
 			return
 		}
@@ -75,6 +73,7 @@ func (a *AnalyticsProcessor) Flush(ctx context.Context) (*http.Response, error) 
 	if resp.IsError() {
 		return resp.RawResponse, fmt.Errorf("AnalyticsProcessor.Flush received error response %s", resp.Status())
 	}
+	a.store.data = make(map[string]int)
 	return resp.RawResponse, nil
 }
 
