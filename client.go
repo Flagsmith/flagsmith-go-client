@@ -221,9 +221,7 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 	return nil
 }
 
-// GetEnvironmentFlags evaluates and returns the feature flags, using the current environment as the evaluation context.
-//
-// Deprecated: Use [Client.GetFlags] instead.
+// GetEnvironmentFlags calls GetFlags for the default EvaluationContext.
 func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 	if c.config.localEvaluation || c.config.offlineMode {
 		f, err = c.getEnvironmentFlagsFromEnvironment()
@@ -233,9 +231,7 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 	return f, err
 }
 
-// GetIdentityFlags evaluates and returns the flags for an identity.
-//
-// Deprecated: Use GetFlags instead.
+// GetIdentityFlags calls GetFlags using this identifier and traits as the EvaluationContext.
 func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits map[string]interface{}) (f Flags, err error) {
 	if c.config.offlineMode && c.offlineHandler != nil || c.config.localEvaluation {
 		f, err = c.getIdentityFlagsFromEnvironment(identifier, traits)
