@@ -2,6 +2,7 @@ package flagsmith
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -54,7 +55,7 @@ type Client struct {
 //		flagsmith.WithLocalEvaluation(context.Background()),
 //		flagsmith.WithDefaultHandler(GetDefaultFlag),
 //	)
-func NewClient(apiKey string, options ...Option) *Client {
+func NewClient(apiKey string, options ...Option) (*Client, error) {
 	c := &Client{
 		config: defaultConfig(),
 		client: resty.New(),
@@ -83,13 +84,13 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 
 	if c.config.offlineMode && c.offlineHandler == nil {
-		panic("offline handler must be provided to use offline mode.")
+		return nil, errors.New("offline handler must be provided to use offline mode")
 	}
 	if c.defaultFlagHandler != nil && c.offlineHandler != nil {
-		panic("default flag handler and offline handler cannot be used together.")
+		return nil, errors.New("default flag handler and offline handler cannot be used together")
 	}
 	if c.config.localEvaluation && c.offlineHandler != nil {
-		panic("local evaluation and offline handler cannot be used together.")
+		return nil, errors.New("local evaluation and offline handler cannot be used together")
 	}
 	if c.offlineHandler != nil {
 		c.environment.SetEnvironment(c.offlineHandler.GetEnvironment())
@@ -109,7 +110,16 @@ func NewClient(apiKey string, options ...Option) *Client {
 	if c.config.enableAnalytics {
 		c.analyticsProcessor = NewAnalyticsProcessor(c.ctxAnalytics, c.client, c.config.baseURL, nil, c.log)
 	}
-	return c
+	return c, nil
+}
+
+// MustNewClient panics if NewClient returns an error.
+func MustNewClient(apiKey string, options ...Option) *Client {
+	client, err := NewClient(apiKey, options...)
+	if err != nil {
+		panic(err)
+	}
+	return client
 }
 
 // GetFlags evaluates the feature flags within an [EvaluationContext].

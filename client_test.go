@@ -59,7 +59,7 @@ func getTestHttpServer(t *testing.T, expectedPath string, expectedEnvKey string,
 func TestClientErrorsIfLocalEvaluationWithNonServerSideKey(t *testing.T) {
 	// When, Then
 	assert.Panics(t, func() {
-		_ = flagsmith.NewClient("key", flagsmith.WithLocalEvaluation(context.Background()))
+		_ = flagsmith.MustNewClient("key", flagsmith.WithLocalEvaluation(context.Background()))
 	})
 }
 
@@ -69,13 +69,13 @@ func TestClientErrorsIfOfflineModeWithoutOfflineHandler(t *testing.T) {
 		if r := recover(); r != nil {
 			// Then
 			errMsg := fmt.Sprintf("%v", r)
-			expectedErrMsg := "offline handler must be provided to use offline mode."
+			expectedErrMsg := "offline handler must be provided to use offline mode"
 			assert.Equal(t, expectedErrMsg, errMsg, "Unexpected error message")
 		}
 	}()
 
 	// Trigger panic
-	_ = flagsmith.NewClient("key", flagsmith.WithOfflineMode())
+	_ = flagsmith.MustNewClient("key", flagsmith.WithOfflineMode())
 }
 
 func TestClientErrorsIfDefaultHandlerAndOfflineHandlerAreBothSet(t *testing.T) {
@@ -89,13 +89,13 @@ func TestClientErrorsIfDefaultHandlerAndOfflineHandlerAreBothSet(t *testing.T) {
 		if r := recover(); r != nil {
 			// Then
 			errMsg := fmt.Sprintf("%v", r)
-			expectedErrMsg := "default flag handler and offline handler cannot be used together."
+			expectedErrMsg := "default flag handler and offline handler cannot be used together"
 			assert.Equal(t, expectedErrMsg, errMsg, "Unexpected error message")
 		}
 	}()
 
 	// Trigger panic
-	_ = flagsmith.NewClient("key",
+	_ = flagsmith.MustNewClient("key",
 		flagsmith.WithOfflineHandler(offlineHandler),
 		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
 			return flagsmith.Flag{}, nil
@@ -112,13 +112,13 @@ func TestClientErrorsIfLocalEvaluationModeAndOfflineHandlerAreBothSet(t *testing
 		if r := recover(); r != nil {
 			// Then
 			errMsg := fmt.Sprintf("%v", r)
-			expectedErrMsg := "local evaluation and offline handler cannot be used together."
+			expectedErrMsg := "local evaluation and offline handler cannot be used together"
 			assert.Equal(t, expectedErrMsg, errMsg, "Unexpected error message")
 		}
 	}()
 
 	// Trigger panic
-	_ = flagsmith.NewClient("key",
+	_ = flagsmith.MustNewClient("key",
 		flagsmith.WithOfflineHandler(offlineHandler),
 		flagsmith.WithLocalEvaluation(context.Background()))
 }
@@ -147,7 +147,7 @@ func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 	defer server.Close()
 
 	// When
-	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
+	_ = flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	// Sleep to ensure that the server has time to update the environment
@@ -183,7 +183,7 @@ func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 	defer server.Close()
 
 	// When
-	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
+	_ = flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithEnvironmentRefreshInterval(100*time.Millisecond),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
@@ -204,7 +204,7 @@ func TestGetFlags(t *testing.T) {
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	flags, err := client.GetEnvironmentFlags(context.Background())
 
@@ -228,7 +228,7 @@ func TestGetEnvironmentFlags(t *testing.T) {
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(expectedEnvKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.MustNewClient(expectedEnvKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	_, err := client.GetEnvironmentFlags(ctx)
 	assert.NoError(t, err)
@@ -241,7 +241,7 @@ func TestGetFlagsEnvironmentEvaluationContextIdentity(t *testing.T) {
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(expectedEnvKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.MustNewClient(expectedEnvKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	_, err := client.GetFlags(
 		context.Background(),
@@ -259,7 +259,7 @@ func TestGetEnvironmentFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 	err := client.UpdateEnvironment(ctx)
 
@@ -295,7 +295,7 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
 		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
 			return flagsmith.Flag{}, nil
 		}))
@@ -332,7 +332,7 @@ func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 	err := client.UpdateEnvironment(ctx)
 
@@ -358,7 +358,7 @@ func TestGetIdentityFlagsUseslocalOverridesWhenAvailable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 	err := client.UpdateEnvironment(ctx)
 
@@ -423,7 +423,7 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 	}))
 	defer server.Close()
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey,
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	flags, err := client.GetFlags(ctx, flagsmith.NewEvaluationContext("test_identity", traits))
@@ -453,7 +453,7 @@ func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T)
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
 		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
 			return flagsmith.Flag{}, nil
 		}))
@@ -485,7 +485,7 @@ func TestDefaultHandlerIsUsedWhenTimeout(t *testing.T) {
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
 		flagsmith.WithRequestTimeout(10*time.Millisecond),
 		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
 			return flagsmith.Flag{}, nil
@@ -508,7 +508,7 @@ func TestDefaultHandlerIsUsedWhenRequestFails(t *testing.T) {
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
 		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
 			return flagsmith.Flag{}, nil
 		}))
@@ -530,7 +530,7 @@ func TestFlagsmithAPIErrorIsReturnedIfRequestFailsWithoutDefaultHandler(t *testi
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	_, err := client.GetEnvironmentFlags(ctx)
 	assert.Error(t, err)
@@ -544,7 +544,7 @@ func TestGetIdentitySegmentsNoTraits(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 
-	client := flagsmith.NewClient(
+	client := flagsmith.MustNewClient(
 		fixtures.EnvironmentAPIKey,
 		flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
@@ -566,7 +566,7 @@ func TestGetIdentitySegmentsWithTraits(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	err := client.UpdateEnvironment(ctx)
@@ -604,7 +604,7 @@ func TestBulkIdentifyReturnsErrorIfBatchSizeIsTooLargeToProcess(t *testing.T) {
 
 	}))
 	defer server.Close()
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	// When
 	err := client.BulkIdentify(ctx, data)
@@ -623,7 +623,7 @@ func TestBulkIdentifyReturnsErrorIfServerReturns404(t *testing.T) {
 		rw.WriteHeader(http.StatusNotFound)
 	}))
 	defer server.Close()
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	// When
 	err := client.BulkIdentify(ctx, data)
@@ -663,7 +663,7 @@ func TestBulkIdentify(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	// When
 	err := client.BulkIdentify(ctx, data)
@@ -678,7 +678,7 @@ func TestWithProxyClientOption(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
 	defer server.Close()
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx), flagsmith.WithProxy(server.URL),
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx), flagsmith.WithProxy(server.URL),
 		flagsmith.WithBaseURL("http://some-other-url-that-should-not-be-used/api/v1/"))
 
 	err := client.UpdateEnvironment(ctx)
@@ -706,7 +706,7 @@ func TestOfflineMode(t *testing.T) {
 	offlineHandler, err := flagsmith.NewLocalFileHandler(envJsonPath)
 	assert.NoError(t, err)
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithOfflineMode(), flagsmith.WithOfflineHandler(offlineHandler))
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithOfflineMode(), flagsmith.WithOfflineHandler(offlineHandler))
 
 	// Then
 	flags, err := client.GetEnvironmentFlags(ctx)
@@ -746,7 +746,7 @@ func TestPollErrorHandlerIsUsedWhenPollFails(t *testing.T) {
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey,
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
 		flagsmith.WithErrorHandler(func(handler *flagsmith.FlagsmithAPIError) {
 			capturedError = handler.Err
@@ -815,7 +815,7 @@ func TestRealtime(t *testing.T) {
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey,
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
 		flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithRealtime(),
