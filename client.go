@@ -29,8 +29,7 @@ type Client struct {
 	ctxLocalEval       context.Context
 	ctxAnalytics       context.Context
 
-	environment       environmentState
-	identityOverrides sync.Map
+	environment state
 
 	log               *slog.Logger
 	logHandlerOptions *slog.HandlerOptions
@@ -93,7 +92,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 		panic("local evaluation and offline handler cannot be used together.")
 	}
 	if c.offlineHandler != nil {
-		c.environment.Set(c.offlineHandler.GetEnvironment())
+		c.environment.SetEnvironment(c.offlineHandler.GetEnvironment())
 	}
 
 	if c.config.localEvaluation {
@@ -170,10 +169,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		e := &FlagsmithAPIError{Msg: msg, Err: nil, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
 		return c.handleError(e)
 	}
-	c.environment.Set(&env)
-	for _, id := range env.IdentityOverrides {
-		c.identityOverrides.Store(id.Identifier, *id)
-	}
+	c.environment.SetEnvironment(&env)
 
 	c.log.Info("environment updated", "environment", env.APIKey)
 	return nil
@@ -182,7 +178,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 // GetIdentitySegments returns the segments that this evaluation context is a part of. It requires a local environment
 // provided by [WithLocalEvaluation] and/or [WithOfflineHandler].
 func (c *Client) GetIdentitySegments(ec EvaluationContext) ([]*segments.SegmentModel, error) {
-	if env := c.environment.Get(); env != nil {
+	if env := c.environment.GetEnvironment(); env != nil {
 		identity := c.getIdentityModel(ec.identifier, env.APIKey, ec.traits)
 		return flagengine.GetIdentitySegments(env, &identity), nil
 	}
@@ -291,7 +287,7 @@ func (c *Client) getIdentityFlagsFromAPI(ctx context.Context, identifier string,
 }
 
 func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
-	env := c.environment.Get()
+	env := c.environment.GetEnvironment()
 	if env == nil {
 		return Flags{}, fmt.Errorf("getEnvironmentFlagsFromEnvironment: no local environment is available")
 	}
@@ -304,8 +300,8 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 }
 
 func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits map[string]interface{}) (Flags, error) {
-	env := c.environment.Get()
-	if env := c.environment.Get(); env == nil {
+	env := c.environment.GetEnvironment()
+	if env := c.environment.GetEnvironment(); env == nil {
 		return Flags{}, fmt.Errorf("getIdentityFlagsFromDocument: no local environment is available")
 	}
 	identity := c.getIdentityModel(identifier, env.APIKey, traits)
@@ -347,9 +343,7 @@ func (c *Client) getIdentityModel(identifier string, apiKey string, traits map[s
 		identityTraits = append(identityTraits, enginetraits.NewTrait(k, v))
 	}
 
-	i, ok := c.identityOverrides.Load(identifier)
-	if ok {
-		identity := i.(identities.IdentityModel)
+	if identity, ok := c.environment.GetIdentityOverride(identifier); ok {
 		identity.IdentityTraits = identityTraits
 		return identity
 	}
@@ -368,19 +362,31 @@ func (c *Client) handleError(err *FlagsmithAPIError) *FlagsmithAPIError {
 	return err
 }
 
-type environmentState struct {
-	mu  sync.RWMutex
-	env *environments.EnvironmentModel
+type state struct {
+	mu                sync.RWMutex
+	environment       *environments.EnvironmentModel
+	identityOverrides sync.Map
 }
 
-func (es *environmentState) Get() *environments.EnvironmentModel {
+func (es *state) GetEnvironment() *environments.EnvironmentModel {
 	es.mu.RLock()
 	defer es.mu.RUnlock()
-	return es.env
+	return es.environment
 }
 
-func (es *environmentState) Set(env *environments.EnvironmentModel) {
+func (es *state) GetIdentityOverride(identifier string) (identities.IdentityModel, bool) {
+	i, ok := es.identityOverrides.Load(identifier)
+	if ok && i != nil {
+		return i.(identities.IdentityModel), true
+	}
+	return identities.IdentityModel{}, ok
+}
+
+func (es *state) SetEnvironment(env *environments.EnvironmentModel) {
 	es.mu.Lock()
 	defer es.mu.Unlock()
-	es.env = env
+	es.environment = env
+	for _, id := range env.IdentityOverrides {
+		es.identityOverrides.Store(id.Identifier, *id)
+	}
 }

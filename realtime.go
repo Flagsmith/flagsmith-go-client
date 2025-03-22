@@ -16,7 +16,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 	if err != nil {
 		panic("Failed to fetch the environment while configuring real-time updates")
 	}
-	env := c.environment.Get()
+	env := c.environment.GetEnvironment()
 	stream_url := c.config.realtimeBaseUrl + "sse/environments/" + env.APIKey + "/stream"
 	envUpdatedAt := env.UpdatedAt
 	for {
