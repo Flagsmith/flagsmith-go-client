@@ -62,7 +62,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 
 	if c.log == nil {
-		c.log = defaultLogger()
+		c.log = defaultLogger().WithGroup("flagsmith")
 	}
 	c.client = resty.
 		New().
@@ -238,7 +238,7 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 
 // GetIdentityFlags evaluates and returns the flags for an identity.
 //
-// Deprecated. Use GetFlags instead.
+// Deprecated: Use GetFlags instead.
 func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits map[string]interface{}) (f Flags, err error) {
 	return c.GetFlags(ctx, NewEvaluationContext(identifier, traits))
 }
