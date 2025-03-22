@@ -212,7 +212,7 @@ func TestGetFlagsTransientIdentity(t *testing.T) {
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	flags, err := client.GetFlags(ctx, flagsmith.NewTransientEvaluationContext(map[string]interface{}{}))
+	flags, err := client.GetFlags(ctx, flagsmith.NewTransientEvaluationContext("", map[string]interface{}{}))
 
 	// Then
 	assert.NoError(t, err)
