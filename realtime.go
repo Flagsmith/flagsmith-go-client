@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -27,7 +28,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 		default:
 			resp, err := http.Get(stream_url)
 			if err != nil {
-				c.log.Errorf("Error connecting to realtime server: %v", err)
+				c.log.Error("failed to connect to SSE service", "error", err)
 				continue
 			}
 			defer resp.Body.Close()
@@ -38,23 +39,25 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 				if strings.HasPrefix(line, "data: ") {
 					parsedTime, err := parseUpdatedAtFromSSE(line)
 					if err != nil {
-						c.log.Errorf("Error reading realtime stream: %v", err)
+						c.log.Error("failed to parse real-time update event", "error", err, "raw_event", line)
 						continue
 					}
 					if parsedTime.After(envUpdatedAt) {
+						c.log.Info("received update event",
+							slog.Time("updated_at", parsedTime),
+							slog.String("environment", env.APIKey),
+						)
 						err = c.UpdateEnvironment(ctx)
 						if err != nil {
-							c.log.Errorf("Failed to update the environment: %v", err)
 							continue
 						}
 						env, _ := c.environment.Load().(*environments.EnvironmentModel)
-
 						envUpdatedAt = env.UpdatedAt
 					}
 				}
 			}
 			if err := scanner.Err(); err != nil {
-				c.log.Errorf("Error reading realtime stream: %v", err)
+				c.log.Error("failed to read from real-time stream", "error", err)
 			}
 		}
 	}
@@ -67,11 +70,11 @@ func parseUpdatedAtFromSSE(line string) (time.Time, error) {
 	data := strings.TrimPrefix(line, "data: ")
 	err := json.Unmarshal([]byte(data), &eventData)
 	if err != nil {
-		return time.Time{}, errors.New("failed to parse event data: " + err.Error())
+		return time.Time{}, err
 	}
 
 	if eventData.UpdatedAt <= 0 {
-		return time.Time{}, errors.New("invalid 'updated_at' value in event data")
+		return time.Time{}, errors.New("updated_at is <= 0")
 	}
 
 	// Convert the float timestamp into seconds and nanoseconds

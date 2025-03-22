@@ -14,7 +14,6 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
-const BaseURL = "http://localhost:8000/api/v1/"
 const EnvironmentAPIKey = "test_key"
 
 func TestAnalytics(t *testing.T) {
@@ -43,7 +42,8 @@ func TestAnalytics(t *testing.T) {
 	client.SetHeader("X-Environment-Key", EnvironmentAPIKey)
 
 	// Now let's create the processor
-	processor := NewAnalyticsProcessor(context.Background(), client, server.URL+"/api/v1/", &analyticsTimer, createLogger())
+
+	processor := NewAnalyticsProcessor(context.Background(), client, server.URL+"/api/v1/", &analyticsTimer, defaultLogger())
 
 	// and, track some features
 	processor.TrackFeature("feature_1")

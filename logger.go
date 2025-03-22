@@ -1,51 +1,87 @@
 package flagsmith
 
 import (
-	"log"
+	"context"
+	"fmt"
+	"log/slog"
 	"os"
+	"time"
+
+	"github.com/go-resty/resty/v2"
 )
 
-// Logger is the interface used for logging by flagsmith client. This interface defines the methods
-// that a logger implementation must implement. It is used to abstract logging and
-// enable clients to use any logger implementation they want.
-type Logger interface {
-	// Errorf logs an error message with the given format and arguments.
-	Errorf(format string, v ...interface{})
-
-	// Warnf logs a warning message with the given format and arguments.
-	Warnf(format string, v ...interface{})
-
-	// Debugf logs a debug message with the given format and arguments.
-	Debugf(format string, v ...interface{})
+// restySlogLogger implements a [resty.Logger] using a [slog.Logger].
+type restySlogLogger struct {
+	logger *slog.Logger
 }
 
-func createLogger() *logger {
-	l := &logger{l: log.New(os.Stderr, "", log.Ldate|log.Lmicroseconds)}
-	return l
+func (s restySlogLogger) Errorf(format string, v ...interface{}) {
+	msg := fmt.Sprintf(format, v...)
+	s.logger.Error(msg)
 }
 
-var _ Logger = (*logger)(nil)
-
-type logger struct {
-	l *log.Logger
+func (s restySlogLogger) Warnf(format string, v ...interface{}) {
+	msg := fmt.Sprintf(format, v...)
+	s.logger.Warn(msg)
 }
 
-func (l *logger) Errorf(format string, v ...interface{}) {
-	l.output("ERROR FLAGSMITH: "+format, v...)
+func (s restySlogLogger) Debugf(format string, v ...interface{}) {
+	msg := fmt.Sprintf(format, v...)
+	s.logger.Debug(msg)
 }
 
-func (l *logger) Warnf(format string, v ...interface{}) {
-	l.output("WARN FLAGSMITH: "+format, v...)
+func defaultLogger() *slog.Logger {
+	return slog.New(slog.NewJSONHandler(os.Stderr, nil))
 }
 
-func (l *logger) Debugf(format string, v ...interface{}) {
-	l.output("DEBUG FLAGSMITH: "+format, v...)
-}
+func newRestyLogRequestMiddleware(logger *slog.Logger) resty.RequestMiddleware {
+	return func(c *resty.Client, req *resty.Request) error {
+		// Create a child logger with request metadata
+		reqLogger := logger.With(
+			"method", req.Method,
+			"url", req.URL,
+		)
+		// Store the logger in this request's context, and use it in the response
+		req.SetContext(context.WithValue(req.Context(), "logger", reqLogger))
 
-func (l *logger) output(format string, v ...interface{}) {
-	if len(v) == 0 {
-		l.l.Print(format)
-		return
+		reqLogger.Debug("request",
+			slog.String("method", req.Method),
+			slog.String("url", req.URL),
+		)
+
+		// Time the current request
+		req.SetContext(context.WithValue(req.Context(), "startTime", time.Now()))
+
+		return nil
 	}
-	l.l.Printf(format, v...)
+}
+
+func newRestyLogResponseMiddleware(logger *slog.Logger) resty.ResponseMiddleware {
+	return func(client *resty.Client, resp *resty.Response) error {
+		// Retrieve the logger and start time from context
+		reqLogger, _ := resp.Request.Context().Value("logger").(*slog.Logger)
+		startTime, _ := resp.Request.Context().Value("startTime").(time.Time)
+
+		if reqLogger == nil {
+			reqLogger = logger
+		}
+		attrs := []slog.Attr{
+			slog.Int("status", resp.StatusCode()),
+			slog.Duration("duration", time.Since(startTime)),
+			slog.Int64("content_length", resp.Size()),
+		}
+		reqLogger.Debug("response",
+			slog.Int("status", resp.StatusCode()),
+			slog.Duration("duration", time.Since(startTime)),
+			slog.Int64("content_length", resp.Size()),
+		)
+		msg := "received error response"
+		level := slog.LevelDebug
+		if resp.IsError() {
+			level = slog.LevelError
+		}
+		logger.LogAttrs(context.Background(), level, msg, attrs...)
+
+		return nil
+	}
 }

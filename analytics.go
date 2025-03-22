@@ -3,6 +3,8 @@ package flagsmith
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"sync"
 	"time"
 
@@ -20,10 +22,10 @@ type AnalyticsProcessor struct {
 	client   *resty.Client
 	store    *analyticDataStore
 	endpoint string
-	log      Logger
+	log      *slog.Logger
 }
 
-func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL string, timerInMilli *int, log Logger) *AnalyticsProcessor {
+func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL string, timerInMilli *int, log *slog.Logger) *AnalyticsProcessor {
 	data := make(map[string]int)
 	dataStore := analyticDataStore{data: data}
 	tickerInterval := AnalyticsTimerInMilli
@@ -45,32 +47,35 @@ func (a *AnalyticsProcessor) start(ctx context.Context, tickerInterval int) {
 	for {
 		select {
 		case <-ticker.C:
-			if err := a.Flush(ctx); err != nil {
-				a.log.Warnf("Failed to send analytics data: %s", err)
+			if resp, err := a.Flush(ctx); err != nil {
+				a.log.Warn("failed to send analytics data",
+					"error", err,
+					slog.Int("status", resp.StatusCode),
+					slog.String("url", resp.Request.URL.String()),
+				)
+				return
 			}
+			a.store.data = make(map[string]int)
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (a *AnalyticsProcessor) Flush(ctx context.Context) error {
+func (a *AnalyticsProcessor) Flush(ctx context.Context) (*http.Response, error) {
 	a.store.mu.Lock()
 	defer a.store.mu.Unlock()
 	if len(a.store.data) == 0 {
-		return nil
+		return nil, nil
 	}
 	resp, err := a.client.R().SetContext(ctx).SetBody(a.store.data).Post(a.endpoint)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if !resp.IsSuccess() {
-		return fmt.Errorf("received unexpected response from server: %s", resp.Status())
+	if resp.IsError() {
+		return resp.RawResponse, fmt.Errorf("AnalyticsProcessor.Flush received error response %s", resp.Status())
 	}
-
-	// Clear the cache in case of success.
-	a.store.data = make(map[string]int)
-	return nil
+	return resp.RawResponse, nil
 }
 
 func (a *AnalyticsProcessor) TrackFeature(featureName string) {

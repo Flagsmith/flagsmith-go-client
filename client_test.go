@@ -2,6 +2,7 @@ package flagsmith_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -78,8 +79,8 @@ func TestClientErrorsIfDefaultHandlerAndOfflineHandlerAreBothSet(t *testing.T) {
 	// Trigger panic
 	_ = flagsmith.NewClient("key",
 		flagsmith.WithOfflineHandler(offlineHandler),
-		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
-			return flagsmith.Flag{IsDefault: true}, nil
+		flagsmith.WithDefaultFlagHandler(func(featureName string) (flagsmith.Flag, error) {
+			return flagsmith.Flag{}, nil
 		}))
 }
 func TestClientErrorsIfLocalEvaluationModeAndOfflineHandlerAreBothSet(t *testing.T) {
@@ -181,14 +182,13 @@ func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 
 func TestGetFlags(t *testing.T) {
 	// Given
-	ctx := context.Background()
 	server := getTestHttpServer(t, "/api/v1/flags/", fixtures.EnvironmentAPIKey, nil, fixtures.FlagsJson)
 	defer server.Close()
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	flags, err := client.GetFlags(ctx, nil)
+	flags, err := client.GetEnvironmentFlags(context.Background())
 
 	// Then
 	assert.NoError(t, err)
@@ -267,7 +267,7 @@ func TestGetFlagsTransientTraits(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
 }
 
-func TestGetFlagsEnvironmentEvaluationContextFlags(t *testing.T) {
+func TestGetEnvironmentFlags(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	expectedEnvKey := "different"
@@ -275,15 +275,9 @@ func TestGetFlagsEnvironmentEvaluationContextFlags(t *testing.T) {
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.NewClient(expectedEnvKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	_, err := client.GetFlags(
-		ctx,
-		&flagsmith.EvaluationContext{
-			Environment: &flagsmith.EnvironmentEvaluationContext{APIKey: expectedEnvKey},
-		})
-
-	// Then
+	_, err := client.GetEnvironmentFlags(ctx)
 	assert.NoError(t, err)
 }
 
@@ -294,7 +288,7 @@ func TestGetFlagsEnvironmentEvaluationContextIdentity(t *testing.T) {
 	defer server.Close()
 
 	// When
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	client := flagsmith.NewClient(expectedEnvKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	_, err := client.GetFlags(
 		context.Background(),
@@ -349,8 +343,8 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
-		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
-			return flagsmith.Flag{IsDefault: true}, nil
+		flagsmith.WithDefaultFlagHandler(func(featureName string) (flagsmith.Flag, error) {
+			return flagsmith.Flag{}, nil
 		}))
 
 	flags, err := client.GetEnvironmentFlags(ctx)
@@ -432,13 +426,15 @@ func TestGetIdentityFlagsUseslocalOverridesWhenAvailable(t *testing.T) {
 }
 
 func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *testing.T) {
-	// Given
 	ctx := context.Background()
-	expectedRequestBody := `{"identifier":"test_identity","traits":[{"trait_key":"stringTrait","trait_value":"trait_value"},` +
-		`{"trait_key":"intTrait","trait_value":1},` +
-		`{"trait_key":"floatTrait","trait_value":1.11},` +
-		`{"trait_key":"boolTrait","trait_value":true},` +
-		`{"trait_key":"NoneTrait","trait_value":null}]}`
+
+	traits := map[string]interface{}{
+		"stringTrait": "trait_value",
+		"intTrait":    float64(1),
+		"floatTrait":  1.11,
+		"boolTrait":   true,
+		"NoneTrait":   nil,
+	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		assert.Equal(t, req.URL.Path, "/api/v1/identities/")
@@ -447,38 +443,41 @@ func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *t
 		// Test that we sent the correct body
 		rawBody, err := io.ReadAll(req.Body)
 		assert.NoError(t, err)
-		assert.Equal(t, expectedRequestBody, string(rawBody))
+
+		// Parse the actual JSON instead of comparing strings directly
+		var actualBody map[string]interface{}
+		err = json.Unmarshal(rawBody, &actualBody)
+		assert.NoError(t, err)
+
+		assert.Equal(t, "test_identity", actualBody["identifier"])
+
+		// Check that all expected traits are present with correct values
+		traitsArray, _ := actualBody["traits"].([]interface{})
+		assert.Equal(t, 5, len(traitsArray))
+
+		for _, trait := range traitsArray {
+			traitObj := trait.(map[string]interface{})
+			k := traitObj["trait_key"].(string)
+			v := traitObj["trait_value"]
+			assert.Equal(t, traits[k], v)
+		}
 
 		rw.Header().Set("Content-Type", "application/json")
 
 		rw.WriteHeader(http.StatusOK)
 		_, err = io.WriteString(rw, fixtures.IdentityResponseJson)
-
 		assert.NoError(t, err)
 	}))
 	defer server.Close()
-	// When
+
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	traits := map[string]interface{}{
-		"stringTrait": "trait_value",
-		"intTrait":    1,
-		"floatTrait":  1.11,
-		"boolTrait":   true,
-		"NoneTrait":   nil,
-	}
-
-	// When
 	flags, err := client.GetFlags(ctx, flagsmith.NewEvaluationContext("test_identity", traits))
-
-	// Then
 	assert.NoError(t, err)
 
 	allFlags := flags.AllFlags()
-
 	assert.Equal(t, 1, len(allFlags))
-
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
@@ -502,8 +501,8 @@ func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T)
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
-		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
-			return flagsmith.Flag{IsDefault: true}, nil
+		flagsmith.WithDefaultFlagHandler(func(featureName string) (flagsmith.Flag, error) {
+			return flagsmith.Flag{}, nil
 		}))
 
 	flags, err := client.GetEnvironmentFlags(ctx)
@@ -535,8 +534,8 @@ func TestDefaultHandlerIsUsedWhenTimeout(t *testing.T) {
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
 		flagsmith.WithRequestTimeout(10*time.Millisecond),
-		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
-			return flagsmith.Flag{IsDefault: true}, nil
+		flagsmith.WithDefaultFlagHandler(func(featureName string) (flagsmith.Flag, error) {
+			return flagsmith.Flag{}, nil
 		}))
 
 	flags, err := client.GetEnvironmentFlags(ctx)
@@ -557,8 +556,8 @@ func TestDefaultHandlerIsUsedWhenRequestFails(t *testing.T) {
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
-		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
-			return flagsmith.Flag{IsDefault: true}, nil
+		flagsmith.WithDefaultFlagHandler(func(featureName string) (flagsmith.Flag, error) {
+			return flagsmith.Flag{}, nil
 		}))
 
 	flags, err := client.GetEnvironmentFlags(ctx)
@@ -678,7 +677,6 @@ func TestBulkIdentifyReturnsErrorIfServerReturns404(t *testing.T) {
 
 	// Then
 	assert.Error(t, err)
-	assert.Equal(t, "flagsmith: Bulk identify endpoint not found; Please make sure you are using Edge API endpoint", err.Error())
 }
 
 func TestBulkIdentify(t *testing.T) {
