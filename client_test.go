@@ -79,7 +79,7 @@ func TestClientErrorsIfDefaultHandlerAndOfflineHandlerAreBothSet(t *testing.T) {
 	// Trigger panic
 	_ = flagsmith.NewClient("key",
 		flagsmith.WithOfflineHandler(offlineHandler),
-		flagsmith.WithDefaultFlagHandler(func(featureName string) (flagsmith.Flag, error) {
+		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
 			return flagsmith.Flag{}, nil
 		}))
 }
@@ -343,7 +343,7 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
-		flagsmith.WithDefaultFlagHandler(func(featureName string) (flagsmith.Flag, error) {
+		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
 			return flagsmith.Flag{}, nil
 		}))
 
@@ -501,7 +501,7 @@ func TestDefaultHandlerIsUsedWhenNoMatchingEnvironmentFlagReturned(t *testing.T)
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
-		flagsmith.WithDefaultFlagHandler(func(featureName string) (flagsmith.Flag, error) {
+		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
 			return flagsmith.Flag{}, nil
 		}))
 
@@ -534,7 +534,7 @@ func TestDefaultHandlerIsUsedWhenTimeout(t *testing.T) {
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
 		flagsmith.WithRequestTimeout(10*time.Millisecond),
-		flagsmith.WithDefaultFlagHandler(func(featureName string) (flagsmith.Flag, error) {
+		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
 			return flagsmith.Flag{}, nil
 		}))
 
@@ -556,7 +556,7 @@ func TestDefaultHandlerIsUsedWhenRequestFails(t *testing.T) {
 
 	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"),
-		flagsmith.WithDefaultFlagHandler(func(featureName string) (flagsmith.Flag, error) {
+		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
 			return flagsmith.Flag{}, nil
 		}))
 

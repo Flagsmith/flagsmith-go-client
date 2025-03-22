@@ -56,7 +56,7 @@ type Client struct {
 //	flagsmithClient := flagsmith.NewClient(
 //		os.Getenv("FLAGSMITH_SDK_KEY"),
 //		flagsmith.WithLocalEvaluation(context.Background()),
-//		flagsmith.WithDefaultFlagHandler(GetDefaultFlag),
+//		flagsmith.WithDefaultHandler(GetDefaultFlag),
 //	)
 func NewClient(apiKey string, options ...Option) *Client {
 	c := &Client{
@@ -119,7 +119,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 // GetFlags evaluates the feature flags within an [EvaluationContext].
 //
 // When flag evaluation fails, the return value is determined by the default flag handler from
-// [WithDefaultFlagHandler], if one was provided.
+// [WithDefaultHandler], if one was provided.
 //
 // Flags are evaluated remotely by the Flagsmith API by default.
 // To evaluate flags locally, instantiate a client using [WithLocalEvaluation].

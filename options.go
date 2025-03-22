@@ -76,16 +76,6 @@ func WithCustomHeaders(headers map[string]string) Option {
 }
 
 // WithDefaultHandler sets a handler function used to return fallback values when [Client.GetFlags] would have normally
-// returned an error.
-//
-// Deprecated: Use WithDefaultFlagHandler instead.
-func WithDefaultHandler(handler func(string) (Flag, error)) Option {
-	return func(c *Client) {
-		c.defaultFlagHandler = handler
-	}
-}
-
-// WithDefaultFlagHandler sets a handler function used to return fallback values when [Client.GetFlags] would have normally
 // returned an error. For example, this handler makes all flags be disabled by default:
 //
 //	func handler(flagKey string) (Flag, error) {
@@ -94,20 +84,16 @@ func WithDefaultHandler(handler func(string) (Flag, error)) Option {
 //			Enabled: false,
 //		}, nil
 //	}
-func WithDefaultFlagHandler(handler func(string) (Flag, error)) Option {
-	f := func(flagKey string) (Flag, error) {
-		defaultFlag, err := handler(flagKey)
-		if err != nil {
-			return Flag{}, err
-		}
-		return Flag{
-			IsDefault:   true,
-			FeatureName: flagKey,
-			Enabled:     defaultFlag.Enabled,
-			Value:       defaultFlag.Value,
-		}, nil
+func WithDefaultHandler(handler func(string) (Flag, error)) Option {
+	f := func(flagKey string) (flag Flag, err error) {
+		flag, err = handler(flagKey)
+		flag.IsDefault = true
+		flag.FeatureName = flagKey
+		return flag, err
 	}
-	return WithDefaultHandler(f)
+	return func(c *Client) {
+		c.defaultFlagHandler = f
+	}
 }
 
 // WithLogger sets a custom [slog.Logger] for the [Client].
