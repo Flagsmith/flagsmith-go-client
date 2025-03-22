@@ -3,10 +3,7 @@ package flagsmith
 import (
 	"encoding/json"
 	"fmt"
-
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
-
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
 )
 
 type Flag struct {
@@ -17,23 +14,20 @@ type Flag struct {
 	FeatureName string
 }
 
+type Identity struct {
+	Identifier string                 `json:"identifier"`
+	Traits     map[string]interface{} `json:"traits"`
+}
+
 type Trait struct {
-	TraitKey   string      `json:"trait_key"`
-	TraitValue interface{} `json:"trait_value"`
-	Transient  bool        `json:"transient,omitempty"`
+	Key   string      `json:"trait_key"`
+	Value interface{} `json:"trait_value"`
 }
 
 type IdentityTraits struct {
 	Identifier string   `json:"identifier"`
 	Traits     []*Trait `json:"traits"`
 	Transient  bool     `json:"transient,omitempty"`
-}
-
-func (t *Trait) ToTraitModel() *traits.TraitModel {
-	return &traits.TraitModel{
-		TraitKey:   t.TraitKey,
-		TraitValue: fmt.Sprint(t.TraitValue),
-	}
 }
 
 func makeFlagFromFeatureState(featureState *features.FeatureStateModel, identityID string) Flag {

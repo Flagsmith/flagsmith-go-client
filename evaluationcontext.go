@@ -4,40 +4,24 @@ package flagsmith
 //
 // The zero value represents the current Flagsmith environment.
 type EvaluationContext struct {
-	Environment EnvironmentEvaluationContext `json:"environment,omitempty"`
-	Identity    IdentityEvaluationContext    `json:"identity,omitempty"`
+	environment string
+	identifier  string
+	traits      map[string]interface{}
 }
 
-// EnvironmentEvaluationContext is the EvaluationContext of a Flagsmith
-// environment, such as Staging or Production.
-//
-// APIKey is the environment's client-side SDK key.
-type EnvironmentEvaluationContext struct {
-	APIKey string `json:"api_key"`
+// NewEvaluationContext creates a flag evaluation context for an identity.
+func NewEvaluationContext(identifier string, traits map[string]interface{}) (ec EvaluationContext) {
+	ec.identifier = identifier
+	ec.traits = traits
+	// Store a copy of the trait map
+	ec.traits = make(map[string]interface{}, len(traits))
+	for k, v := range traits {
+		ec.traits[k] = v
+	}
+	return ec
 }
 
-// IdentityEvaluationContext is the EvaluationContext of an identity within a
-// Flagsmith environment.
-//
-// Identifier is the identity's targeting key. It is used for identity-specific
-// flag overrides, and as the seed for fractional evaluation.
-//
-// Traits are application-defined key-value attributes.
-//
-// If Transient, no identity data will be persisted when flags are evaluated
-// remotely by the Flagsmith API.
-type IdentityEvaluationContext struct {
-	Transient  bool                              `json:"transient,omitempty"`
-	Identifier string                            `json:"identifier,omitempty"`
-	Traits     map[string]TraitEvaluationContext `json:"traits,omitempty"`
-}
-
-// TraitEvaluationContext represents a single key-value attribute in an
-// IdentityEvaluationContext.
-//
-// If Transient, this trait will not be persisted when flags are evaluated
-// remotely by the Flagsmith API. Other non-transient traits will be persisted.
-type TraitEvaluationContext struct {
-	Transient bool        `json:"transient,omitempty"`
-	Value     interface{} `json:"value"`
+// NewTransientEvaluationContext is equivalent to NewEvaluationContext("", traits).
+func NewTransientEvaluationContext(traits map[string]interface{}) (ec EvaluationContext) {
+	return NewEvaluationContext("", traits)
 }

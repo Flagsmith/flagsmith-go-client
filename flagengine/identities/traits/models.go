@@ -2,15 +2,22 @@ package traits
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
-type TraitModel struct {
-	TraitKey   string `json:"trait_key"`
-	TraitValue string `json:"trait_value"`
+// Trait is a flagsmith.Trait with a serialised Value.
+type Trait struct {
+	Key   string `json:"trait_key"`
+	Value string `json:"trait_value"`
 }
 
-func (t *TraitModel) UnmarshalJSON(bytes []byte) error {
+// NewTrait serialises value into a Trait using fmt.Sprint.
+func NewTrait(key string, value interface{}) *Trait {
+	return &Trait{key, fmt.Sprint(value)}
+}
+
+func (t *Trait) UnmarshalJSON(bytes []byte) error {
 	var obj struct {
 		Key string          `json:"trait_key"`
 		Val json.RawMessage `json:"trait_value"`
@@ -21,7 +28,7 @@ func (t *TraitModel) UnmarshalJSON(bytes []byte) error {
 		return err
 	}
 
-	t.TraitKey = obj.Key
-	t.TraitValue = strings.Trim(string(obj.Val), `"`)
+	t.Key = obj.Key
+	t.Value = strings.Trim(string(obj.Val), `"`)
 	return nil
 }

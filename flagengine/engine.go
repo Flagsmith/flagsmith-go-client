@@ -36,7 +36,7 @@ func GetEnvironmentFeatureState(environment *environments.EnvironmentModel, feat
 func GetIdentityFeatureStates(
 	environment *environments.EnvironmentModel,
 	identity *identities.IdentityModel,
-	overrideTraits ...*traits.TraitModel,
+	overrideTraits ...*traits.Trait,
 ) []*features.FeatureStateModel {
 	featureStatesMap := getIdentityFeatureStatesMap(environment, identity, overrideTraits...)
 	featureStates := make([]*features.FeatureStateModel, 0, len(featureStatesMap))
@@ -55,7 +55,7 @@ func GetIdentityFeatureState(
 	environment *environments.EnvironmentModel,
 	identity *identities.IdentityModel,
 	featureName string,
-	overrideTraits ...*traits.TraitModel,
+	overrideTraits ...*traits.Trait,
 ) *features.FeatureStateModel {
 	featureStates := getIdentityFeatureStatesMap(environment, identity, overrideTraits...)
 
@@ -70,7 +70,7 @@ func GetIdentityFeatureState(
 func GetIdentitySegments(
 	environment *environments.EnvironmentModel,
 	identity *identities.IdentityModel,
-	overrideTraits ...*traits.TraitModel,
+	overrideTraits ...*traits.Trait,
 ) []*segments.SegmentModel {
 	var list []*segments.SegmentModel
 
@@ -86,7 +86,7 @@ func GetIdentitySegments(
 func getIdentityFeatureStatesMap(
 	environment *environments.EnvironmentModel,
 	identity *identities.IdentityModel,
-	overrideTraits ...*traits.TraitModel,
+	overrideTraits ...*traits.Trait,
 ) map[int]*features.FeatureStateModel {
 	featureStates := make(map[int]*features.FeatureStateModel)
 	for _, fs := range environment.FeatureStates {

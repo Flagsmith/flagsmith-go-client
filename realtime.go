@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
 )
 
 func (c *Client) startRealtimeUpdates(ctx context.Context) {
@@ -18,7 +16,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 	if err != nil {
 		panic("Failed to fetch the environment while configuring real-time updates")
 	}
-	env, _ := c.environment.Load().(*environments.EnvironmentModel)
+	env := c.environment.Get()
 	stream_url := c.config.realtimeBaseUrl + "sse/environments/" + env.APIKey + "/stream"
 	envUpdatedAt := env.UpdatedAt
 	for {
@@ -51,8 +49,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 						if err != nil {
 							continue
 						}
-						env, _ := c.environment.Load().(*environments.EnvironmentModel)
-						envUpdatedAt = env.UpdatedAt
+						envUpdatedAt = parsedTime
 					}
 				}
 			}

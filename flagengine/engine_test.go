@@ -105,8 +105,8 @@ func TestIdentityGetAllFeatureStatesWithTraits(t *testing.T) {
 
 	envWithSegmentOverride := fixtures.EnvironmentWithSegmentOverride(env, fixtures.SegmentOverrideFs(segment, feature1), segment)
 
-	traitModels := []*traits.TraitModel{
-		{TraitKey: fixtures.SegmentConditionProperty, TraitValue: fixtures.SegmentConditionStringValue},
+	traitModels := []*traits.Trait{
+		{Key: fixtures.SegmentConditionProperty, Value: fixtures.SegmentConditionStringValue},
 	}
 
 	allFeatureStates := flagengine.GetIdentityFeatureStates(envWithSegmentOverride, identity, traitModels...)
