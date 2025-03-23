@@ -18,7 +18,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 		panic("Failed to fetch the environment while configuring real-time updates")
 	}
 
-	env := c.environment.GetEnvironment()
+	env, _ := c.environment.GetEnvironment()
 	envUpdatedAt := env.UpdatedAt
 	log := c.log.With("environment", env.APIKey, "current_updated_at", &envUpdatedAt)
 
@@ -40,37 +40,43 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 			}
 			defer resp.Body.Close()
 
+			log.Info("connected to realtime")
+
 			scanner := bufio.NewScanner(resp.Body)
 			for scanner.Scan() {
 				line := scanner.Text()
-				if strings.HasPrefix(line, "data: ") {
-					parsedTime, err := parseUpdatedAtFromSSE(line)
-					if err != nil {
-						log.Error("failed to parse realtime update event", "error", err, "raw_event", line)
-						continue
-					}
-					if parsedTime.After(envUpdatedAt) {
-						log.WithGroup("event").Info("received update event",
+				parsedTime, err := parseUpdatedAtFromSSE(line)
+				if err != nil {
+					log.Error("failed to parse realtime update event", "error", err, "raw_event", line)
+					continue
+				}
+				if parsedTime.After(envUpdatedAt) {
+					log.WithGroup("event").
+						Info("received update event",
 							slog.Duration("update_delay", parsedTime.Sub(envUpdatedAt)),
 							slog.Time("updated_at", parsedTime),
 							slog.String("environment", env.APIKey),
 						)
-						err = c.UpdateEnvironment(ctx)
-						if err != nil {
-							continue
-						}
-						envUpdatedAt = parsedTime
+					err = c.UpdateEnvironment(ctx)
+					if err != nil {
+						log.Error("realtime update failed", "error", err)
+						continue
 					}
+					envUpdatedAt = parsedTime
 				}
 			}
 			if err := scanner.Err(); err != nil {
-				c.log.Error("failed to read from realtime stream", "error", err, "stream_url", &resp.Request.URL)
+				log.Error("failed to read from realtime stream", "error", err)
 			}
 		}
 	}
 }
 
 func parseUpdatedAtFromSSE(line string) (time.Time, error) {
+	if !strings.HasPrefix(line, "data: ") {
+		return time.Time{}, nil
+	}
+
 	var eventData struct {
 		UpdatedAt float64 `json:"updated_at"`
 	}

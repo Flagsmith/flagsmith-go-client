@@ -173,7 +173,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		e := &FlagsmithAPIError{Msg: msg, Err: nil, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
 		return c.handleError(e)
 	}
-	c.environment.SetEnvironment(&env)
+	c.environment.SetEnvironment(env)
 
 	c.log.Info("environment updated", "environment", env.APIKey)
 	return nil
@@ -181,12 +181,13 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 
 // GetIdentitySegments returns the segments that this evaluation context is a part of. It requires a local environment
 // provided by [WithLocalEvaluation] and/or [WithOfflineHandler].
-func (c *Client) GetIdentitySegments(ec EvaluationContext) ([]*segments.SegmentModel, error) {
-	if env := c.environment.GetEnvironment(); env != nil {
-		identity := c.getIdentityModel(ec.identifier, env.APIKey, ec.traits)
-		return flagengine.GetIdentitySegments(env, &identity), nil
+func (c *Client) GetIdentitySegments(ec EvaluationContext) (s []*segments.SegmentModel, err error) {
+	env, ok := c.environment.GetEnvironment()
+	if !ok {
+		return s, errors.New("GetIdentitySegments called with no local environment available")
 	}
-	return nil, &FlagsmithClientError{msg: "no local environment available to calculate identity segments"}
+	identity := c.getIdentityModel(ec.identifier, env.APIKey, ec.traits)
+	return flagengine.GetIdentitySegments(env, &identity), nil
 }
 
 // BulkIdentify can be used to create/overwrite identities(with traits) in bulk
@@ -283,8 +284,8 @@ func (c *Client) getIdentityFlagsFromAPI(ctx context.Context, identifier string,
 }
 
 func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
-	env := c.environment.GetEnvironment()
-	if env == nil {
+	env, ok := c.environment.GetEnvironment()
+	if !ok {
 		return Flags{}, fmt.Errorf("getEnvironmentFlagsFromEnvironment: no local environment is available")
 	}
 	return makeFlagsFromFeatureStates(
@@ -296,8 +297,8 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 }
 
 func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits map[string]interface{}) (Flags, error) {
-	env := c.environment.GetEnvironment()
-	if env := c.environment.GetEnvironment(); env == nil {
+	env, ok := c.environment.GetEnvironment()
+	if !ok {
 		return Flags{}, fmt.Errorf("getIdentityFlagsFromDocument: no local environment is available")
 	}
 	identity := c.getIdentityModel(identifier, env.APIKey, traits)
@@ -360,14 +361,14 @@ func (c *Client) handleError(err *FlagsmithAPIError) *FlagsmithAPIError {
 
 type state struct {
 	mu                sync.RWMutex
-	environment       *environments.EnvironmentModel
+	environment       environments.EnvironmentModel
 	identityOverrides sync.Map
 }
 
-func (es *state) GetEnvironment() *environments.EnvironmentModel {
+func (es *state) GetEnvironment() (environments.EnvironmentModel, bool) {
 	es.mu.RLock()
 	defer es.mu.RUnlock()
-	return es.environment
+	return es.environment, es.environment.APIKey != ""
 }
 
 func (es *state) GetIdentityOverride(identifier string) (identities.IdentityModel, bool) {
@@ -378,7 +379,7 @@ func (es *state) GetIdentityOverride(identifier string) (identities.IdentityMode
 	return identities.IdentityModel{}, ok
 }
 
-func (es *state) SetEnvironment(env *environments.EnvironmentModel) {
+func (es *state) SetEnvironment(env environments.EnvironmentModel) {
 	es.mu.Lock()
 	defer es.mu.Unlock()
 	es.environment = env

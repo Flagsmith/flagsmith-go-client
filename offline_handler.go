@@ -8,11 +8,11 @@ import (
 )
 
 type OfflineHandler interface {
-	GetEnvironment() *environments.EnvironmentModel
+	GetEnvironment() environments.EnvironmentModel
 }
 
 type LocalFileHandler struct {
-	environment *environments.EnvironmentModel
+	environment environments.EnvironmentModel
 }
 
 // NewLocalFileHandler creates a new LocalFileHandler with the given path.
@@ -29,12 +29,12 @@ func NewLocalFileHandler(environmentDocumentPath string) (*LocalFileHandler, err
 
 	// Create and initialise the LocalFileHandler
 	handler := &LocalFileHandler{
-		environment: &environment,
+		environment: environment,
 	}
 
 	return handler, nil
 }
 
-func (handler *LocalFileHandler) GetEnvironment() *environments.EnvironmentModel {
+func (handler *LocalFileHandler) GetEnvironment() environments.EnvironmentModel {
 	return handler.environment
 }

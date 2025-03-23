@@ -77,8 +77,8 @@ func Feature2() *features.FeatureModel {
 	}
 }
 
-func Environment(feature1, feature2 *features.FeatureModel, project *projects.ProjectModel) *environments.EnvironmentModel {
-	return &environments.EnvironmentModel{
+func Environment(feature1, feature2 *features.FeatureModel, project *projects.ProjectModel) environments.EnvironmentModel {
+	return environments.EnvironmentModel{
 		ID:      1,
 		APIKey:  "api-key",
 		Project: project,
@@ -89,7 +89,7 @@ func Environment(feature1, feature2 *features.FeatureModel, project *projects.Pr
 	}
 }
 
-func Identity(env *environments.EnvironmentModel) *identities.IdentityModel {
+func Identity(env environments.EnvironmentModel) *identities.IdentityModel {
 	return &identities.IdentityModel{
 		Identifier:        "identity_1",
 		EnvironmentAPIKey: env.APIKey,
@@ -104,7 +104,7 @@ func TraitMatchingSegment(segCond *segments.SegmentConditionModel) *traits.Trait
 	}
 }
 
-func IdentityInSegment(trait *traits.TraitModel, env *environments.EnvironmentModel) *identities.IdentityModel {
+func IdentityInSegment(trait *traits.TraitModel, env environments.EnvironmentModel) *identities.IdentityModel {
 	return &identities.IdentityModel{
 		Identifier:        "identity_2",
 		EnvironmentAPIKey: env.APIKey,
@@ -134,16 +134,16 @@ func MVFeatureStateValue() *features.MultivariateFeatureStateValueModel {
 }
 
 func EnvironmentWithSegmentOverride(
-	env *environments.EnvironmentModel,
+	env environments.EnvironmentModel,
 	featureState *features.FeatureStateModel,
 	segment *segments.SegmentModel,
-) *environments.EnvironmentModel {
+) environments.EnvironmentModel {
 	segment.FeatureStates = append(segment.FeatureStates, featureState)
 	env.Project.Segments = append(env.Project.Segments, segment)
 	return env
 }
 
-func GetFixtures() (*features.FeatureModel, *features.FeatureModel, *segments.SegmentModel, *environments.EnvironmentModel, *identities.IdentityModel) {
+func GetFixtures() (*features.FeatureModel, *features.FeatureModel, *segments.SegmentModel, environments.EnvironmentModel, *identities.IdentityModel) {
 	feature1 := Feature1()
 	feature2 := Feature2()
 	org := Organisation()
