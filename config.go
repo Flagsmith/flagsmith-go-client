@@ -15,24 +15,3 @@ const (
 	BulkIdentifyMaxCount   = 100
 	DefaultRealtimeBaseUrl = "https://realtime.flagsmith.com/"
 )
-
-// config contains all configurable Client settings.
-type config struct {
-	baseURL            string
-	timeout            time.Duration
-	localEvaluation    bool
-	envRefreshInterval time.Duration
-	enableAnalytics    bool
-	realtimeBaseUrl    string
-	useRealtime        bool
-}
-
-// defaultConfig returns default configuration.
-func defaultConfig() config {
-	return config{
-		baseURL:            DefaultBaseURL,
-		timeout:            DefaultTimeout,
-		envRefreshInterval: time.Second * 60,
-		realtimeBaseUrl:    DefaultRealtimeBaseUrl,
-	}
-}

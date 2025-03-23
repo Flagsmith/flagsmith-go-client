@@ -22,23 +22,31 @@ import (
 //
 // Use [Client.GetFlags] to evaluate feature flags.
 type Client struct {
-	config             config
+	baseURL            string
+	timeout            time.Duration
+	proxy              string
+	localEvaluation    bool
+	envRefreshInterval time.Duration
+	realtimeBaseUrl    string
+	useRealtime        bool
 	defaultFlagHandler func(string) (Flag, error)
-	errorHandler       func(handler *FlagsmithAPIError)
-	analyticsProcessor *AnalyticsProcessor
+	errorHandler       func(handler *APIError)
 	ctxLocalEval       context.Context
 	ctxAnalytics       context.Context
 
 	environment state
 
-	log    *slog.Logger
-	client *resty.Client
+	analyticsProcessor *AnalyticsProcessor
+	log                *slog.Logger
+	client             *resty.Client
 }
 
 // NewClient creates a Flagsmith [Client] using the environment determined by apiKey.
 //
 // Feature flags are evaluated remotely by the Flagsmith API over HTTP by default.
-// To evaluate flags locally, use [WithLocalEvaluation] and a server-side SDK key. For example:
+// To evaluate flags locally, use [WithLocalEvaluation] and a server-side SDK key.
+//
+// Example:
 //
 //	func GetDefaultFlag(key string) (Flag, error) {
 //		return Flag{
@@ -54,23 +62,16 @@ type Client struct {
 //		flagsmith.WithDefaultHandler(GetDefaultFlag),
 //	)
 func NewClient(apiKey string, options ...Option) (*Client, error) {
+	// Defaults
 	c := &Client{
-		config: defaultConfig(),
-		client: resty.New(),
+		log:                slog.Default(),
+		baseURL:            DefaultBaseURL,
+		timeout:            DefaultTimeout,
+		envRefreshInterval: time.Second * 60,
+		realtimeBaseUrl:    DefaultRealtimeBaseUrl,
+		client:             resty.New(),
 	}
-
-	c.log = slog.Default()
-	c.client = resty.
-		New().
-		SetTimeout(c.config.timeout).
-		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
-		OnAfterResponse(newRestyLogResponseMiddleware(c.log)).
-		SetLogger(restySlogLogger{c.log}).
-		SetHeaders(map[string]string{
-			"Accept":             "application/json",
-			EnvironmentKeyHeader: apiKey,
-		})
-
+	// Apply options
 	for _, opt := range options {
 		if opt != nil {
 			opt(c)
@@ -84,11 +85,24 @@ func NewClient(apiKey string, options ...Option) (*Client, error) {
 		return nil, errors.New("no API key, offline environment or default flag handler was provided")
 	}
 
-	if c.config.localEvaluation {
+	c.client = c.client.
+		SetTimeout(c.timeout).
+		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
+		OnAfterResponse(newRestyLogResponseMiddleware(c.log)).
+		SetLogger(restySlogLogger{c.log}).
+		SetHeaders(map[string]string{
+			"Accept":             "application/json",
+			EnvironmentKeyHeader: apiKey,
+		})
+	if c.proxy != "" {
+		c.client = c.client.SetProxy(c.proxy)
+	}
+
+	if c.localEvaluation {
 		if !strings.HasPrefix(apiKey, "ser.") {
 			return nil, errors.New("using local flag evaluation requires a server-side SDK key; got " + apiKey)
 		}
-		if c.config.useRealtime {
+		if c.useRealtime {
 			go c.startRealtimeUpdates(c.ctxLocalEval)
 		} else {
 			go c.pollEnvironment(c.ctxLocalEval)
@@ -128,10 +142,10 @@ func MustNewClient(apiKey string, options ...Option) *Client {
 //		// Flag is enabled for this evaluation context
 //	}
 func (c *Client) GetFlags(ctx context.Context, ec EvaluationContext) (f Flags, err error) {
-	if ec.identifier != "" {
-		f, err = c.GetIdentityFlags(ctx, ec.identifier, ec.traits)
-	} else {
+	if ec.identifier == "" {
 		f, err = c.GetEnvironmentFlags(ctx)
+	} else {
+		f, err = c.GetIdentityFlags(ctx, ec.identifier, ec.traits)
 	}
 	if err == nil {
 		return f, nil
@@ -151,15 +165,13 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		SetContext(ctx).
 		SetResult(&env).
 		ForceContentType("application/json").
-		Get(c.config.baseURL + "environment-document/")
+		Get(c.baseURL + "environment-document/")
 
 	if err != nil {
-		e := &FlagsmithAPIError{Msg: "failed to GET /environment-document", Err: err}
-		return c.handleError(e)
+		return c.handleError(&APIError{Err: err})
 	}
 	if resp.IsError() {
-		msg := fmt.Sprintf("error response from GET /environment-document: %s", resp.Status())
-		e := &FlagsmithAPIError{Msg: msg, Err: nil, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+		e := &APIError{response: resp.RawResponse}
 		return c.handleError(e)
 	}
 	c.environment.SetEnvironment(env)
@@ -194,7 +206,7 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 		SetBody(&body).
 		SetContext(ctx).
 		ForceContentType("application/json").
-		Post(c.config.baseURL + "bulk-identities/")
+		Post(c.baseURL + "bulk-identities/")
 
 	if err != nil {
 		return err
@@ -207,7 +219,7 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 
 // GetEnvironmentFlags calls GetFlags for the default EvaluationContext.
 func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
-	if c.environment.IsOffline() || c.config.localEvaluation {
+	if c.environment.IsOffline() || c.localEvaluation {
 		f, err = c.getEnvironmentFlagsFromEnvironment()
 	} else {
 		f, err = c.getEnvironmentFlagsFromAPI(ctx)
@@ -217,7 +229,7 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 
 // GetIdentityFlags calls GetFlags using this identifier and traits as the EvaluationContext.
 func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits map[string]interface{}) (f Flags, err error) {
-	if c.environment.IsOffline() || c.config.localEvaluation {
+	if c.environment.IsOffline() || c.localEvaluation {
 		f, err = c.getIdentityFlagsFromEnvironment(identifier, traits)
 	} else {
 		f, err = c.getIdentityFlagsFromAPI(ctx, identifier, traits)
@@ -228,17 +240,16 @@ func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits
 // getEnvironmentFlagsFromAPI tries to contact the Flagsmith API to get the latest environment data.
 func (c *Client) getEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) {
 	req := c.client.NewRequest()
+	fmt.Println(c.baseURL)
 	resp, err := req.
 		SetContext(ctx).
 		ForceContentType("application/json").
-		Get(c.config.baseURL + "flags/")
+		Get(c.baseURL + "flags/")
 	if err != nil {
-		msg := fmt.Sprintf("GET /flags failed: %s", err)
-		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+		return Flags{}, &APIError{Err: err}
 	}
 	if !resp.IsSuccess() {
-		msg := fmt.Sprintf("unexpected response from GET /flags: %s", resp.Status())
-		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+		return Flags{}, &APIError{response: resp.RawResponse}
 	}
 	return makeFlagsFromAPIFlags(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
 }
@@ -260,14 +271,12 @@ func (c *Client) getIdentityFlagsFromAPI(ctx context.Context, identifier string,
 		SetBody(&body).
 		SetContext(ctx).
 		ForceContentType("application/json").
-		Post(c.config.baseURL + "identities/")
+		Post(c.baseURL + "identities/")
 	if err != nil {
-		msg := fmt.Sprintf("POST /identities failed: %s", err)
-		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+		return Flags{}, &APIError{Err: err}
 	}
 	if !resp.IsSuccess() {
-		msg := fmt.Sprintf("unexpected response from POST /identities: %s", resp.Status())
-		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+		return Flags{}, &APIError{response: resp.RawResponse}
 	}
 	return makeFlagsfromIdentityAPIJson(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
 }
@@ -303,7 +312,7 @@ func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits map[s
 
 func (c *Client) pollEnvironment(ctx context.Context) {
 	update := func() {
-		ctx, cancel := context.WithTimeout(ctx, c.config.envRefreshInterval)
+		ctx, cancel := context.WithTimeout(ctx, c.envRefreshInterval)
 		defer cancel()
 		err := c.UpdateEnvironment(ctx)
 		if err != nil {
@@ -311,7 +320,7 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 		}
 	}
 	update()
-	ticker := time.NewTicker(c.config.envRefreshInterval)
+	ticker := time.NewTicker(c.envRefreshInterval)
 	for {
 		select {
 		case <-ticker.C:
@@ -341,7 +350,7 @@ func (c *Client) getIdentityModel(identifier string, apiKey string, traits map[s
 	}
 }
 
-func (c *Client) handleError(err *FlagsmithAPIError) *FlagsmithAPIError {
+func (c *Client) handleError(err *APIError) *APIError {
 	if c.errorHandler != nil {
 		c.errorHandler(err)
 	}

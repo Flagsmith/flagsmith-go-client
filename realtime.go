@@ -22,7 +22,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 	envUpdatedAt := env.UpdatedAt
 	log := c.log.With("environment", env.APIKey, "current_updated_at", &envUpdatedAt)
 
-	streamPath, err := url.JoinPath(c.config.realtimeBaseUrl, "sse/environments", env.APIKey, "stream")
+	streamPath, err := url.JoinPath(c.realtimeBaseUrl, "sse/environments", env.APIKey, "stream")
 	if err != nil {
 		log.Error("failed to build stream URL", "error", err)
 		panic(err)

@@ -1,20 +1,18 @@
 package flagsmith
 
-type FlagsmithClientError struct {
-	msg string
+import (
+	"net/http"
+)
+
+type APIError struct {
+	Err      error
+	response *http.Response
 }
 
-type FlagsmithAPIError struct {
-	Msg                string
-	Err                error
-	ResponseStatusCode int
-	ResponseStatus     string
+func (e APIError) Error() string {
+	return e.Err.Error()
 }
 
-func (e FlagsmithClientError) Error() string {
-	return e.msg
-}
-
-func (e FlagsmithAPIError) Error() string {
-	return e.Msg
+func (e APIError) Response() *http.Response {
+	return e.response
 }

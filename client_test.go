@@ -674,8 +674,7 @@ func TestPollErrorHandlerIsUsedWhenPollFails(t *testing.T) {
 	// Given
 	ctx := context.Background()
 	var capturedError error
-	var statusCode int
-	var status string
+	var capturedResponse *http.Response
 
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.WriteHeader(http.StatusInternalServerError)
@@ -685,10 +684,9 @@ func TestPollErrorHandlerIsUsedWhenPollFails(t *testing.T) {
 	// When
 	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey,
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
-		flagsmith.WithErrorHandler(func(handler *flagsmith.FlagsmithAPIError) {
+		flagsmith.WithErrorHandler(func(handler *flagsmith.APIError) {
 			capturedError = handler.Err
-			statusCode = handler.ResponseStatusCode
-			status = handler.ResponseStatus
+			capturedResponse = handler.Response()
 		}),
 	)
 
@@ -697,8 +695,8 @@ func TestPollErrorHandlerIsUsedWhenPollFails(t *testing.T) {
 
 	// Then
 	assert.Equal(t, capturedError, nil)
-	assert.Equal(t, statusCode, 500)
-	assert.Equal(t, status, "500 Internal Server Error")
+	assert.Equal(t, capturedResponse.StatusCode, 500)
+	assert.Equal(t, capturedResponse.Status, "500 Internal Server Error")
 }
 
 func TestRealtime(t *testing.T) {

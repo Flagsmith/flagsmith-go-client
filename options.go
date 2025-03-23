@@ -17,7 +17,7 @@ type Option func(c *Client)
 // To set the URL of the real-time flags service, use [WithRealtimeBaseURL].
 func WithBaseURL(url string) Option {
 	return func(c *Client) {
-		c.config.baseURL = url
+		c.baseURL = url
 	}
 }
 
@@ -30,7 +30,7 @@ func WithBaseURL(url string) Option {
 // using [WithEnvironmentRefreshInterval] and [WithRetries].
 func WithLocalEvaluation(ctx context.Context) Option {
 	return func(c *Client) {
-		c.config.localEvaluation = true
+		c.localEvaluation = true
 		c.ctxLocalEval = ctx
 	}
 }
@@ -38,7 +38,7 @@ func WithLocalEvaluation(ctx context.Context) Option {
 // WithRequestTimeout sets the request timeout for all HTTP requests.
 func WithRequestTimeout(timeout time.Duration) Option {
 	return func(c *Client) {
-		c.client.SetTimeout(timeout)
+		c.timeout = timeout
 	}
 }
 
@@ -46,7 +46,7 @@ func WithRequestTimeout(timeout time.Duration) Option {
 // [WithLocalEvaluation] to be at most once per interval.
 func WithEnvironmentRefreshInterval(interval time.Duration) Option {
 	return func(c *Client) {
-		c.config.envRefreshInterval = interval
+		c.envRefreshInterval = interval
 	}
 }
 
@@ -55,7 +55,6 @@ func WithEnvironmentRefreshInterval(interval time.Duration) Option {
 // the provided context.
 func WithAnalytics(ctx context.Context) Option {
 	return func(c *Client) {
-		c.config.enableAnalytics = true
 		c.ctxAnalytics = ctx
 	}
 }
@@ -104,12 +103,13 @@ func WithLogger(logger *slog.Logger) Option {
 }
 
 // WithProxy sets a proxy server to use for all HTTP requests.
-func WithProxy(proxyURL string) Option {
+func WithProxy(url string) Option {
 	return func(c *Client) {
-		c.client.SetProxy(proxyURL)
+		c.proxy = url
 	}
 }
 
+// WithOfflineEnvironment sets the current environment and prevents Client from making network requests.
 func WithOfflineEnvironment(env Environment) Option {
 	return func(c *Client) {
 		c.environment.SetOfflineEnvironment(env.Environment())
@@ -117,7 +117,7 @@ func WithOfflineEnvironment(env Environment) Option {
 }
 
 // WithErrorHandler sets an error handler that is called if [Client.UpdateEnvironment] returns an error.
-func WithErrorHandler(handler func(handler *FlagsmithAPIError)) Option {
+func WithErrorHandler(handler func(handler *APIError)) Option {
 	return func(c *Client) {
 		c.errorHandler = handler
 	}
@@ -132,7 +132,7 @@ func WithErrorHandler(handler func(handler *FlagsmithAPIError)) Option {
 // of your real-time updates service.
 func WithRealtime() Option {
 	return func(c *Client) {
-		c.config.useRealtime = true
+		c.useRealtime = true
 	}
 }
 
@@ -146,6 +146,6 @@ func WithRealtimeBaseURL(url string) Option {
 		if !strings.HasSuffix(url, "/") {
 			url += "/"
 		}
-		c.config.realtimeBaseUrl = url
+		c.realtimeBaseUrl = url
 	}
 }

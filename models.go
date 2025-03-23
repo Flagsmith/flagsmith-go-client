@@ -3,7 +3,6 @@ package flagsmith
 import (
 	"encoding/json"
 	"fmt"
-
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
 )
 
@@ -144,7 +143,7 @@ func (f *Flags) GetFlag(featureName string) (Flag, error) {
 		if f.defaultFlagHandler != nil {
 			return f.defaultFlagHandler(featureName)
 		}
-		return resultFlag, &FlagsmithClientError{fmt.Sprintf("flagsmith: No feature found with name %q", featureName)}
+		return resultFlag, fmt.Errorf("feature %q not found", featureName)
 	}
 	if f.analyticsProcessor != nil {
 		f.analyticsProcessor.TrackFeature(resultFlag.FeatureName)
