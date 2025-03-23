@@ -32,7 +32,7 @@ func (s restySlogLogger) Debugf(format string, v ...interface{}) {
 func newRestyLogRequestMiddleware(logger *slog.Logger) resty.RequestMiddleware {
 	return func(c *resty.Client, req *resty.Request) error {
 		// Create a child logger with request metadata
-		reqLogger := logger.With(
+		reqLogger := logger.WithGroup("http").With(
 			"method", req.Method,
 			"url", req.URL,
 		)
@@ -57,11 +57,16 @@ func newRestyLogResponseMiddleware(logger *slog.Logger) resty.ResponseMiddleware
 		if reqLogger == nil {
 			reqLogger = logger
 		}
-		reqLogger.Debug("response",
+		reqLogger = reqLogger.With(
 			slog.Int("status", resp.StatusCode()),
 			slog.Duration("duration", time.Since(startTime)),
 			slog.Int64("content_length", resp.Size()),
 		)
+		if resp.IsError() {
+			reqLogger.Error("error response")
+		} else {
+			reqLogger.Debug("response")
+		}
 		return nil
 	}
 }

@@ -64,7 +64,6 @@ func NewClient(apiKey string, options ...Option) (*Client, error) {
 	c.client = resty.
 		New().
 		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
-		OnAfterResponse(newRestyLogResponseMiddleware(c.log)).
 		OnAfterResponse(newRestyLogResponseMiddleware(c.log))
 	c.client.SetLogger(restySlogLogger{c.log})
 
@@ -159,8 +158,6 @@ func (c *Client) GetFlags(ctx context.Context, ec EvaluationContext) (f Flags, e
 func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	var env environments.EnvironmentModel
 	resp, err := c.client.
-		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
-		OnAfterResponse(newRestyLogResponseMiddleware(c.log)).
 		NewRequest().
 		SetContext(ctx).
 		SetResult(&env).
