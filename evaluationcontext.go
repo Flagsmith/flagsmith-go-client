@@ -4,9 +4,8 @@ package flagsmith
 //
 // The zero value represents the current Flagsmith environment.
 type EvaluationContext struct {
-	environment string
-	identifier  string
-	traits      map[string]interface{}
+	identifier string
+	traits     map[string]interface{}
 }
 
 // NewEvaluationContext creates a flag evaluation context for an identity.
