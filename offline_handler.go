@@ -8,14 +8,14 @@ import (
 )
 
 type Environment interface {
-	Environment() environments.EnvironmentModel
+	Environment() *environments.EnvironmentModel
 }
 
 type environment struct {
-	model environments.EnvironmentModel
+	model *environments.EnvironmentModel
 }
 
-func (e environment) Environment() environments.EnvironmentModel {
+func (e environment) Environment() *environments.EnvironmentModel {
 	return e.model
 }
 
@@ -27,6 +27,6 @@ func ReadEnvironmentFromFile(name string) (env Environment, err error) {
 	}
 	var model environments.EnvironmentModel
 	err = json.Unmarshal(file, &model)
-	env = environment{model: model}
+	env = environment{model: &model}
 	return
 }

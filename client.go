@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine"
@@ -34,7 +33,7 @@ type Client struct {
 	ctxLocalEval       context.Context
 	ctxAnalytics       context.Context
 
-	environment state
+	state environmentState
 
 	analyticsProcessor *AnalyticsProcessor
 	log                *slog.Logger
@@ -78,7 +77,7 @@ func NewClient(apiKey string, options ...Option) (*Client, error) {
 		}
 	}
 
-	if c.environment.IsOffline() {
+	if c.state.IsOffline() {
 		return c, nil
 	}
 	if c.defaultFlagHandler == nil && apiKey == "" {
@@ -174,7 +173,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		e := &APIError{response: resp.RawResponse}
 		return c.handleError(e)
 	}
-	c.environment.SetEnvironment(env)
+	c.state.SetEnvironment(&env)
 
 	c.log.Info("environment updated", "environment", env.APIKey)
 	return nil
@@ -183,12 +182,12 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 // GetIdentitySegments returns the segments that this evaluation context is a part of. It requires a local environment
 // provided by [WithLocalEvaluation] and/or [WithOfflineHandler].
 func (c *Client) GetIdentitySegments(ec EvaluationContext) (s []*segments.SegmentModel, err error) {
-	env, ok := c.environment.GetEnvironment()
+	env, ok := c.state.GetEnvironment()
 	if !ok {
 		return s, errors.New("GetIdentitySegments called with no local environment available")
 	}
 	identity := c.getIdentityModel(ec.identifier, env.APIKey, ec.traits)
-	return flagengine.GetIdentitySegments(env, &identity), nil
+	return flagengine.GetIdentitySegments(env, identity), nil
 }
 
 // BulkIdentify can be used to create/overwrite identities(with traits) in bulk
@@ -219,7 +218,7 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 
 // GetEnvironmentFlags calls GetFlags for the default EvaluationContext.
 func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
-	if c.environment.IsOffline() || c.localEvaluation {
+	if c.state.IsOffline() || c.localEvaluation {
 		f, err = c.getEnvironmentFlagsFromEnvironment()
 	} else {
 		f, err = c.getEnvironmentFlagsFromAPI(ctx)
@@ -229,7 +228,7 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 
 // GetIdentityFlags calls GetFlags using this identifier and traits as the EvaluationContext.
 func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits map[string]interface{}) (f Flags, err error) {
-	if c.environment.IsOffline() || c.localEvaluation {
+	if c.state.IsOffline() || c.localEvaluation {
 		f, err = c.getIdentityFlagsFromEnvironment(identifier, traits)
 	} else {
 		f, err = c.getIdentityFlagsFromAPI(ctx, identifier, traits)
@@ -240,7 +239,6 @@ func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits
 // getEnvironmentFlagsFromAPI tries to contact the Flagsmith API to get the latest environment data.
 func (c *Client) getEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) {
 	req := c.client.NewRequest()
-	fmt.Println(c.baseURL)
 	resp, err := req.
 		SetContext(ctx).
 		ForceContentType("application/json").
@@ -282,7 +280,7 @@ func (c *Client) getIdentityFlagsFromAPI(ctx context.Context, identifier string,
 }
 
 func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
-	env, ok := c.environment.GetEnvironment()
+	env, ok := c.state.GetEnvironment()
 	if !ok {
 		return Flags{}, fmt.Errorf("getEnvironmentFlagsFromEnvironment: no local environment is available")
 	}
@@ -295,12 +293,12 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 }
 
 func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits map[string]interface{}) (Flags, error) {
-	env, ok := c.environment.GetEnvironment()
+	env, ok := c.state.GetEnvironment()
 	if !ok {
 		return Flags{}, fmt.Errorf("getIdentityFlagsFromDocument: no local environment is available")
 	}
 	identity := c.getIdentityModel(identifier, env.APIKey, traits)
-	featureStates := flagengine.GetIdentityFeatureStates(env, &identity)
+	featureStates := flagengine.GetIdentityFeatureStates(env, identity)
 	flags := makeFlagsFromFeatureStates(
 		featureStates,
 		c.analyticsProcessor,
@@ -332,18 +330,18 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 	}
 }
 
-func (c *Client) getIdentityModel(identifier string, apiKey string, traits map[string]interface{}) identities.IdentityModel {
+func (c *Client) getIdentityModel(identifier string, apiKey string, traits map[string]interface{}) *identities.IdentityModel {
 	identityTraits := make([]*enginetraits.TraitModel, 0, len(traits))
 	for k, v := range traits {
 		identityTraits = append(identityTraits, enginetraits.NewTrait(k, v))
 	}
 
-	if identity, ok := c.environment.GetIdentityOverride(identifier); ok {
+	if identity, ok := c.state.GetIdentityOverride(identifier); ok {
 		identity.IdentityTraits = identityTraits
 		return identity
 	}
 
-	return identities.IdentityModel{
+	return &identities.IdentityModel{
 		Identifier:        identifier,
 		IdentityTraits:    identityTraits,
 		EnvironmentAPIKey: apiKey,
@@ -355,44 +353,4 @@ func (c *Client) handleError(err *APIError) *APIError {
 		c.errorHandler(err)
 	}
 	return err
-}
-
-type state struct {
-	environment environments.EnvironmentModel
-	offline     bool
-	mu          sync.RWMutex
-
-	identityOverrides sync.Map
-}
-
-func (es *state) GetEnvironment() (environments.EnvironmentModel, bool) {
-	es.mu.RLock()
-	defer es.mu.RUnlock()
-	return es.environment, es.environment.APIKey != ""
-}
-
-func (es *state) GetIdentityOverride(identifier string) (identities.IdentityModel, bool) {
-	i, ok := es.identityOverrides.Load(identifier)
-	if ok && i != nil {
-		return i.(identities.IdentityModel), true
-	}
-	return identities.IdentityModel{}, ok
-}
-
-func (es *state) SetEnvironment(env environments.EnvironmentModel) {
-	es.mu.Lock()
-	defer es.mu.Unlock()
-	es.environment = env
-	for _, id := range env.IdentityOverrides {
-		es.identityOverrides.Store(id.Identifier, *id)
-	}
-}
-
-func (es *state) SetOfflineEnvironment(env environments.EnvironmentModel) {
-	es.SetEnvironment(env)
-	es.offline = true
-}
-
-func (es *state) IsOffline() bool {
-	return es.offline
 }

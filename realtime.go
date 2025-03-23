@@ -18,7 +18,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 		panic("Failed to fetch the environment while configuring real-time updates")
 	}
 
-	env, _ := c.environment.GetEnvironment()
+	env, _ := c.state.GetEnvironment()
 	envUpdatedAt := env.UpdatedAt
 	log := c.log.With("environment", env.APIKey, "current_updated_at", &envUpdatedAt)
 

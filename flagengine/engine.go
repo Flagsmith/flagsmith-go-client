@@ -34,7 +34,7 @@ func GetEnvironmentFeatureState(environment environments.EnvironmentModel, featu
 
 // GetIdentityFeatureStates returns a list of feature states for a given identity in a given environment.
 func GetIdentityFeatureStates(
-	environment environments.EnvironmentModel,
+	environment *environments.EnvironmentModel,
 	identity *identities.IdentityModel,
 	overrideTraits ...*traits.TraitModel,
 ) []*features.FeatureStateModel {
@@ -52,7 +52,7 @@ func GetIdentityFeatureStates(
 }
 
 func GetIdentityFeatureState(
-	environment environments.EnvironmentModel,
+	environment *environments.EnvironmentModel,
 	identity *identities.IdentityModel,
 	featureName string,
 	overrideTraits ...*traits.TraitModel,
@@ -68,7 +68,7 @@ func GetIdentityFeatureState(
 }
 
 func GetIdentitySegments(
-	environment environments.EnvironmentModel,
+	environment *environments.EnvironmentModel,
 	identity *identities.IdentityModel,
 	overrideTraits ...*traits.TraitModel,
 ) []*segments.SegmentModel {
@@ -84,7 +84,7 @@ func GetIdentitySegments(
 }
 
 func getIdentityFeatureStatesMap(
-	environment environments.EnvironmentModel,
+	environment *environments.EnvironmentModel,
 	identity *identities.IdentityModel,
 	overrideTraits ...*traits.TraitModel,
 ) map[int]*features.FeatureStateModel {
