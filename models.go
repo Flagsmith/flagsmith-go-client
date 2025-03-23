@@ -3,6 +3,7 @@ package flagsmith
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
 )
 

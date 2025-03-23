@@ -9,6 +9,13 @@ import (
 	"github.com/go-resty/resty/v2"
 )
 
+type contextKey string
+
+const (
+	contextLoggerKey    contextKey = contextKey("logger")
+	contextStartTimeKey contextKey = contextKey("startTime")
+)
+
 // restySlogLogger implements a [resty.Logger] using a [slog.Logger].
 type restySlogLogger struct {
 	logger *slog.Logger
@@ -39,10 +46,10 @@ func newRestyLogRequestMiddleware(logger *slog.Logger) resty.RequestMiddleware {
 		reqLogger.Debug("request")
 
 		// Store the logger in this request's context, and use it in the response
-		req.SetContext(context.WithValue(req.Context(), "logger", reqLogger))
+		req.SetContext(context.WithValue(req.Context(), contextLoggerKey, reqLogger))
 
 		// Time the current request
-		req.SetContext(context.WithValue(req.Context(), "startTime", time.Now()))
+		req.SetContext(context.WithValue(req.Context(), contextStartTimeKey, time.Now()))
 
 		return nil
 	}
@@ -51,8 +58,8 @@ func newRestyLogRequestMiddleware(logger *slog.Logger) resty.RequestMiddleware {
 func newRestyLogResponseMiddleware(logger *slog.Logger) resty.ResponseMiddleware {
 	return func(client *resty.Client, resp *resty.Response) error {
 		// Retrieve the logger and start time from context
-		reqLogger, _ := resp.Request.Context().Value("logger").(*slog.Logger)
-		startTime, _ := resp.Request.Context().Value("startTime").(time.Time)
+		reqLogger, _ := resp.Request.Context().Value(contextLoggerKey).(*slog.Logger)
+		startTime, _ := resp.Request.Context().Value(contextStartTimeKey).(time.Time)
 
 		if reqLogger == nil {
 			reqLogger = logger
