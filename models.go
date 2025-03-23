@@ -14,11 +14,6 @@ type Flag struct {
 	FeatureName string
 }
 
-type Identity struct {
-	Identifier string                 `json:"identifier"`
-	Traits     map[string]interface{} `json:"traits"`
-}
-
 type Trait struct {
 	Key   string      `json:"trait_key"`
 	Value interface{} `json:"trait_value"`
