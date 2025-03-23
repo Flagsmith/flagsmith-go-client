@@ -11,18 +11,11 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
 
-    strategy:
-      max-parallel: 2
-      matrix:
-        go-version:
-          - stable
-          - oldstable
-
     steps:
     - name: Set up Go 1.x
       uses: actions/setup-go@v5
       with:
-        go-version: ${{ matrix.go-version }}
+        go-version: '>=1.21'
       id: go
 
     - name: Check out code into the Go module directory
