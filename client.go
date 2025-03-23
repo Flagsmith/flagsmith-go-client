@@ -25,7 +25,6 @@ type Client struct {
 	config             config
 	defaultFlagHandler func(string) (Flag, error)
 	errorHandler       func(handler *FlagsmithAPIError)
-	offlineHandler     OfflineHandler
 	analyticsProcessor *AnalyticsProcessor
 	ctxLocalEval       context.Context
 	ctxAnalytics       context.Context
@@ -63,15 +62,14 @@ func NewClient(apiKey string, options ...Option) (*Client, error) {
 	c.log = slog.Default()
 	c.client = resty.
 		New().
+		SetTimeout(c.config.timeout).
 		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
-		OnAfterResponse(newRestyLogResponseMiddleware(c.log))
-	c.client.SetLogger(restySlogLogger{c.log})
-
-	c.client.SetHeaders(map[string]string{
-		"Accept":             "application/json",
-		EnvironmentKeyHeader: apiKey,
-	})
-	c.client.SetTimeout(c.config.timeout)
+		OnAfterResponse(newRestyLogResponseMiddleware(c.log)).
+		SetLogger(restySlogLogger{c.log}).
+		SetHeaders(map[string]string{
+			"Accept":             "application/json",
+			EnvironmentKeyHeader: apiKey,
+		})
 
 	for _, opt := range options {
 		if opt != nil {
@@ -79,22 +77,16 @@ func NewClient(apiKey string, options ...Option) (*Client, error) {
 		}
 	}
 
-	if c.config.offlineMode && c.offlineHandler == nil {
-		return nil, errors.New("offline handler must be provided to use offline mode")
+	if c.environment.IsOffline() {
+		return c, nil
 	}
-	if c.defaultFlagHandler != nil && c.offlineHandler != nil {
-		return nil, errors.New("default flag handler and offline handler cannot be used together")
-	}
-	if c.config.localEvaluation && c.offlineHandler != nil {
-		return nil, errors.New("local evaluation and offline handler cannot be used together")
-	}
-	if c.offlineHandler != nil {
-		c.environment.SetEnvironment(c.offlineHandler.GetEnvironment())
+	if c.defaultFlagHandler == nil && apiKey == "" {
+		return nil, errors.New("no API key, offline environment or default flag handler was provided")
 	}
 
 	if c.config.localEvaluation {
 		if !strings.HasPrefix(apiKey, "ser.") {
-			panic("In order to use local evaluation, please generate a server key in the environment settings page.")
+			return nil, errors.New("using local flag evaluation requires a server-side SDK key; got " + apiKey)
 		}
 		if c.config.useRealtime {
 			go c.startRealtimeUpdates(c.ctxLocalEval)
@@ -102,10 +94,7 @@ func NewClient(apiKey string, options ...Option) (*Client, error) {
 			go c.pollEnvironment(c.ctxLocalEval)
 		}
 	}
-	// Initialise analytics processor
-	if c.config.enableAnalytics {
-		c.analyticsProcessor = NewAnalyticsProcessor(c.ctxAnalytics, c.client, c.config.baseURL, nil, c.log)
-	}
+
 	return c, nil
 }
 
@@ -218,7 +207,7 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 
 // GetEnvironmentFlags calls GetFlags for the default EvaluationContext.
 func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
-	if c.config.localEvaluation || c.config.offlineMode {
+	if c.environment.IsOffline() || c.config.localEvaluation {
 		f, err = c.getEnvironmentFlagsFromEnvironment()
 	} else {
 		f, err = c.getEnvironmentFlagsFromAPI(ctx)
@@ -228,7 +217,7 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 
 // GetIdentityFlags calls GetFlags using this identifier and traits as the EvaluationContext.
 func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits map[string]interface{}) (f Flags, err error) {
-	if c.config.offlineMode && c.offlineHandler != nil || c.config.localEvaluation {
+	if c.environment.IsOffline() || c.config.localEvaluation {
 		f, err = c.getIdentityFlagsFromEnvironment(identifier, traits)
 	} else {
 		f, err = c.getIdentityFlagsFromAPI(ctx, identifier, traits)
@@ -360,8 +349,10 @@ func (c *Client) handleError(err *FlagsmithAPIError) *FlagsmithAPIError {
 }
 
 type state struct {
-	mu                sync.RWMutex
-	environment       environments.EnvironmentModel
+	environment environments.EnvironmentModel
+	offline     bool
+	mu          sync.RWMutex
+
 	identityOverrides sync.Map
 }
 
@@ -386,4 +377,13 @@ func (es *state) SetEnvironment(env environments.EnvironmentModel) {
 	for _, id := range env.IdentityOverrides {
 		es.identityOverrides.Store(id.Identifier, *id)
 	}
+}
+
+func (es *state) SetOfflineEnvironment(env environments.EnvironmentModel) {
+	es.SetEnvironment(env)
+	es.offline = true
+}
+
+func (es *state) IsOffline() bool {
+	return es.offline
 }

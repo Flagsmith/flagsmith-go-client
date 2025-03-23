@@ -62,66 +62,6 @@ func TestClientErrorsIfLocalEvaluationWithNonServerSideKey(t *testing.T) {
 	})
 }
 
-func TestClientErrorsIfOfflineModeWithoutOfflineHandler(t *testing.T) {
-	// When
-	defer func() {
-		if r := recover(); r != nil {
-			// Then
-			errMsg := fmt.Sprintf("%v", r)
-			expectedErrMsg := "offline handler must be provided to use offline mode"
-			assert.Equal(t, expectedErrMsg, errMsg, "Unexpected error message")
-		}
-	}()
-
-	// Trigger panic
-	_ = flagsmith.MustNewClient("key", flagsmith.WithOfflineMode())
-}
-
-func TestClientErrorsIfDefaultHandlerAndOfflineHandlerAreBothSet(t *testing.T) {
-	// Given
-	envJsonPath := "./fixtures/environment.json"
-	offlineHandler, err := flagsmith.NewLocalFileHandler(envJsonPath)
-	assert.NoError(t, err)
-
-	// When
-	defer func() {
-		if r := recover(); r != nil {
-			// Then
-			errMsg := fmt.Sprintf("%v", r)
-			expectedErrMsg := "default flag handler and offline handler cannot be used together"
-			assert.Equal(t, expectedErrMsg, errMsg, "Unexpected error message")
-		}
-	}()
-
-	// Trigger panic
-	_ = flagsmith.MustNewClient("key",
-		flagsmith.WithOfflineHandler(offlineHandler),
-		flagsmith.WithDefaultHandler(func(featureName string) (flagsmith.Flag, error) {
-			return flagsmith.Flag{}, nil
-		}))
-}
-func TestClientErrorsIfLocalEvaluationModeAndOfflineHandlerAreBothSet(t *testing.T) {
-	// Given
-	envJsonPath := "./fixtures/environment.json"
-	offlineHandler, err := flagsmith.NewLocalFileHandler(envJsonPath)
-	assert.NoError(t, err)
-
-	// When
-	defer func() {
-		if r := recover(); r != nil {
-			// Then
-			errMsg := fmt.Sprintf("%v", r)
-			expectedErrMsg := "local evaluation and offline handler cannot be used together"
-			assert.Equal(t, expectedErrMsg, errMsg, "Unexpected error message")
-		}
-	}()
-
-	// Trigger panic
-	_ = flagsmith.MustNewClient("key",
-		flagsmith.WithOfflineHandler(offlineHandler),
-		flagsmith.WithLocalEvaluation(context.Background()))
-}
-
 func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 	// Given
 	ctx := context.Background()
@@ -700,10 +640,10 @@ func TestOfflineMode(t *testing.T) {
 	ctx := context.Background()
 
 	envJsonPath := "./fixtures/environment.json"
-	offlineHandler, err := flagsmith.NewLocalFileHandler(envJsonPath)
+	env, err := flagsmith.ReadEnvironmentFromFile(envJsonPath)
 	assert.NoError(t, err)
 
-	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithOfflineMode(), flagsmith.WithOfflineHandler(offlineHandler))
+	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithOfflineEnvironment(env))
 
 	// Then
 	flags, err := client.GetEnvironmentFlags(ctx)

@@ -110,18 +110,9 @@ func WithProxy(proxyURL string) Option {
 	}
 }
 
-// WithOfflineHandler sets this handler as the source of environment state, instead of using the Flagsmith API.
-// Requires [WithOfflineMode].
-func WithOfflineHandler(handler OfflineHandler) Option {
+func WithOfflineEnvironment(env Environment) Option {
 	return func(c *Client) {
-		c.offlineHandler = handler
-	}
-}
-
-// WithOfflineMode makes the client work offline, without making any network request. Requires [WithOfflineHandler].
-func WithOfflineMode() Option {
-	return func(c *Client) {
-		c.config.offlineMode = true
+		c.environment.SetOfflineEnvironment(env.Environment())
 	}
 }
 

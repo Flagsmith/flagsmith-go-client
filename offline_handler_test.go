@@ -12,7 +12,7 @@ func TestNewLocalFileHandler(t *testing.T) {
 	envJsonPath := "./fixtures/environment.json"
 
 	// When
-	offlineHandler, err := flagsmith.NewLocalFileHandler(envJsonPath)
+	offlineHandler, err := flagsmith.ReadEnvironmentFromFile(envJsonPath)
 
 	// Then
 	assert.NoError(t, err)
@@ -22,13 +22,11 @@ func TestNewLocalFileHandler(t *testing.T) {
 func TestLocalFileHandlerGetEnvironment(t *testing.T) {
 	// Given
 	envJsonPath := "./fixtures/environment.json"
-	localHandler, err := flagsmith.NewLocalFileHandler(envJsonPath)
-
-	assert.NoError(t, err)
 
 	// When
-	environment := localHandler.GetEnvironment()
+	env, err := flagsmith.ReadEnvironmentFromFile(envJsonPath)
 
 	// Then
-	assert.NotNil(t, environment.APIKey)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, env.Environment().APIKey)
 }

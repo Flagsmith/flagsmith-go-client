@@ -7,34 +7,26 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
 )
 
-type OfflineHandler interface {
-	GetEnvironment() environments.EnvironmentModel
+type Environment interface {
+	Environment() environments.EnvironmentModel
 }
 
-type LocalFileHandler struct {
-	environment environments.EnvironmentModel
+type environment struct {
+	model environments.EnvironmentModel
 }
 
-// NewLocalFileHandler creates a new LocalFileHandler with the given path.
-func NewLocalFileHandler(environmentDocumentPath string) (*LocalFileHandler, error) {
-	// Read the environment document from the specified path
-	environmentDocument, err := os.ReadFile(environmentDocumentPath)
+func (e environment) Environment() environments.EnvironmentModel {
+	return e.model
+}
+
+// ReadEnvironmentFromFile reads an Environment from a file path.
+func ReadEnvironmentFromFile(name string) (env Environment, err error) {
+	file, err := os.ReadFile(name)
 	if err != nil {
 		return nil, err
 	}
-	var environment environments.EnvironmentModel
-	if err := json.Unmarshal(environmentDocument, &environment); err != nil {
-		return nil, err
-	}
-
-	// Create and initialise the LocalFileHandler
-	handler := &LocalFileHandler{
-		environment: environment,
-	}
-
-	return handler, nil
-}
-
-func (handler *LocalFileHandler) GetEnvironment() environments.EnvironmentModel {
-	return handler.environment
+	var model environments.EnvironmentModel
+	err = json.Unmarshal(file, &model)
+	env = environment{model: model}
+	return
 }

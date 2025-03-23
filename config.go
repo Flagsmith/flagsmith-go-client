@@ -23,7 +23,6 @@ type config struct {
 	localEvaluation    bool
 	envRefreshInterval time.Duration
 	enableAnalytics    bool
-	offlineMode        bool
 	realtimeBaseUrl    string
 	useRealtime        bool
 }
