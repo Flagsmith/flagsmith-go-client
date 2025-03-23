@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -31,7 +30,7 @@ func (s restySlogLogger) Debugf(format string, v ...interface{}) {
 }
 
 func defaultLogger() *slog.Logger {
-	return slog.New(slog.NewJSONHandler(os.Stderr, nil)).WithGroup("flagsmith")
+	return slog.Default().WithGroup("flagsmith")
 }
 
 func newRestyLogRequestMiddleware(logger *slog.Logger) resty.RequestMiddleware {

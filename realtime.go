@@ -26,7 +26,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 		default:
 			resp, err := http.Get(stream_url)
 			if err != nil {
-				c.log.Error("failed to connect to SSE service", "error", err)
+				c.log.Error("failed to connect to realtime service", "error", err)
 				continue
 			}
 			defer resp.Body.Close()
@@ -37,7 +37,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 				if strings.HasPrefix(line, "data: ") {
 					parsedTime, err := parseUpdatedAtFromSSE(line)
 					if err != nil {
-						c.log.Error("failed to parse real-time update event", "error", err, "raw_event", line)
+						c.log.Error("failed to parse realtime update event", "error", err, "raw_event", line)
 						continue
 					}
 					if parsedTime.After(envUpdatedAt) {
@@ -54,7 +54,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 				}
 			}
 			if err := scanner.Err(); err != nil {
-				c.log.Error("failed to read from real-time stream", "error", err)
+				c.log.Error("failed to read from realtime stream", "error", err, "stream_url", &resp.Request.URL)
 			}
 		}
 	}

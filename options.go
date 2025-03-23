@@ -158,16 +158,3 @@ func WithRealtimeBaseURL(url string) Option {
 		c.config.realtimeBaseUrl = url
 	}
 }
-
-// WithLogLevel sets the log level to a [slog.Level] value.
-func WithLogLevel(level slog.Leveler) Option {
-	return withLogHandlerOptions(&slog.HandlerOptions{
-		Level: level,
-	})
-}
-
-func withLogHandlerOptions(opts *slog.HandlerOptions) Option {
-	return func(c *Client) {
-		c.logHandlerOptions = opts
-	}
-}

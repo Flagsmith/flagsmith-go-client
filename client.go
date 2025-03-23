@@ -32,9 +32,8 @@ type Client struct {
 
 	environment state
 
-	log               *slog.Logger
-	logHandlerOptions *slog.HandlerOptions
-	client            *resty.Client
+	log    *slog.Logger
+	client *resty.Client
 }
 
 // NewClient creates a Flagsmith [Client] using the environment determined by apiKey.
