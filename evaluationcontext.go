@@ -11,7 +11,6 @@ type EvaluationContext struct {
 // NewEvaluationContext creates a flag evaluation context for an identity.
 func NewEvaluationContext(identifier string, traits map[string]interface{}) (ec EvaluationContext) {
 	ec.identifier = identifier
-	ec.traits = traits
 	// Store a copy of the trait map
 	ec.traits = make(map[string]interface{}, len(traits))
 	for k, v := range traits {
