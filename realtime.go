@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -16,17 +17,25 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 	if err != nil {
 		panic("Failed to fetch the environment while configuring real-time updates")
 	}
+
 	env := c.environment.GetEnvironment()
-	stream_url := c.config.realtimeBaseUrl + "sse/environments/" + env.APIKey + "/stream"
 	envUpdatedAt := env.UpdatedAt
+	log := c.log.With("environment", env.APIKey, "current_updated_at", &envUpdatedAt)
+
+	streamPath, err := url.JoinPath(c.config.realtimeBaseUrl, "sse/environments", env.APIKey, "stream")
+	if err != nil {
+		log.Error("failed to build stream URL", "error", err)
+		panic(err)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			resp, err := http.Get(stream_url)
+			resp, err := http.Get(streamPath)
 			if err != nil {
-				c.log.Error("failed to connect to realtime service", "error", err)
+				log.Error("failed to connect to realtime service", "error", err)
 				continue
 			}
 			defer resp.Body.Close()
@@ -37,11 +46,12 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 				if strings.HasPrefix(line, "data: ") {
 					parsedTime, err := parseUpdatedAtFromSSE(line)
 					if err != nil {
-						c.log.Error("failed to parse realtime update event", "error", err, "raw_event", line)
+						log.Error("failed to parse realtime update event", "error", err, "raw_event", line)
 						continue
 					}
 					if parsedTime.After(envUpdatedAt) {
-						c.log.Info("received update event",
+						log.WithGroup("event").Info("received update event",
+							slog.Duration("update_delay", parsedTime.Sub(envUpdatedAt)),
 							slog.Time("updated_at", parsedTime),
 							slog.String("environment", env.APIKey),
 						)
@@ -59,6 +69,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 		}
 	}
 }
+
 func parseUpdatedAtFromSSE(line string) (time.Time, error) {
 	var eventData struct {
 		UpdatedAt float64 `json:"updated_at"`

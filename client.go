@@ -60,9 +60,7 @@ func NewClient(apiKey string, options ...Option) (*Client, error) {
 		client: resty.New(),
 	}
 
-	if c.log == nil {
-		c.log = defaultLogger()
-	}
+	c.log = slog.Default()
 	c.client = resty.
 		New().
 		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).

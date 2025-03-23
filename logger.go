@@ -29,10 +29,6 @@ func (s restySlogLogger) Debugf(format string, v ...interface{}) {
 	s.logger.Debug(msg)
 }
 
-func defaultLogger() *slog.Logger {
-	return slog.Default().WithGroup("flagsmith")
-}
-
 func newRestyLogRequestMiddleware(logger *slog.Logger) resty.RequestMiddleware {
 	return func(c *resty.Client, req *resty.Request) error {
 		// Create a child logger with request metadata
@@ -40,13 +36,10 @@ func newRestyLogRequestMiddleware(logger *slog.Logger) resty.RequestMiddleware {
 			"method", req.Method,
 			"url", req.URL,
 		)
+		reqLogger.Debug("request")
+
 		// Store the logger in this request's context, and use it in the response
 		req.SetContext(context.WithValue(req.Context(), "logger", reqLogger))
-
-		reqLogger.Debug("request",
-			slog.String("method", req.Method),
-			slog.String("url", req.URL),
-		)
 
 		// Time the current request
 		req.SetContext(context.WithValue(req.Context(), "startTime", time.Now()))
@@ -64,23 +57,11 @@ func newRestyLogResponseMiddleware(logger *slog.Logger) resty.ResponseMiddleware
 		if reqLogger == nil {
 			reqLogger = logger
 		}
-		attrs := []slog.Attr{
-			slog.Int("status", resp.StatusCode()),
-			slog.Duration("duration", time.Since(startTime)),
-			slog.Int64("content_length", resp.Size()),
-		}
 		reqLogger.Debug("response",
 			slog.Int("status", resp.StatusCode()),
 			slog.Duration("duration", time.Since(startTime)),
 			slog.Int64("content_length", resp.Size()),
 		)
-		msg := "received error response"
-		level := slog.LevelDebug
-		if resp.IsError() {
-			level = slog.LevelError
-		}
-		logger.LogAttrs(context.Background(), level, msg, attrs...)
-
 		return nil
 	}
 }
