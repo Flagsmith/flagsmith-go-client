@@ -153,7 +153,7 @@ func TestEnvironmentGetFeatureStateFeatureNotFound(t *testing.T) {
 	assert.Nil(t, fs)
 }
 
-func getEnvironmentFeatureStateForFeature(env environments.EnvironmentModel, feature *features.FeatureModel) *features.FeatureStateModel {
+func getEnvironmentFeatureStateForFeature(env *environments.EnvironmentModel, feature *features.FeatureModel) *features.FeatureStateModel {
 	for _, fs := range env.FeatureStates {
 		if fs.Feature == feature {
 			return fs
