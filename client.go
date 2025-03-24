@@ -180,7 +180,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 }
 
 // GetIdentitySegments returns the segments that this evaluation context is a part of. It requires a local environment
-// provided by [WithLocalEvaluation] and/or [WithOfflineHandler].
+// provided by [WithLocalEvaluation] and/or [WithOfflineEnvironment].
 func (c *Client) GetIdentitySegments(ec EvaluationContext) (s []*segments.SegmentModel, err error) {
 	env, ok := c.state.GetEnvironment()
 	if !ok {
