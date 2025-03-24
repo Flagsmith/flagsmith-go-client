@@ -27,6 +27,8 @@ func (cs *environmentState) GetEnvironment() (*environments.EnvironmentModel, bo
 }
 
 func (cs *environmentState) GetIdentityOverride(identifier string) (*identities.IdentityModel, bool) {
+	cs.mu.RLock()
+	defer cs.mu.RUnlock()
 	i, ok := cs.identityOverrides.Load(identifier)
 	if ok && i != nil {
 		return i.(*identities.IdentityModel), true
