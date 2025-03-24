@@ -23,7 +23,6 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: ${{ matrix.go-version }}
-        cache: false
       id: go
 
     - name: Check out code into the Go module directory
@@ -37,9 +36,6 @@ jobs:
 
     - name: Lint
       uses: golangci/golangci-lint-action@v6
-      with:
-        skip-cache: true
-        args: -v
 
     - name: Build
       run: go build -v ./...
