@@ -1,9 +1,10 @@
 package flagsmith
 
 import (
+	"sync"
+
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities"
-	"sync"
 )
 
 // environmentState is a locally cached environments.EnvironmentModel.
