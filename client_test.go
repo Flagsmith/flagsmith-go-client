@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -100,15 +101,10 @@ func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 	// Given
 	ctx := context.Background()
-	actualEnvironmentRefreshCounter := struct {
-		mu    sync.Mutex
-		count int
-	}{}
+	var actualEnvironmentRefreshCounter atomic.Uint64
 	expectedEnvironmentRefreshCount := 3
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		actualEnvironmentRefreshCounter.mu.Lock()
-		actualEnvironmentRefreshCounter.count++
-		actualEnvironmentRefreshCounter.mu.Unlock()
+		actualEnvironmentRefreshCounter.Add(1)
 		assert.Equal(t, req.URL.Path, "/api/v1/environment-document/")
 		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("X-Environment-Key"))
 
@@ -133,8 +129,7 @@ func TestClientUpdatesEnvironmentOnEachRefresh(t *testing.T) {
 	// one when the client starts and 2
 	// for each time the refresh interval expires
 
-	actualEnvironmentRefreshCounter.mu.Lock()
-	assert.Equal(t, expectedEnvironmentRefreshCount, actualEnvironmentRefreshCounter.count)
+	assert.Equal(t, expectedEnvironmentRefreshCount, int(actualEnvironmentRefreshCounter.Load()))
 }
 
 func TestGetFlags(t *testing.T) {
