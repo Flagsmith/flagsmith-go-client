@@ -70,8 +70,8 @@ func (a *AnalyticsProcessor) Flush(ctx context.Context) (*http.Response, error) 
 	if err != nil {
 		return nil, err
 	}
-	if resp.IsError() {
-		return resp.RawResponse, fmt.Errorf("AnalyticsProcessor.Flush received error response %s", resp.Status())
+	if !resp.IsSuccess() {
+		return resp.RawResponse, fmt.Errorf("AnalyticsProcessor.Flush received error response %d %s", resp.StatusCode(), resp.Status())
 	}
 	a.store.data = make(map[string]int)
 	return resp.RawResponse, nil

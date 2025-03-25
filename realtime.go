@@ -14,11 +14,11 @@ import (
 
 func (c *Client) startRealtimeUpdates(ctx context.Context) {
 	err := c.UpdateEnvironment(ctx)
-	if err != nil {
+	env := c.state.GetEnvironment()
+	if err != nil || env == nil {
 		panic("Failed to fetch the environment while configuring real-time updates")
 	}
 
-	env, _ := c.state.GetEnvironment()
 	envUpdatedAt := env.UpdatedAt
 	log := c.log.With("environment", env.APIKey, "current_updated_at", &envUpdatedAt)
 

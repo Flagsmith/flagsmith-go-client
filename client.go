@@ -174,7 +174,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	if err != nil {
 		return c.handleError(&APIError{Err: err})
 	}
-	if resp.IsError() {
+	if !resp.IsSuccess() {
 		e := &APIError{response: resp.RawResponse}
 		return c.handleError(e)
 	}
@@ -187,8 +187,8 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 // GetIdentitySegments returns the segments that this evaluation context is a part of. It requires a local environment
 // provided by [WithLocalEvaluation] and/or [WithOfflineEnvironment].
 func (c *Client) GetIdentitySegments(ec EvaluationContext) (s []*segments.SegmentModel, err error) {
-	env, ok := c.state.GetEnvironment()
-	if !ok {
+	env := c.state.GetEnvironment()
+	if env == nil {
 		return s, errors.New("GetIdentitySegments called with no local environment available")
 	}
 	identity := c.getIdentityModel(ec.identifier, env.APIKey, ec.traits)
@@ -216,7 +216,7 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 		return err
 	}
 	if resp.IsError() {
-		return fmt.Errorf("")
+		return fmt.Errorf("BulkIdentify received response with status %d %s", resp.StatusCode(), resp.Status())
 	}
 	return nil
 }
@@ -285,8 +285,8 @@ func (c *Client) getIdentityFlagsFromAPI(ctx context.Context, identifier string,
 }
 
 func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
-	env, ok := c.state.GetEnvironment()
-	if !ok {
+	env := c.state.GetEnvironment()
+	if env == nil {
 		return Flags{}, fmt.Errorf("getEnvironmentFlagsFromEnvironment: no local environment is available")
 	}
 	return makeFlagsFromFeatureStates(
@@ -298,8 +298,8 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 }
 
 func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits map[string]interface{}) (Flags, error) {
-	env, ok := c.state.GetEnvironment()
-	if !ok {
+	env := c.state.GetEnvironment()
+	if env == nil {
 		return Flags{}, fmt.Errorf("getIdentityFlagsFromDocument: no local environment is available")
 	}
 	identity := c.getIdentityModel(identifier, env.APIKey, traits)

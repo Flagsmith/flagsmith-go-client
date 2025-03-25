@@ -17,13 +17,10 @@ type environmentState struct {
 }
 
 // GetEnvironment returns the current environment and indicates if it was initialised.
-func (cs *environmentState) GetEnvironment() (*environments.EnvironmentModel, bool) {
+func (cs *environmentState) GetEnvironment() *environments.EnvironmentModel {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
-	if cs.environment == nil {
-		return nil, false
-	}
-	return cs.environment, true
+	return cs.environment
 }
 
 func (cs *environmentState) GetIdentityOverride(identifier string) (*identities.IdentityModel, bool) {
