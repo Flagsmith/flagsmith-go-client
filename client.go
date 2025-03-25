@@ -108,6 +108,11 @@ func NewClient(apiKey string, options ...Option) (*Client, error) {
 		}
 	}
 
+	// Initialise analytics processor
+	if c.ctxAnalytics != nil {
+		c.analyticsProcessor = NewAnalyticsProcessor(c.ctxAnalytics, c.client, c.baseURL, nil, c.log)
+	}
+
 	return c, nil
 }
 
