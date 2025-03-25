@@ -341,7 +341,7 @@ func (c *Client) getIdentityModel(identifier string, apiKey string, traits map[s
 		identityTraits = append(identityTraits, enginetraits.NewTrait(k, v))
 	}
 
-	if identity, ok := c.state.GetIdentityOverride(identifier); ok {
+	if identity := c.state.GetIdentityOverride(identifier); identity != nil {
 		identity.IdentityTraits = identityTraits
 		return identity
 	}

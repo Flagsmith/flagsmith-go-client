@@ -23,14 +23,14 @@ func (cs *environmentState) GetEnvironment() *environments.EnvironmentModel {
 	return cs.environment
 }
 
-func (cs *environmentState) GetIdentityOverride(identifier string) (*identities.IdentityModel, bool) {
+func (cs *environmentState) GetIdentityOverride(identifier string) *identities.IdentityModel {
 	cs.mu.RLock()
 	defer cs.mu.RUnlock()
 	i, ok := cs.identityOverrides.Load(identifier)
 	if ok && i != nil {
-		return i.(*identities.IdentityModel), true
+		return i.(*identities.IdentityModel)
 	}
-	return nil, false
+	return nil
 }
 
 func (cs *environmentState) SetEnvironment(env *environments.EnvironmentModel) {
