@@ -7,33 +7,21 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
 
-func (c *Client) startRealtimeUpdates(ctx context.Context) {
-	err := c.UpdateEnvironment(ctx)
-	if err != nil {
-		panic("Failed to fetch the environment while configuring real-time updates")
-	}
-
+func (c *Client) startRealtimeUpdates(ctx context.Context, stream string) {
 	env, _ := c.state.GetEnvironment()
 	envUpdatedAt := env.UpdatedAt
 	log := c.log.With("environment", env.APIKey, "current_updated_at", &envUpdatedAt)
-
-	streamPath, err := url.JoinPath(c.realtimeBaseUrl, "sse/environments", env.APIKey, "stream")
-	if err != nil {
-		log.Error("failed to build stream URL", "error", err)
-		panic(err)
-	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			resp, err := http.Get(streamPath)
+			resp, err := http.Get(stream)
 			if err != nil {
 				log.Error("failed to connect to realtime service", "error", err)
 				continue
