@@ -73,7 +73,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 	c.client.SetLogger(newSlogToRestyAdapter(c.log))
 
-	c.log.Debug("initialising Flagsmith client",
+	c.log.Info("initialising Flagsmith client",
 		"base_url", c.config.baseURL,
 		"local_evaluation", c.config.localEvaluation,
 		"offline", c.config.offlineMode,
@@ -103,7 +103,8 @@ func NewClient(apiKey string, options ...Option) *Client {
 		}
 		if c.config.useRealtime {
 			go c.startRealtimeUpdates(c.ctxLocalEval)
-		} else {
+		}
+		if c.config.polling || !c.config.useRealtime {
 			go c.pollEnvironment(c.ctxLocalEval)
 		}
 	}
@@ -334,16 +335,22 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 }
 
 func (c *Client) pollEnvironment(ctx context.Context) {
+	log := c.log.With(slog.String("worker", "poll"))
 	update := func() {
+		log.Debug("polling environment")
 		ctx, cancel := context.WithTimeout(ctx, c.config.envRefreshInterval)
 		defer cancel()
 		err := c.UpdateEnvironment(ctx)
 		if err != nil {
-			c.log.Error("failed to update environment", "error", err)
+			log.Error("failed to update environment", "error", err)
 		}
 	}
 	update()
 	ticker := time.NewTicker(c.config.envRefreshInterval)
+	defer func() {
+		ticker.Stop()
+		log.Info("polling stopped")
+	}()
 	for {
 		select {
 		case <-ticker.C:

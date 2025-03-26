@@ -26,6 +26,7 @@ type config struct {
 	offlineMode        bool
 	realtimeBaseUrl    string
 	useRealtime        bool
+	polling            bool
 }
 
 // defaultConfig returns default configuration.

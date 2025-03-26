@@ -25,6 +25,7 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 		slog.String("worker", "realtime"),
 		slog.String("stream", stream_url),
 	)
+	log.Debug("connecting to realtime")
 	defer func() {
 		log.Info("realtime stopped")
 	}()
