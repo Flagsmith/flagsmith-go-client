@@ -2,9 +2,10 @@ package flagsmith
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine"
@@ -16,185 +17,189 @@ import (
 	enginetraits "github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
 )
 
-type contextKey string
-
-var contextKeyEvaluationContext = contextKey("evaluationContext")
-
-// Client provides various methods to query Flagsmith API.
+// Client is a Flagsmith client, used to evaluate feature flags. Use [NewClient] to instantiate a client.
+//
+// Use [Client.GetFlags] to evaluate feature flags.
 type Client struct {
-	apiKey string
-	config config
+	baseURL            string
+	timeout            time.Duration
+	proxy              string
+	localEvaluation    bool
+	envRefreshInterval time.Duration
+	realtimeBaseUrl    string
+	useRealtime        bool
+	defaultFlagHandler func(string) (Flag, error)
+	errorHandler       func(handler *APIError)
+	ctxLocalEval       context.Context
+	ctxAnalytics       context.Context
 
-	environment             atomic.Value
-	identitiesWithOverrides atomic.Value
+	state environmentState
 
 	analyticsProcessor *AnalyticsProcessor
-	defaultFlagHandler func(string) (Flag, error)
-
-	client         *resty.Client
-	ctxLocalEval   context.Context
-	ctxAnalytics   context.Context
-	log            Logger
-	offlineHandler OfflineHandler
-	errorHandler   func(handler *FlagsmithAPIError)
+	log                *slog.Logger
+	client             *resty.Client
 }
 
-// Returns context with provided EvaluationContext instance set.
-func WithEvaluationContext(ctx context.Context, ec EvaluationContext) context.Context {
-	return context.WithValue(ctx, contextKeyEvaluationContext, ec)
-}
-
-// Retrieve EvaluationContext instance from context.
-func GetEvaluationContextFromCtx(ctx context.Context) (ec EvaluationContext, ok bool) {
-	ec, ok = ctx.Value(contextKeyEvaluationContext).(EvaluationContext)
-	return ec, ok
-}
-
-// NewClient creates instance of Client with given configuration.
-func NewClient(apiKey string, options ...Option) *Client {
+// NewClient creates a Flagsmith [Client] using the environment determined by apiKey.
+//
+// Feature flags are evaluated remotely by the Flagsmith API over HTTP by default.
+// To evaluate flags locally, use [WithLocalEvaluation] and a server-side SDK key.
+//
+// Example:
+//
+//	func GetDefaultFlag(key string) (Flag, error) {
+//		return Flag{
+//			FeatureName: key,
+//			IsDefault:   true,
+//			Value:       `{"colour": "#FFFF00"}`,
+//			Enabled:     true,
+//		}, nil
+//	}
+//	flagsmithClient := flagsmith.NewClient(
+//		os.Getenv("FLAGSMITH_SDK_KEY"),
+//		flagsmith.WithLocalEvaluation(context.Background()),
+//		flagsmith.WithDefaultHandler(GetDefaultFlag),
+//	)
+func NewClient(apiKey string, options ...Option) (*Client, error) {
+	// Defaults
 	c := &Client{
-		apiKey: apiKey,
-		config: defaultConfig(),
-		client: resty.New(),
+		log:                slog.Default(),
+		baseURL:            DefaultBaseURL,
+		timeout:            DefaultTimeout,
+		envRefreshInterval: time.Second * 60,
+		realtimeBaseUrl:    DefaultRealtimeBaseUrl,
+		client:             resty.New(),
 	}
-
-	c.client.SetHeaders(map[string]string{
-		"Accept":             "application/json",
-		EnvironmentKeyHeader: c.apiKey,
-	})
-	c.client.SetTimeout(c.config.timeout)
-	c.log = createLogger()
-
+	// Apply options
 	for _, opt := range options {
 		if opt != nil {
 			opt(c)
 		}
 	}
-	c.client.SetLogger(c.log)
 
-	if c.config.offlineMode && c.offlineHandler == nil {
-		panic("offline handler must be provided to use offline mode.")
+	if c.state.IsOffline() {
+		return c, nil
 	}
-	if c.defaultFlagHandler != nil && c.offlineHandler != nil {
-		panic("default flag handler and offline handler cannot be used together.")
-	}
-	if c.config.localEvaluation && c.offlineHandler != nil {
-		panic("local evaluation and offline handler cannot be used together.")
-	}
-	if c.offlineHandler != nil {
-		c.environment.Store(c.offlineHandler.GetEnvironment())
+	if c.defaultFlagHandler == nil && apiKey == "" {
+		return nil, errors.New("no API key, offline environment or default flag handler was provided")
 	}
 
-	if c.config.localEvaluation {
+	c.client = c.client.
+		SetTimeout(c.timeout).
+		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
+		OnAfterResponse(newRestyLogResponseMiddleware(c.log)).
+		SetLogger(restySlogLogger{c.log}).
+		SetHeaders(map[string]string{
+			"Accept":             "application/json",
+			EnvironmentKeyHeader: apiKey,
+		})
+	if c.proxy != "" {
+		c.client = c.client.SetProxy(c.proxy)
+	}
+
+	if c.localEvaluation {
 		if !strings.HasPrefix(apiKey, "ser.") {
-			panic("In order to use local evaluation, please generate a server key in the environment settings page.")
+			return nil, errors.New("using local flag evaluation requires a server-side SDK key; got " + apiKey)
 		}
-		if c.config.useRealtime {
+		if c.useRealtime {
 			go c.startRealtimeUpdates(c.ctxLocalEval)
 		} else {
 			go c.pollEnvironment(c.ctxLocalEval)
 		}
 	}
+
 	// Initialise analytics processor
-	if c.config.enableAnalytics {
-		c.analyticsProcessor = NewAnalyticsProcessor(c.ctxAnalytics, c.client, c.config.baseURL, nil, c.log)
+	if c.ctxAnalytics != nil {
+		c.analyticsProcessor = NewAnalyticsProcessor(c.ctxAnalytics, c.client, c.baseURL, nil, c.log)
 	}
-	return c
+
+	return c, nil
 }
 
-// Returns `Flags` struct holding all the flags for the current environment.
-//
-// Provide `EvaluationContext` to evaluate flags for a specific environment or identity.
-//
-// If local evaluation is enabled this function will not call the Flagsmith API
-// directly, but instead read the asynchronously updated local environment or
-// use the default flag handler in case it has not yet been updated.
-//
-// Notes:
-//
-// * `EvaluationContext.Environment` is ignored in local evaluation mode.
-//
-// * `EvaluationContext.Feature` is not yet supported.
-func (c *Client) GetFlags(ctx context.Context, ec *EvaluationContext) (f Flags, err error) {
-	if ec != nil {
-		ctx = WithEvaluationContext(ctx, *ec)
-		if ec.Identity != nil {
-			return c.GetIdentityFlags(ctx, *ec.Identity.Identifier, mapIdentityEvaluationContextToTraits(*ec.Identity))
-		}
+// MustNewClient panics if NewClient returns an error.
+func MustNewClient(apiKey string, options ...Option) *Client {
+	client, err := NewClient(apiKey, options...)
+	if err != nil {
+		panic(err)
 	}
-	return c.GetEnvironmentFlags(ctx)
+	return client
 }
 
-// Returns `Flags` struct holding all the flags for the current environment.
+// GetFlags evaluates the feature flags within an [EvaluationContext].
 //
-// If local evaluation is enabled this function will not call the Flagsmith API
-// directly, but instead read the asynchronously updated local environment or
-// use the default flag handler in case it has not yet been updated.
+// When flag evaluation fails, the value of each Flag is determined by the default flag handler
+// from [WithDefaultHandler], if one was provided.
 //
-// Deprecated: Use `GetFlags` instead.
-func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
-	if c.config.localEvaluation || c.config.offlineMode {
-		if f, err = c.getEnvironmentFlagsFromEnvironment(); err == nil {
-			return f, nil
-		}
+// Flags are evaluated remotely by the Flagsmith API by default.
+// To evaluate flags locally, instantiate a client using [WithLocalEvaluation].
+//
+// The following example shows how to evaluate flags for an identity with some application-defined traits:
+//
+//	evalCtx := flagsmith.NewEvaluationContext(
+//		"my-user-123",
+//		map[string]interface{}{
+//			"company": "ACME Corporation",
+//		},
+//	)
+//	userFlags, _ := GetFlags(ctx.Background(), evalCtx)
+//	if userFlags.IsFeatureEnabled("my_feature_key") {
+//		// Flag is enabled for this evaluation context
+//	}
+func (c *Client) GetFlags(ctx context.Context, ec EvaluationContext) (f Flags, err error) {
+	if ec.identifier == "" {
+		f, err = c.GetEnvironmentFlags(ctx)
 	} else {
-		if f, err = c.GetEnvironmentFlagsFromAPI(ctx); err == nil {
-			return f, nil
-		}
+		f, err = c.GetIdentityFlags(ctx, ec.identifier, ec.traits)
 	}
-	if c.offlineHandler != nil {
-		return c.getEnvironmentFlagsFromEnvironment()
+	if err == nil {
+		return f, nil
 	} else if c.defaultFlagHandler != nil {
 		return Flags{defaultFlagHandler: c.defaultFlagHandler}, nil
-	}
-	return Flags{}, &FlagsmithClientError{msg: fmt.Sprintf("Failed to fetch flags with error: %s", err)}
-}
-
-// Returns `Flags` struct holding all the flags for the current environment for
-// a given identity.
-//
-// If local evaluation is disabled it will also upsert all traits to the
-// Flagsmith API for future evaluations. Providing a trait with a value of nil
-// will remove the trait from the identity if it exists.
-//
-// If local evaluation is enabled this function will not call the Flagsmith API
-// directly, but instead read the asynchronously updated local environment or
-// use the default flag handler in case it has not yet been updated.
-//
-// Deprecated: Use `GetFlags` providing `EvaluationContext.Identity` instead.
-func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits []*Trait) (f Flags, err error) {
-	if c.config.localEvaluation || c.config.offlineMode {
-		if f, err = c.getIdentityFlagsFromEnvironment(identifier, traits); err == nil {
-			return f, nil
-		}
 	} else {
-		if f, err = c.GetIdentityFlagsFromAPI(ctx, identifier, traits); err == nil {
-			return f, nil
-		}
+		return Flags{}, errors.New("GetFlags failed and no default flag handler was provided")
 	}
-	if c.offlineHandler != nil {
-		return c.getIdentityFlagsFromEnvironment(identifier, traits)
-	} else if c.defaultFlagHandler != nil {
-		return Flags{defaultFlagHandler: c.defaultFlagHandler}, nil
-	}
-	return Flags{}, &FlagsmithClientError{msg: fmt.Sprintf("Failed to fetch flags with error: %s", err)}
 }
 
-// Returns an array of segments that the given identity is part of.
-func (c *Client) GetIdentitySegments(identifier string, traits []*Trait) ([]*segments.SegmentModel, error) {
-	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
-		identity := c.getIdentityModel(identifier, env.APIKey, traits)
-		return flagengine.GetIdentitySegments(env, &identity), nil
+// UpdateEnvironment fetches the current environment state from the Flagsmith API. It is called periodically when using
+// [WithLocalEvaluation], or when [WithRealtime] is enabled and an update event was received.
+func (c *Client) UpdateEnvironment(ctx context.Context) error {
+	var env environments.EnvironmentModel
+	resp, err := c.client.
+		NewRequest().
+		SetContext(ctx).
+		SetResult(&env).
+		ForceContentType("application/json").
+		Get(c.baseURL + "environment-document/")
+
+	if err != nil {
+		return c.handleError(&APIError{Err: err})
 	}
-	return nil, &FlagsmithClientError{msg: "flagsmith: Local evaluation required to obtain identity segments"}
+	if !resp.IsSuccess() {
+		e := &APIError{response: resp.RawResponse}
+		return c.handleError(e)
+	}
+	c.state.SetEnvironment(&env)
+
+	c.log.Info("environment updated", "environment", env.APIKey)
+	return nil
+}
+
+// GetIdentitySegments returns the segments that this evaluation context is a part of. It requires a local environment
+// provided by [WithLocalEvaluation] and/or [WithOfflineEnvironment].
+func (c *Client) GetIdentitySegments(ec EvaluationContext) (s []*segments.SegmentModel, err error) {
+	env := c.state.GetEnvironment()
+	if env == nil {
+		return s, errors.New("GetIdentitySegments called with no local environment available")
+	}
+	identity := c.getIdentityModel(ec.identifier, env.APIKey, ec.traits)
+	return flagengine.GetIdentitySegments(env, identity), nil
 }
 
 // BulkIdentify can be used to create/overwrite identities(with traits) in bulk
 // NOTE: This method only works with Edge API endpoint.
 func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) error {
 	if len(batch) > BulkIdentifyMaxCount {
-		msg := fmt.Sprintf("flagsmith: batch size must be less than %d", BulkIdentifyMaxCount)
-		return &FlagsmithAPIError{Msg: msg}
+		return fmt.Errorf("batch size must be less than %d", BulkIdentifyMaxCount)
 	}
 
 	body := struct {
@@ -205,105 +210,84 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 		SetBody(&body).
 		SetContext(ctx).
 		ForceContentType("application/json").
-		Post(c.config.baseURL + "bulk-identities/")
-	if resp.StatusCode() == 404 {
-		msg := "flagsmith: Bulk identify endpoint not found; Please make sure you are using Edge API endpoint"
-		return &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
-	}
+		Post(c.baseURL + "bulk-identities/")
+
 	if err != nil {
-		msg := fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)
-		return &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+		return err
 	}
-	if !resp.IsSuccess() {
-		msg := fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())
-		return &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+	if resp.IsError() {
+		return fmt.Errorf("BulkIdentify received response with status %d %s", resp.StatusCode(), resp.Status())
 	}
 	return nil
 }
 
-// GetEnvironmentFlagsFromAPI tries to contact the Flagsmith API to get the latest environment data.
-// Will return an error in case of failure or unexpected response.
-func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) {
-	req := c.client.NewRequest()
-	ec, ok := GetEvaluationContextFromCtx(ctx)
-	if ok {
-		envCtx := ec.Environment
-		if envCtx != nil {
-			req.SetHeader(EnvironmentKeyHeader, envCtx.APIKey)
-		}
+// GetEnvironmentFlags calls GetFlags for the default EvaluationContext.
+func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
+	if c.state.IsOffline() || c.localEvaluation {
+		f, err = c.getEnvironmentFlagsFromEnvironment()
+	} else {
+		f, err = c.getEnvironmentFlagsFromAPI(ctx)
 	}
+	return f, err
+}
+
+// GetIdentityFlags calls GetFlags using this identifier and traits as the EvaluationContext.
+func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits map[string]interface{}) (f Flags, err error) {
+	if c.state.IsOffline() || c.localEvaluation {
+		f, err = c.getIdentityFlagsFromEnvironment(identifier, traits)
+	} else {
+		f, err = c.getIdentityFlagsFromAPI(ctx, identifier, traits)
+	}
+	return f, err
+}
+
+// getEnvironmentFlagsFromAPI tries to contact the Flagsmith API to get the latest environment data.
+func (c *Client) getEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) {
+	req := c.client.NewRequest()
 	resp, err := req.
 		SetContext(ctx).
 		ForceContentType("application/json").
-		Get(c.config.baseURL + "flags/")
+		Get(c.baseURL + "flags/")
 	if err != nil {
-		msg := fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)
-		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+		return Flags{}, &APIError{Err: err}
 	}
 	if !resp.IsSuccess() {
-		msg := fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())
-		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+		return Flags{}, &APIError{response: resp.RawResponse}
 	}
 	return makeFlagsFromAPIFlags(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
 }
 
-// GetIdentityFlagsFromAPI tries to contact the Flagsmith API to get the latest identity flags.
+// getIdentityFlagsFromAPI tries to contact the Flagsmith API to Get the latest identity flags.
 // Will return an error in case of failure or unexpected response.
-func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string, traits []*Trait) (Flags, error) {
-	body := struct {
-		Identifier string   `json:"identifier"`
-		Traits     []*Trait `json:"traits,omitempty"`
-		Transient  *bool    `json:"transient,omitempty"`
-	}{Identifier: identifier, Traits: traits}
-	req := c.client.NewRequest()
-	ec, ok := GetEvaluationContextFromCtx(ctx)
-	if ok {
-		envCtx := ec.Environment
-		if envCtx != nil {
-			req.SetHeader(EnvironmentKeyHeader, envCtx.APIKey)
-		}
-		idCtx := ec.Identity
-		if idCtx != nil {
-			// `Identifier` and `Traits` had been set by `GetFlags` earlier.
-			body.Transient = idCtx.Transient
-		}
+func (c *Client) getIdentityFlagsFromAPI(ctx context.Context, identifier string, traits map[string]interface{}) (Flags, error) {
+	tt := make([]Trait, 0, len(traits))
+	for k, v := range traits {
+		tt = append(tt, Trait{Key: k, Value: v})
 	}
+
+	body := struct {
+		Identifier string  `json:"identifier"`
+		Traits     []Trait `json:"traits,omitempty"`
+	}{Identifier: identifier, Traits: tt}
+	req := c.client.NewRequest()
 	resp, err := req.
 		SetBody(&body).
 		SetContext(ctx).
 		ForceContentType("application/json").
-		Post(c.config.baseURL + "identities/")
+		Post(c.baseURL + "identities/")
 	if err != nil {
-		msg := fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)
-		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+		return Flags{}, &APIError{Err: err}
 	}
 	if !resp.IsSuccess() {
-		msg := fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())
-		return Flags{}, &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+		return Flags{}, &APIError{response: resp.RawResponse}
 	}
 	return makeFlagsfromIdentityAPIJson(resp.Body(), c.analyticsProcessor, c.defaultFlagHandler)
 }
 
-func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits []*Trait) (Flags, error) {
-	env, ok := c.environment.Load().(*environments.EnvironmentModel)
-	if !ok {
-		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
-	}
-	identity := c.getIdentityModel(identifier, env.APIKey, traits)
-	featureStates := flagengine.GetIdentityFeatureStates(env, &identity)
-	flags := makeFlagsFromFeatureStates(
-		featureStates,
-		c.analyticsProcessor,
-		c.defaultFlagHandler,
-		identifier,
-	)
-	return flags, nil
-}
-
 func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
-	env, ok := c.environment.Load().(*environments.EnvironmentModel)
-	if !ok {
-		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
+	env := c.state.GetEnvironment()
+	if env == nil {
+		return Flags{}, fmt.Errorf("getEnvironmentFlagsFromEnvironment: no local environment is available")
 	}
 	return makeFlagsFromFeatureStates(
 		env.FeatureStates,
@@ -313,76 +297,65 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 	), nil
 }
 
+func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits map[string]interface{}) (Flags, error) {
+	env := c.state.GetEnvironment()
+	if env == nil {
+		return Flags{}, fmt.Errorf("getIdentityFlagsFromDocument: no local environment is available")
+	}
+	identity := c.getIdentityModel(identifier, env.APIKey, traits)
+	featureStates := flagengine.GetIdentityFeatureStates(env, identity)
+	flags := makeFlagsFromFeatureStates(
+		featureStates,
+		c.analyticsProcessor,
+		c.defaultFlagHandler,
+		identifier,
+	)
+	return flags, nil
+}
+
 func (c *Client) pollEnvironment(ctx context.Context) {
 	update := func() {
-		ctx, cancel := context.WithTimeout(ctx, c.config.envRefreshInterval)
+		ctx, cancel := context.WithTimeout(ctx, c.envRefreshInterval)
 		defer cancel()
 		err := c.UpdateEnvironment(ctx)
 		if err != nil {
-			c.log.Errorf("Failed to update environment: %v", err)
+			c.log.Error("pollEnvironment failed", "error", err)
 		}
 	}
 	update()
-	ticker := time.NewTicker(c.config.envRefreshInterval)
+	ticker := time.NewTicker(c.envRefreshInterval)
 	for {
 		select {
 		case <-ticker.C:
+			c.log.Debug("polling environment")
 			update()
 		case <-ctx.Done():
 			return
 		}
 	}
 }
-func (c *Client) UpdateEnvironment(ctx context.Context) error {
-	var env environments.EnvironmentModel
-	resp, err := c.client.NewRequest().
-		SetContext(ctx).
-		SetResult(&env).
-		ForceContentType("application/json").
-		Get(c.config.baseURL + "environment-document/")
 
-	if err != nil {
-		msg := fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)
-		f := &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
-		if c.errorHandler != nil {
-			c.errorHandler(f)
-		}
-		return f
-	}
-	if resp.StatusCode() != 200 {
-		msg := fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())
-		f := &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
-		if c.errorHandler != nil {
-			c.errorHandler(f)
-		}
-		return f
-	}
-	c.environment.Store(&env)
-	identitiesWithOverrides := make(map[string]identities.IdentityModel)
-	for _, id := range env.IdentityOverrides {
-		identitiesWithOverrides[id.Identifier] = *id
-	}
-	c.identitiesWithOverrides.Store(identitiesWithOverrides)
-
-	return nil
-}
-
-func (c *Client) getIdentityModel(identifier string, apiKey string, traits []*Trait) identities.IdentityModel {
-	identityTraits := make([]*enginetraits.TraitModel, len(traits))
-	for i, trait := range traits {
-		identityTraits[i] = trait.ToTraitModel()
+func (c *Client) getIdentityModel(identifier string, apiKey string, traits map[string]interface{}) *identities.IdentityModel {
+	identityTraits := make([]*enginetraits.TraitModel, 0, len(traits))
+	for k, v := range traits {
+		identityTraits = append(identityTraits, enginetraits.NewTrait(k, v))
 	}
 
-	identitiesWithOverrides, _ := c.identitiesWithOverrides.Load().(map[string]identities.IdentityModel)
-	identity, ok := identitiesWithOverrides[identifier]
-	if ok {
+	if identity := c.state.GetIdentityOverride(identifier); identity != nil {
 		identity.IdentityTraits = identityTraits
 		return identity
 	}
 
-	return identities.IdentityModel{
+	return &identities.IdentityModel{
 		Identifier:        identifier,
 		IdentityTraits:    identityTraits,
 		EnvironmentAPIKey: apiKey,
 	}
+}
+
+func (c *Client) handleError(err *APIError) *APIError {
+	if c.errorHandler != nil {
+		c.errorHandler(err)
+	}
+	return err
 }

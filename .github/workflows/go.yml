@@ -30,9 +30,6 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Build evaluation context struct
-      run: make generate-evaluation-context
-
     - name: Get dependencies
       run: |
         go get -v -t -d ./...

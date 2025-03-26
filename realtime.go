@@ -5,61 +5,78 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
-
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
 )
 
 func (c *Client) startRealtimeUpdates(ctx context.Context) {
 	err := c.UpdateEnvironment(ctx)
-	if err != nil {
+	env := c.state.GetEnvironment()
+	if err != nil || env == nil {
 		panic("Failed to fetch the environment while configuring real-time updates")
 	}
-	env, _ := c.environment.Load().(*environments.EnvironmentModel)
-	stream_url := c.config.realtimeBaseUrl + "sse/environments/" + env.APIKey + "/stream"
+
 	envUpdatedAt := env.UpdatedAt
+	log := c.log.With("environment", env.APIKey, "current_updated_at", &envUpdatedAt)
+
+	streamPath, err := url.JoinPath(c.realtimeBaseUrl, "sse/environments", env.APIKey, "stream")
+	if err != nil {
+		log.Error("failed to build stream URL", "error", err)
+		panic(err)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			resp, err := http.Get(stream_url)
+			resp, err := http.Get(streamPath)
 			if err != nil {
-				c.log.Errorf("Error connecting to realtime server: %v", err)
+				log.Error("failed to connect to realtime service", "error", err)
 				continue
 			}
 			defer resp.Body.Close()
 
+			log.Info("connected to realtime")
+
 			scanner := bufio.NewScanner(resp.Body)
 			for scanner.Scan() {
 				line := scanner.Text()
-				if strings.HasPrefix(line, "data: ") {
-					parsedTime, err := parseUpdatedAtFromSSE(line)
+				parsedTime, err := parseUpdatedAtFromSSE(line)
+				if err != nil {
+					log.Error("failed to parse realtime update event", "error", err, "raw_event", line)
+					continue
+				}
+				if parsedTime.After(envUpdatedAt) {
+					log.WithGroup("event").
+						Info("received update event",
+							slog.Duration("update_delay", parsedTime.Sub(envUpdatedAt)),
+							slog.Time("updated_at", parsedTime),
+							slog.String("environment", env.APIKey),
+						)
+					err = c.UpdateEnvironment(ctx)
 					if err != nil {
-						c.log.Errorf("Error reading realtime stream: %v", err)
+						log.Error("realtime update failed", "error", err)
 						continue
 					}
-					if parsedTime.After(envUpdatedAt) {
-						err = c.UpdateEnvironment(ctx)
-						if err != nil {
-							c.log.Errorf("Failed to update the environment: %v", err)
-							continue
-						}
-						env, _ := c.environment.Load().(*environments.EnvironmentModel)
-
-						envUpdatedAt = env.UpdatedAt
-					}
+					envUpdatedAt = parsedTime
 				}
 			}
 			if err := scanner.Err(); err != nil {
-				c.log.Errorf("Error reading realtime stream: %v", err)
+				log.Error("failed to read from realtime stream", "error", err)
 			}
 		}
 	}
 }
+
 func parseUpdatedAtFromSSE(line string) (time.Time, error) {
+	if !strings.HasPrefix(line, "data: ") {
+		return time.Time{}, nil
+	}
+
 	var eventData struct {
 		UpdatedAt float64 `json:"updated_at"`
 	}
@@ -67,11 +84,11 @@ func parseUpdatedAtFromSSE(line string) (time.Time, error) {
 	data := strings.TrimPrefix(line, "data: ")
 	err := json.Unmarshal([]byte(data), &eventData)
 	if err != nil {
-		return time.Time{}, errors.New("failed to parse event data: " + err.Error())
+		return time.Time{}, err
 	}
 
 	if eventData.UpdatedAt <= 0 {
-		return time.Time{}, errors.New("invalid 'updated_at' value in event data")
+		return time.Time{}, errors.New("updated_at is <= 0")
 	}
 
 	// Convert the float timestamp into seconds and nanoseconds

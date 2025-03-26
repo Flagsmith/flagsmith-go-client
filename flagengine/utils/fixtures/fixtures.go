@@ -99,8 +99,8 @@ func Identity(env *environments.EnvironmentModel) *identities.IdentityModel {
 
 func TraitMatchingSegment(segCond *segments.SegmentConditionModel) *traits.TraitModel {
 	return &traits.TraitModel{
-		TraitKey:   segCond.Property,
-		TraitValue: segCond.Value,
+		Key:   segCond.Property,
+		Value: segCond.Value,
 	}
 }
 
@@ -112,7 +112,7 @@ func IdentityInSegment(trait *traits.TraitModel, env *environments.EnvironmentMo
 	}
 }
 
-func SegmentOverrideFs(segment *segments.SegmentModel, feature *features.FeatureModel) *features.FeatureStateModel {
+func SegmentOverrideFs(_ *segments.SegmentModel, feature *features.FeatureModel) *features.FeatureStateModel {
 	return &features.FeatureStateModel{
 		DjangoID: 4,
 		Feature:  feature,

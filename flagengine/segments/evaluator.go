@@ -70,8 +70,8 @@ func traitsMatchSegmentCondition(
 	}
 	var matchedTraitValue *string
 	for _, trait := range identityTraits {
-		if trait.TraitKey == condition.Property {
-			matchedTraitValue = &trait.TraitValue
+		if trait.Key == condition.Property {
+			matchedTraitValue = &trait.Value
 		}
 	}
 

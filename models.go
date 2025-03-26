@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
-
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
 )
 
 type Flag struct {
@@ -18,22 +16,14 @@ type Flag struct {
 }
 
 type Trait struct {
-	TraitKey   string      `json:"trait_key"`
-	TraitValue interface{} `json:"trait_value"`
-	Transient  bool        `json:"transient,omitempty"`
+	Key   string      `json:"trait_key"`
+	Value interface{} `json:"trait_value"`
 }
 
 type IdentityTraits struct {
 	Identifier string   `json:"identifier"`
 	Traits     []*Trait `json:"traits"`
 	Transient  bool     `json:"transient,omitempty"`
-}
-
-func (t *Trait) ToTraitModel() *traits.TraitModel {
-	return &traits.TraitModel{
-		TraitKey:   t.TraitKey,
-		TraitValue: fmt.Sprint(t.TraitValue),
-	}
 }
 
 func makeFlagFromFeatureState(featureState *features.FeatureStateModel, identityID string) Flag {
@@ -154,7 +144,7 @@ func (f *Flags) GetFlag(featureName string) (Flag, error) {
 		if f.defaultFlagHandler != nil {
 			return f.defaultFlagHandler(featureName)
 		}
-		return resultFlag, &FlagsmithClientError{fmt.Sprintf("flagsmith: No feature found with name %q", featureName)}
+		return resultFlag, fmt.Errorf("feature %q not found", featureName)
 	}
 	if f.analyticsProcessor != nil {
 		f.analyticsProcessor.TrackFeature(resultFlag.FeatureName)
