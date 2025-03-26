@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"time"
+
+	"log/slog"
 )
 
 type Option func(c *Client)
@@ -22,6 +24,8 @@ var _ = []Option{
 	WithProxy(""),
 	WithRealtime(),
 	WithRealtimeBaseURL(""),
+	WithLogger(nil),
+	WithSlogLogger(nil),
 }
 
 func WithBaseURL(url string) Option {
@@ -93,6 +97,13 @@ func WithDefaultHandler(handler func(string) (Flag, error)) Option {
 
 // Allows the client to use any logger that implements the `Logger` interface.
 func WithLogger(logger Logger) Option {
+	return func(c *Client) {
+		c.log = newLoggerToSlogAdapter(logger)
+	}
+}
+
+// WithSlogLogger allows the client to use a slog.Logger for logging.
+func WithSlogLogger(logger *slog.Logger) Option {
 	return func(c *Client) {
 		c.log = logger
 	}

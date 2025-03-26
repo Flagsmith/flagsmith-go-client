@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -20,6 +21,13 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 	env, _ := c.environment.Load().(*environments.EnvironmentModel)
 	stream_url := c.config.realtimeBaseUrl + "sse/environments/" + env.APIKey + "/stream"
 	envUpdatedAt := env.UpdatedAt
+	log := c.log.With(
+		slog.String("worker", "realtime"),
+		slog.String("stream", stream_url),
+	)
+	defer func() {
+		log.Info("realtime stopped")
+	}()
 	for {
 		select {
 		case <-ctx.Done():
@@ -27,10 +35,11 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 		default:
 			resp, err := http.Get(stream_url)
 			if err != nil {
-				c.log.Errorf("Error connecting to realtime server: %v", err)
+				log.Error("failed to connect to realtime stream", "error", err)
 				continue
 			}
 			defer resp.Body.Close()
+			log.Info("connected")
 
 			scanner := bufio.NewScanner(resp.Body)
 			for scanner.Scan() {
@@ -38,23 +47,22 @@ func (c *Client) startRealtimeUpdates(ctx context.Context) {
 				if strings.HasPrefix(line, "data: ") {
 					parsedTime, err := parseUpdatedAtFromSSE(line)
 					if err != nil {
-						c.log.Errorf("Error reading realtime stream: %v", err)
+						log.Error("failed to parse event message", "error", err, "message", line)
 						continue
 					}
 					if parsedTime.After(envUpdatedAt) {
 						err = c.UpdateEnvironment(ctx)
 						if err != nil {
-							c.log.Errorf("Failed to update the environment: %v", err)
+							log.Error("failed to update environment after receiving event", "error", err)
 							continue
 						}
 						env, _ := c.environment.Load().(*environments.EnvironmentModel)
-
 						envUpdatedAt = env.UpdatedAt
 					}
 				}
 			}
 			if err := scanner.Err(); err != nil {
-				c.log.Errorf("Error reading realtime stream: %v", err)
+				log.Error("error reading from realtime stream", "error", err)
 			}
 		}
 	}
