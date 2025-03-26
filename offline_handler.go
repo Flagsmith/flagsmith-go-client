@@ -8,14 +8,14 @@ import (
 )
 
 type Environment interface {
-	Environment() *environments.EnvironmentModel
+	GetEnvironment() *environments.EnvironmentModel
 }
 
 type environment struct {
 	model *environments.EnvironmentModel
 }
 
-func (e environment) Environment() *environments.EnvironmentModel {
+func (e environment) GetEnvironment() *environments.EnvironmentModel {
 	return e.model
 }
 

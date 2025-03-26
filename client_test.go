@@ -145,7 +145,7 @@ func TestGetFlags(t *testing.T) {
 	// When
 	client := flagsmith.MustNewClient(fixtures.EnvironmentAPIKey, flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
-	flags, err := client.GetEnvironmentFlags(context.Background())
+	flags, err := client.GetFlags(context.Background(), flagsmith.EvaluationContext{})
 
 	// Then
 	assert.NoError(t, err)

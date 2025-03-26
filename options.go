@@ -112,7 +112,7 @@ func WithProxy(url string) Option {
 // WithOfflineEnvironment sets the current environment and prevents Client from making network requests.
 func WithOfflineEnvironment(env Environment) Option {
 	return func(c *Client) {
-		c.state.SetOfflineEnvironment(env.Environment())
+		c.state.SetOfflineEnvironment(env.GetEnvironment())
 	}
 }
 

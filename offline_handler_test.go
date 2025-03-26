@@ -28,5 +28,5 @@ func TestLocalFileHandlerGetEnvironment(t *testing.T) {
 
 	// Then
 	assert.NoError(t, err)
-	assert.NotEmpty(t, env.Environment().APIKey)
+	assert.NotEmpty(t, env.GetEnvironment().APIKey)
 }
