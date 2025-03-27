@@ -36,12 +36,16 @@ func NewAnalyticsProcessor(ctx context.Context, client *resty.Client, baseURL st
 		endpoint: baseURL + AnalyticsEndpoint,
 		log:      log,
 	}
+	log.Debugf("analytics processor starting")
 	go processor.start(ctx, tickerInterval)
 	return &processor
 }
 
 func (a *AnalyticsProcessor) start(ctx context.Context, tickerInterval int) {
 	ticker := time.NewTicker(time.Duration(tickerInterval) * time.Millisecond)
+	defer func() {
+		a.log.Debugf("analytics processor stopped")
+	}()
 	for {
 		select {
 		case <-ticker.C:

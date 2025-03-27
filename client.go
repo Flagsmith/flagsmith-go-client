@@ -3,6 +3,7 @@ package flagsmith
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -34,7 +35,7 @@ type Client struct {
 	client         *resty.Client
 	ctxLocalEval   context.Context
 	ctxAnalytics   context.Context
-	log            Logger
+	log            *slog.Logger
 	offlineHandler OfflineHandler
 	errorHandler   func(handler *FlagsmithAPIError)
 }
@@ -70,7 +71,21 @@ func NewClient(apiKey string, options ...Option) *Client {
 			opt(c)
 		}
 	}
-	c.client.SetLogger(c.log)
+	c.client = c.client.
+		SetLogger(newSlogToRestyAdapter(c.log)).
+		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
+		OnAfterResponse(newRestyLogResponseMiddleware(c.log))
+
+	c.log.Debug("initialising Flagsmith client",
+		"base_url", c.config.baseURL,
+		"local_evaluation", c.config.localEvaluation,
+		"offline", c.config.offlineMode,
+		"analytics", c.config.enableAnalytics,
+		"realtime", c.config.useRealtime,
+		"realtime_url", c.config.realtimeBaseUrl,
+		"env_refresh_interval", c.config.envRefreshInterval,
+		"timeout", c.config.timeout,
+	)
 
 	if c.config.offlineMode && c.offlineHandler == nil {
 		panic("offline handler must be provided to use offline mode.")
@@ -97,7 +112,15 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 	// Initialise analytics processor
 	if c.config.enableAnalytics {
-		c.analyticsProcessor = NewAnalyticsProcessor(c.ctxAnalytics, c.client, c.config.baseURL, nil, c.log)
+		c.analyticsProcessor = NewAnalyticsProcessor(
+			c.ctxAnalytics,
+			c.client,
+			c.config.baseURL,
+			nil,
+			newSlogToLoggerAdapter(
+				c.log.With(slog.String("worker", "analytics")),
+			),
+		)
 	}
 	return c
 }
@@ -319,7 +342,7 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 		defer cancel()
 		err := c.UpdateEnvironment(ctx)
 		if err != nil {
-			c.log.Errorf("Failed to update environment: %v", err)
+			c.log.Error("failed to update environment", "error", err)
 		}
 	}
 	update()
@@ -364,6 +387,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	}
 	c.identitiesWithOverrides.Store(identitiesWithOverrides)
 
+	c.log.Info("environment updated", "environment", env.APIKey)
 	return nil
 }
 

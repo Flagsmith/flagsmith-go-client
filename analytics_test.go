@@ -43,7 +43,7 @@ func TestAnalytics(t *testing.T) {
 	client.SetHeader("X-Environment-Key", EnvironmentAPIKey)
 
 	// Now let's create the processor
-	processor := NewAnalyticsProcessor(context.Background(), client, server.URL+"/api/v1/", &analyticsTimer, createLogger())
+	processor := NewAnalyticsProcessor(context.Background(), client, server.URL+"/api/v1/", &analyticsTimer, newSlogToLoggerAdapter(createLogger()))
 
 	// and, track some features
 	processor.TrackFeature("feature_1")

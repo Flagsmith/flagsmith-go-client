@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -958,4 +960,20 @@ data: {"updated_at": %f}
 
 	// Flush the event to the client
 	flusher.Flush()
+}
+
+func TestWithSlogLogger(t *testing.T) {
+	// Given
+	var logOutput strings.Builder
+	slogLogger := slog.New(slog.NewTextHandler(&logOutput, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	// When
+	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithSlogLogger(slogLogger))
+
+	// Then
+	logStr := logOutput.String()
+	t.Log(logStr)
+	assert.Contains(t, logStr, "initialising Flagsmith client")
 }
