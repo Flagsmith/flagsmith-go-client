@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,6 +31,7 @@ type Client struct {
 	identitiesWithOverrides atomic.Value
 
 	analyticsProcessor *AnalyticsProcessor
+	realtime           *realtime
 	defaultFlagHandler func(string) (Flag, error)
 
 	client         *resty.Client
@@ -38,6 +40,8 @@ type Client struct {
 	log            *slog.Logger
 	offlineHandler OfflineHandler
 	errorHandler   func(handler *FlagsmithAPIError)
+
+	once sync.Once
 }
 
 // Returns context with provided EvaluationContext instance set.
@@ -101,12 +105,15 @@ func NewClient(apiKey string, options ...Option) *Client {
 		if !strings.HasPrefix(apiKey, "ser.") {
 			panic("In order to use local evaluation, please generate a server key in the environment settings page.")
 		}
-		if c.config.useRealtime {
-			go c.startRealtimeUpdates(c.ctxLocalEval)
-		}
 		if c.config.polling || !c.config.useRealtime {
-			go c.pollEnvironment(c.ctxLocalEval)
+			// Poll indefinitely
+			go c.pollEnvironment(c.ctxLocalEval, true)
 		}
+		if c.config.useRealtime {
+			// Poll until we get the environment once
+			go c.pollEnvironment(c.ctxLocalEval, false)
+		}
+
 	}
 	// Initialise analytics processor
 	if c.config.enableAnalytics {
@@ -334,7 +341,7 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 	), nil
 }
 
-func (c *Client) pollEnvironment(ctx context.Context) {
+func (c *Client) pollEnvironment(ctx context.Context, pollForever bool) {
 	log := c.log.With(slog.String("worker", "poll"))
 	update := func() {
 		log.Debug("polling environment")
@@ -354,12 +361,22 @@ func (c *Client) pollEnvironment(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
+			if !pollForever {
+				// Check if environment was successfully fetched
+				if _, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
+					if !pollForever {
+						c.log.Debug("environment initialised")
+						return
+					}
+				}
+			}
 			update()
 		case <-ctx.Done():
 			return
 		}
 	}
 }
+
 func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	var env environments.EnvironmentModel
 	resp, err := c.client.NewRequest().
@@ -392,6 +409,14 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	c.identitiesWithOverrides.Store(identitiesWithOverrides)
 
 	c.log.Info("environment updated", "environment", env.APIKey)
+	c.once.Do(func() {
+		if c.config.useRealtime && c.realtime == nil {
+			streamURL := c.config.realtimeBaseUrl + "sse/environments/" + env.APIKey + "/stream"
+			c.realtime = newRealtime(c, c.ctxLocalEval, streamURL, env.UpdatedAt)
+			c.log.Debug("environment initialised, starting realtime updates")
+			go c.realtime.start()
+		}
+	})
 	return nil
 }
 

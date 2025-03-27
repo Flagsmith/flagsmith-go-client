@@ -1003,7 +1003,7 @@ func TestWithPollingWorksWithRealtime(t *testing.T) {
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 
 	// When
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(500 * time.Millisecond)
 
 	// Then
 	logMu.Lock()
