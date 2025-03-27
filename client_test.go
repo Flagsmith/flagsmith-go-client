@@ -1013,7 +1013,7 @@ func TestWithPollingWorksWithRealtime(t *testing.T) {
 	assert.Contains(t, logStr, "worker=realtime")
 }
 
-// writerFunc implements io.Writer
+// writerFunc implements io.Writer.
 type writerFunc func(p []byte) (n int, err error)
 
 func (f writerFunc) Write(p []byte) (n int, err error) {

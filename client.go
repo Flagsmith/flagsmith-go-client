@@ -113,7 +113,6 @@ func NewClient(apiKey string, options ...Option) *Client {
 			// Poll until we get the environment once
 			go c.pollThenStartRealtime(c.ctxLocalEval)
 		}
-
 	}
 	// Initialise analytics processor
 	if c.config.enableAnalytics {

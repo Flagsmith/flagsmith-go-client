@@ -14,18 +14,17 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
 )
 
-// realtime handles the SSE connection and reconnection logic
+// realtime handles the SSE connection and reconnection logic.
 type realtime struct {
-	client        *Client
-	ctx           context.Context
-	log           *slog.Logger
-	streamURL     string
-	envUpdatedAt  time.Time
-	backoff       *backoff
-	reconnectChan chan struct{}
+	client       *Client
+	ctx          context.Context
+	log          *slog.Logger
+	streamURL    string
+	envUpdatedAt time.Time
+	backoff      *backoff
 }
 
-// newRealtime creates a new realtime instance
+// newRealtime creates a new realtime instance.
 func newRealtime(client *Client, ctx context.Context, streamURL string, envUpdatedAt time.Time) *realtime {
 	return &realtime{
 		client: client,
@@ -40,7 +39,7 @@ func newRealtime(client *Client, ctx context.Context, streamURL string, envUpdat
 	}
 }
 
-// start begins the realtime connection process
+// start begins the realtime connection process.
 func (r *realtime) start() {
 	r.log.Debug("connecting to realtime")
 	defer func() {
@@ -59,7 +58,7 @@ func (r *realtime) start() {
 	}
 }
 
-// connect establishes and maintains the SSE connection
+// connect establishes and maintains the SSE connection.
 func (r *realtime) connect() error {
 	resp, err := http.Get(r.streamURL)
 	if err != nil {
@@ -96,7 +95,7 @@ func (r *realtime) connect() error {
 	return nil
 }
 
-// handleEvent processes a single SSE event
+// handleEvent processes a single SSE event.
 func (r *realtime) handleEvent(line string) error {
 	parsedTime, err := parseUpdatedAtFromSSE(line)
 	if err != nil {
