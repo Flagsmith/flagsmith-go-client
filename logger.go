@@ -25,7 +25,7 @@ type Logger interface {
 	Debugf(format string, v ...interface{})
 }
 
-// slogToRestyAdapter adapts a slog.Logger to resty.Logger
+// slogToRestyAdapter adapts a slog.Logger to resty.Logger.
 type slogToRestyAdapter struct {
 	logger *slog.Logger
 }
@@ -46,7 +46,7 @@ func (l *slogToRestyAdapter) Debugf(format string, v ...interface{}) {
 	l.logger.Debug(format, v...)
 }
 
-// slogToLoggerAdapter adapts a slog.Logger to our Logger interface
+// slogToLoggerAdapter adapts a slog.Logger to our Logger interface.
 type slogToLoggerAdapter struct {
 	logger *slog.Logger
 }
@@ -67,19 +67,13 @@ func (l *slogToLoggerAdapter) Debugf(format string, v ...interface{}) {
 	l.logger.Debug(fmt.Sprintf(format, v...))
 }
 
-// loggerToSlogAdapter adapts our Logger interface to a slog.Logger
+// loggerToSlogAdapter adapts our Logger interface to a slog.Logger.
 type loggerToSlogAdapter struct {
 	logger Logger
 }
 
 func newLoggerToSlogAdapter(logger Logger) *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			// We don't need to modify any attributes since we're using the existing logger
-			return a
-		},
-	}))
+	return slog.New(&loggerToSlogAdapter{logger: logger})
 }
 
 // implement slog.Handler interface to adapt our Logger interface to a slog.Logger
@@ -126,11 +120,6 @@ const (
 	contextLoggerKey    contextKey = contextKey("logger")
 	contextStartTimeKey contextKey = contextKey("startTime")
 )
-
-// restySlogLogger implements a [resty.Logger] using a [slog.Logger].
-type restySlogLogger struct {
-	logger *slog.Logger
-}
 
 func newRestyLogRequestMiddleware(logger *slog.Logger) resty.RequestMiddleware {
 	return func(c *resty.Client, req *resty.Request) error {
