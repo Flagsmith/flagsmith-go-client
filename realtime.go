@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -33,10 +34,9 @@ func newRealtime(client *Client, ctx context.Context, streamURL string, envUpdat
 			slog.String("worker", "realtime"),
 			slog.String("stream", streamURL),
 		),
-		streamURL:     streamURL,
-		envUpdatedAt:  envUpdatedAt,
-		backoff:       newBackoff(),
-		reconnectChan: make(chan struct{}, 1),
+		streamURL:    streamURL,
+		envUpdatedAt: envUpdatedAt,
+		backoff:      newBackoff(),
 	}
 }
 
@@ -50,9 +50,6 @@ func (r *realtime) start() {
 		select {
 		case <-r.ctx.Done():
 			return
-		case <-r.reconnectChan:
-			// Reset backoff on successful reconnect
-			r.backoff.reset()
 		default:
 			if err := r.connect(); err != nil {
 				r.log.Error("failed to connect", "error", err)
@@ -69,9 +66,12 @@ func (r *realtime) connect() error {
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("error response connecting to stream: %d", resp.StatusCode)
+	}
 
 	r.log.Info("connected")
-	r.reconnectChan <- struct{}{}
+	r.backoff.reset()
 
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
@@ -121,24 +121,6 @@ func (r *realtime) wait() {
 		return
 	case <-time.After(r.backoff.next()):
 	}
-}
-
-func (c *Client) startRealtimeUpdates(ctx context.Context) {
-	// Initial environment fetch
-	if err := c.UpdateEnvironment(ctx); err != nil {
-		c.log.Error("failed to fetch initial environment", "error", err)
-		return
-	}
-
-	env, ok := c.environment.Load().(*environments.EnvironmentModel)
-	if !ok {
-		c.log.Error("failed to load environment")
-		return
-	}
-
-	streamURL := c.config.realtimeBaseUrl + "sse/environments/" + env.APIKey + "/stream"
-	conn := newRealtime(c, ctx, streamURL, env.UpdatedAt)
-	conn.start()
 }
 
 func parseUpdatedAtFromSSE(line string) (time.Time, error) {
