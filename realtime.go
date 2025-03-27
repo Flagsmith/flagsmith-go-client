@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -13,60 +14,105 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
 )
 
-func (c *Client) startRealtimeUpdates(ctx context.Context) {
-	err := c.UpdateEnvironment(ctx)
-	if err != nil {
-		panic("Failed to fetch the environment while configuring real-time updates")
+// realtime handles the SSE connection and reconnection logic.
+type realtime struct {
+	client       *Client
+	ctx          context.Context
+	log          *slog.Logger
+	streamURL    string
+	envUpdatedAt time.Time
+	backoff      *backoff
+}
+
+// newRealtime creates a new realtime instance.
+func newRealtime(client *Client, ctx context.Context, streamURL string, envUpdatedAt time.Time) *realtime {
+	return &realtime{
+		client: client,
+		ctx:    ctx,
+		log: client.log.With(
+			slog.String("worker", "realtime"),
+			slog.String("stream", streamURL),
+		),
+		streamURL:    streamURL,
+		envUpdatedAt: envUpdatedAt,
+		backoff:      newBackoff(),
 	}
-	env, _ := c.environment.Load().(*environments.EnvironmentModel)
-	stream_url := c.config.realtimeBaseUrl + "sse/environments/" + env.APIKey + "/stream"
-	envUpdatedAt := env.UpdatedAt
-	log := c.log.With(
-		slog.String("worker", "realtime"),
-		slog.String("stream", stream_url),
-	)
+}
+
+// start begins the realtime connection process.
+func (r *realtime) start() {
+	r.log.Debug("connecting to realtime")
 	defer func() {
-		log.Info("realtime stopped")
+		r.log.Info("stopped")
 	}()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-r.ctx.Done():
 			return
 		default:
-			resp, err := http.Get(stream_url)
-			if err != nil {
-				log.Error("failed to connect to realtime stream", "error", err)
-				continue
-			}
-			defer resp.Body.Close()
-			log.Info("connected")
-
-			scanner := bufio.NewScanner(resp.Body)
-			for scanner.Scan() {
-				line := scanner.Text()
-				if strings.HasPrefix(line, "data: ") {
-					parsedTime, err := parseUpdatedAtFromSSE(line)
-					if err != nil {
-						log.Error("failed to parse event message", "error", err, "message", line)
-						continue
-					}
-					if parsedTime.After(envUpdatedAt) {
-						err = c.UpdateEnvironment(ctx)
-						if err != nil {
-							log.Error("failed to update environment after receiving event", "error", err)
-							continue
-						}
-						env, _ := c.environment.Load().(*environments.EnvironmentModel)
-						envUpdatedAt = env.UpdatedAt
-					}
-				}
-			}
-			if err := scanner.Err(); err != nil {
-				log.Error("error reading from realtime stream", "error", err)
+			if err := r.connect(); err != nil {
+				r.log.Error("failed to connect", "error", err)
+				r.backoff.wait(r.ctx)
 			}
 		}
 	}
 }
+
+// connect establishes and maintains the SSE connection.
+func (r *realtime) connect() error {
+	resp, err := http.Get(r.streamURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("error response connecting to stream: %d", resp.StatusCode)
+	}
+
+	r.log.Info("connected")
+	r.backoff.reset()
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		select {
+		case <-r.ctx.Done():
+			return r.ctx.Err()
+		default:
+			line := scanner.Text()
+			if strings.HasPrefix(line, "data: ") {
+				if err := r.handleEvent(line); err != nil {
+					r.log.Error("failed to handle event", "error", err, "message", line)
+				}
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		r.log.Error("failed to read from stream", "error", err)
+		return err
+	}
+
+	return nil
+}
+
+// handleEvent processes a single SSE event.
+func (r *realtime) handleEvent(line string) error {
+	parsedTime, err := parseUpdatedAtFromSSE(line)
+	if err != nil {
+		return err
+	}
+
+	if parsedTime.After(r.envUpdatedAt) {
+		if err := r.client.UpdateEnvironment(r.ctx); err != nil {
+			return err
+		}
+		if env, ok := r.client.environment.Load().(*environments.EnvironmentModel); ok {
+			r.envUpdatedAt = env.UpdatedAt
+		}
+	}
+	return nil
+}
+
 func parseUpdatedAtFromSSE(line string) (time.Time, error) {
 	var eventData struct {
 		UpdatedAt float64 `json:"updated_at"`

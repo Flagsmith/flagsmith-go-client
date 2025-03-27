@@ -977,3 +977,45 @@ func TestWithSlogLogger(t *testing.T) {
 	t.Log(logStr)
 	assert.Contains(t, logStr, "initialising Flagsmith client")
 }
+
+func TestWithPollingWorksWithRealtime(t *testing.T) {
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
+	defer server.Close()
+
+	// guard against data race from goroutines logging at the same time
+	var logOutput strings.Builder
+	var logMu sync.Mutex
+	slogLogger := slog.New(slog.NewTextHandler(writerFunc(func(p []byte) (n int, err error) {
+		logMu.Lock()
+		defer logMu.Unlock()
+		return logOutput.Write(p)
+	}), &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
+
+	// Given
+	_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithSlogLogger(slogLogger),
+		flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithRealtime(),
+		flagsmith.WithPolling(),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	// When
+	time.Sleep(500 * time.Millisecond)
+
+	// Then
+	logMu.Lock()
+	logStr := logOutput.String()
+	logMu.Unlock()
+	assert.Contains(t, logStr, "worker=poll")
+	assert.Contains(t, logStr, "worker=realtime")
+}
+
+// writerFunc implements io.Writer.
+type writerFunc func(p []byte) (n int, err error)
+
+func (f writerFunc) Write(p []byte) (n int, err error) {
+	return f(p)
+}

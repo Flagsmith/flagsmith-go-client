@@ -30,6 +30,7 @@ type Client struct {
 	identitiesWithOverrides atomic.Value
 
 	analyticsProcessor *AnalyticsProcessor
+	realtime           *realtime
 	defaultFlagHandler func(string) (Flag, error)
 
 	client         *resty.Client
@@ -76,7 +77,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
 		OnAfterResponse(newRestyLogResponseMiddleware(c.log))
 
-	c.log.Debug("initialising Flagsmith client",
+	c.log.Info("initialising Flagsmith client",
 		"base_url", c.config.baseURL,
 		"local_evaluation", c.config.localEvaluation,
 		"offline", c.config.offlineMode,
@@ -104,10 +105,13 @@ func NewClient(apiKey string, options ...Option) *Client {
 		if !strings.HasPrefix(apiKey, "ser.") {
 			panic("In order to use local evaluation, please generate a server key in the environment settings page.")
 		}
+		if c.config.polling || !c.config.useRealtime {
+			// Poll indefinitely
+			go c.pollEnvironment(c.ctxLocalEval, true)
+		}
 		if c.config.useRealtime {
-			go c.startRealtimeUpdates(c.ctxLocalEval)
-		} else {
-			go c.pollEnvironment(c.ctxLocalEval)
+			// Poll until we get the environment once
+			go c.pollThenStartRealtime(c.ctxLocalEval)
 		}
 	}
 	// Initialise analytics processor
@@ -336,26 +340,76 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 	), nil
 }
 
-func (c *Client) pollEnvironment(ctx context.Context) {
+func (c *Client) pollEnvironment(ctx context.Context, pollForever bool) {
+	log := c.log.With(slog.String("worker", "poll"))
 	update := func() {
-		ctx, cancel := context.WithTimeout(ctx, c.config.envRefreshInterval)
+		log.Debug("polling environment")
+		ctx, cancel := context.WithTimeout(ctx, c.config.timeout)
 		defer cancel()
 		err := c.UpdateEnvironment(ctx)
 		if err != nil {
-			c.log.Error("failed to update environment", "error", err)
+			log.Error("failed to update environment", "error", err)
 		}
 	}
 	update()
 	ticker := time.NewTicker(c.config.envRefreshInterval)
+	defer func() {
+		ticker.Stop()
+		log.Info("polling stopped")
+	}()
 	for {
 		select {
 		case <-ticker.C:
+			if !pollForever {
+				// Check if environment was successfully fetched
+				if _, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
+					if !pollForever {
+						c.log.Debug("environment initialised")
+						return
+					}
+				}
+			}
 			update()
 		case <-ctx.Done():
 			return
 		}
 	}
 }
+
+func (c *Client) pollThenStartRealtime(ctx context.Context) {
+	b := newBackoff()
+	update := func() {
+		c.log.Debug("polling environment")
+		ctx, cancel := context.WithTimeout(ctx, c.config.envRefreshInterval)
+		defer cancel()
+		err := c.UpdateEnvironment(ctx)
+		if err != nil {
+			c.log.Error("failed to update environment", "error", err)
+			b.wait(ctx)
+		}
+	}
+	update()
+	defer func() {
+		c.log.Info("initial polling stopped")
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// If environment was fetched, start realtime and finish
+			if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
+				streamURL := c.config.realtimeBaseUrl + "sse/environments/" + env.APIKey + "/stream"
+				c.log.Debug("environment initialised, starting realtime updates")
+				c.realtime = newRealtime(c, ctx, streamURL, env.UpdatedAt)
+				go c.realtime.start()
+				return
+			}
+			update()
+		}
+	}
+}
+
 func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	var env environments.EnvironmentModel
 	resp, err := c.client.NewRequest().
@@ -380,6 +434,11 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		}
 		return f
 	}
+	isNew := false
+	previousEnv := c.environment.Load()
+	if previousEnv == nil || env.UpdatedAt.After(previousEnv.(*environments.EnvironmentModel).UpdatedAt) {
+		isNew = true
+	}
 	c.environment.Store(&env)
 	identitiesWithOverrides := make(map[string]identities.IdentityModel)
 	for _, id := range env.IdentityOverrides {
@@ -387,7 +446,10 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	}
 	c.identitiesWithOverrides.Store(identitiesWithOverrides)
 
-	c.log.Info("environment updated", "environment", env.APIKey)
+	if isNew {
+		c.log.Info("environment updated", "environment", env.APIKey, "updated_at", env.UpdatedAt)
+	}
+
 	return nil
 }
 

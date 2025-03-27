@@ -22,6 +22,7 @@ var _ = []Option{
 	WithCustomHeaders(nil),
 	WithDefaultHandler(nil),
 	WithProxy(""),
+	WithPolling(),
 	WithRealtime(),
 	WithRealtimeBaseURL(""),
 	WithLogger(nil),
@@ -155,5 +156,12 @@ func WithRealtimeBaseURL(url string) Option {
 			url += "/"
 		}
 		c.config.realtimeBaseUrl = url
+	}
+}
+
+// WithPolling makes it so that the client will poll for updates even when WithRealtime is used.
+func WithPolling() Option {
+	return func(c *Client) {
+		c.config.polling = true
 	}
 }
