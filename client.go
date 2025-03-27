@@ -344,7 +344,7 @@ func (c *Client) pollEnvironment(ctx context.Context, pollForever bool) {
 	log := c.log.With(slog.String("worker", "poll"))
 	update := func() {
 		log.Debug("polling environment")
-		ctx, cancel := context.WithTimeout(ctx, c.config.envRefreshInterval)
+		ctx, cancel := context.WithTimeout(ctx, c.config.timeout)
 		defer cancel()
 		err := c.UpdateEnvironment(ctx)
 		if err != nil {
@@ -434,6 +434,11 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		}
 		return f
 	}
+	isNew := false
+	previousEnv := c.environment.Load()
+	if previousEnv == nil || env.UpdatedAt.After(previousEnv.(*environments.EnvironmentModel).UpdatedAt) {
+		isNew = true
+	}
 	c.environment.Store(&env)
 	identitiesWithOverrides := make(map[string]identities.IdentityModel)
 	for _, id := range env.IdentityOverrides {
@@ -441,7 +446,9 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	}
 	c.identitiesWithOverrides.Store(identitiesWithOverrides)
 
-	c.log.Info("environment updated", "environment", env.APIKey)
+	if isNew {
+		c.log.Info("environment updated", "environment", env.APIKey, "updated_at", env.UpdatedAt)
+	}
 
 	return nil
 }
