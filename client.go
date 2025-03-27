@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,8 +39,6 @@ type Client struct {
 	log            *slog.Logger
 	offlineHandler OfflineHandler
 	errorHandler   func(handler *FlagsmithAPIError)
-
-	once sync.Once
 }
 
 // Returns context with provided EvaluationContext instance set.
