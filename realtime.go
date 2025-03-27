@@ -53,7 +53,7 @@ func (r *realtime) start() {
 		default:
 			if err := r.connect(); err != nil {
 				r.log.Error("failed to connect", "error", err)
-				r.wait()
+				r.backoff.wait(r.ctx)
 			}
 		}
 	}
@@ -112,15 +112,6 @@ func (r *realtime) handleEvent(line string) error {
 		}
 	}
 	return nil
-}
-
-// wait waits for the current backoff time
-func (r *realtime) wait() {
-	select {
-	case <-r.ctx.Done():
-		return
-	case <-time.After(r.backoff.next()):
-	}
 }
 
 func parseUpdatedAtFromSSE(line string) (time.Time, error) {

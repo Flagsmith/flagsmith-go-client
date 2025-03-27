@@ -114,7 +114,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 		}
 		if c.config.useRealtime {
 			// Poll until we get the environment once
-			go c.pollEnvironment(c.ctxLocalEval, false)
+			go c.pollThenStartRealtime(c.ctxLocalEval)
 		}
 
 	}
@@ -380,6 +380,40 @@ func (c *Client) pollEnvironment(ctx context.Context, pollForever bool) {
 	}
 }
 
+func (c *Client) pollThenStartRealtime(ctx context.Context) {
+	b := newBackoff()
+	update := func() {
+		c.log.Debug("polling environment")
+		ctx, cancel := context.WithTimeout(ctx, c.config.envRefreshInterval)
+		defer cancel()
+		err := c.UpdateEnvironment(ctx)
+		if err != nil {
+			c.log.Error("failed to update environment", "error", err)
+			b.wait(ctx)
+		}
+	}
+	update()
+	defer func() {
+		c.log.Info("initial polling stopped")
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// If environment was fetched, start realtime and finish
+			if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
+				streamURL := c.config.realtimeBaseUrl + "sse/environments/" + env.APIKey + "/stream"
+				c.log.Debug("environment initialised, starting realtime updates")
+				c.realtime = newRealtime(c, ctx, streamURL, env.UpdatedAt)
+				go c.realtime.start()
+				return
+			}
+			update()
+		}
+	}
+}
+
 func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	var env environments.EnvironmentModel
 	resp, err := c.client.NewRequest().
@@ -412,14 +446,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	c.identitiesWithOverrides.Store(identitiesWithOverrides)
 
 	c.log.Info("environment updated", "environment", env.APIKey)
-	c.once.Do(func() {
-		if c.config.useRealtime && c.realtime == nil {
-			streamURL := c.config.realtimeBaseUrl + "sse/environments/" + env.APIKey + "/stream"
-			c.realtime = newRealtime(c, c.ctxLocalEval, streamURL, env.UpdatedAt)
-			c.log.Debug("environment initialised, starting realtime updates")
-			go c.realtime.start()
-		}
-	})
+
 	return nil
 }
 

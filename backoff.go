@@ -1,6 +1,9 @@
 package flagsmith
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 const (
 	initialBackoff = 200 * time.Millisecond
@@ -35,4 +38,13 @@ func (b *backoff) next() time.Duration {
 // reset resets the backoff to initial value
 func (b *backoff) reset() {
 	b.current = initialBackoff
+}
+
+// wait waits for the current backoff time, or until ctx is done
+func (b *backoff) wait(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(b.next()):
+	}
 }
