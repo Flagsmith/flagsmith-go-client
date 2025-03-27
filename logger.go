@@ -6,6 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
+
+	"github.com/go-resty/resty/v2"
 )
 
 // Logger is the interface used for logging by flagsmith client. This interface defines the methods
@@ -117,4 +120,56 @@ func createLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	}))
+}
+
+const (
+	contextLoggerKey    contextKey = contextKey("logger")
+	contextStartTimeKey contextKey = contextKey("startTime")
+)
+
+// restySlogLogger implements a [resty.Logger] using a [slog.Logger].
+type restySlogLogger struct {
+	logger *slog.Logger
+}
+
+func newRestyLogRequestMiddleware(logger *slog.Logger) resty.RequestMiddleware {
+	return func(c *resty.Client, req *resty.Request) error {
+		// Create a child logger with request metadata
+		reqLogger := logger.WithGroup("http").With(
+			"method", req.Method,
+			"url", req.URL,
+		)
+		reqLogger.Debug("request")
+
+		// Store the logger in this request's context, and use it in the response
+		req.SetContext(context.WithValue(req.Context(), contextLoggerKey, reqLogger))
+
+		// Time the current request
+		req.SetContext(context.WithValue(req.Context(), contextStartTimeKey, time.Now()))
+
+		return nil
+	}
+}
+
+func newRestyLogResponseMiddleware(logger *slog.Logger) resty.ResponseMiddleware {
+	return func(client *resty.Client, resp *resty.Response) error {
+		// Retrieve the logger and start time from context
+		reqLogger, _ := resp.Request.Context().Value(contextLoggerKey).(*slog.Logger)
+		startTime, _ := resp.Request.Context().Value(contextStartTimeKey).(time.Time)
+
+		if reqLogger == nil {
+			reqLogger = logger
+		}
+		reqLogger = reqLogger.With(
+			slog.Int("status", resp.StatusCode()),
+			slog.Duration("duration", time.Since(startTime)),
+			slog.Int64("content_length", resp.Size()),
+		)
+		if resp.IsError() {
+			reqLogger.Error("error response")
+		} else {
+			reqLogger.Debug("response")
+		}
+		return nil
+	}
 }

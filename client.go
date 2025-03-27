@@ -71,7 +71,10 @@ func NewClient(apiKey string, options ...Option) *Client {
 			opt(c)
 		}
 	}
-	c.client.SetLogger(newSlogToRestyAdapter(c.log))
+	c.client = c.client.
+		SetLogger(newSlogToRestyAdapter(c.log)).
+		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
+		OnAfterResponse(newRestyLogResponseMiddleware(c.log))
 
 	c.log.Debug("initialising Flagsmith client",
 		"base_url", c.config.baseURL,
