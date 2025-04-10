@@ -15,6 +15,7 @@ import (
 
 	flagsmith "github.com/Flagsmith/flagsmith-go-client/v4"
 	"github.com/Flagsmith/flagsmith-go-client/v4/fixtures"
+	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -1018,4 +1019,141 @@ type writerFunc func(p []byte) (n int, err error)
 
 func (f writerFunc) Write(p []byte) (n int, err error) {
 	return f(p)
+}
+
+// Helper functions to implement a header interceptor
+func roundTripperWithHeader(key, value string) http.RoundTripper {
+	return &injectHeaderTransport{key: key, value: value}
+}
+
+type injectHeaderTransport struct {
+	key   string
+	value string
+}
+
+func (t *injectHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set(t.key, t.value)
+	return http.DefaultTransport.RoundTrip(req)
+}
+
+func TestCustomHTTPClientIsUsed(t *testing.T) {
+	ctx := context.Background()
+
+	hasCustomHeader := false
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		assert.Equal(t, "/api/v1/flags/", req.URL.Path)
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("x-Environment-Key"))
+		if req.Header.Get("X-Test-Client") == "http" {
+			hasCustomHeader = true
+		}
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, fixtures.FlagsJson)
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	customClient := &http.Client{
+		Transport: roundTripperWithHeader("X-Test-Client", "http"),
+	}
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithHTTPClient(customClient),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	flags, err := client.GetFlags(ctx, nil)
+	assert.Equal(t, 1, len(flags.AllFlags()))
+	assert.NoError(t, err)
+	assert.True(t, hasCustomHeader, "Expected http header")
+	flag, err := flags.GetFlag(fixtures.Feature1Name)
+	assert.NoError(t, err)
+	assert.Equal(t, fixtures.Feature1Value, flag.Value)
+}
+
+func TestCustomRestyClientIsUsed(t *testing.T) {
+	ctx := context.Background()
+
+	hasCustomHeader := false
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if req.Header.Get("X-Custom-Test-Header") == "resty" {
+			hasCustomHeader = true
+		}
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, fixtures.FlagsJson)
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	restyClient := resty.New().
+		SetHeader("X-Custom-Test-Header", "resty")
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithRestyClient(restyClient),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	flags, err := client.GetFlags(ctx, nil)
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(flags.AllFlags()))
+	assert.True(t, hasCustomHeader, "Expected custom resty header")
+}
+
+func TestRestyClientOverridesHTTPClient(t *testing.T) {
+	ctx := context.Background()
+
+	var customHeader string
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		customHeader = req.Header.Get("X-Test-Client")
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, fixtures.FlagsJson)
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	httpClient := &http.Client{
+		Transport: roundTripperWithHeader("X-Test-Client", "http"),
+	}
+
+	restyClient := resty.New().
+		SetHeader("X-Test-Client", "resty")
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithHTTPClient(httpClient),
+		flagsmith.WithRestyClient(restyClient),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	flags, err := client.GetFlags(ctx, nil)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(flags.AllFlags()))
+	assert.Equal(t, "resty", customHeader, "Expected resty header")
+}
+
+func TestDefaultRestyClientIsUsed(t *testing.T) {
+	ctx := context.Background()
+
+	serverCalled := false
+
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		serverCalled = true
+
+		assert.Equal(t, "/api/v1/flags/", req.URL.Path)
+		assert.Equal(t, fixtures.EnvironmentAPIKey, req.Header.Get("x-Environment-Key"))
+
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, fixtures.FlagsJson)
+		assert.NoError(t, err)
+	}))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	flags, err := client.GetFlags(ctx, nil)
+
+	assert.NoError(t, err)
+	assert.True(t, serverCalled, "Expected server to be")
+	assert.Equal(t, 1, len(flags.AllFlags()))
 }

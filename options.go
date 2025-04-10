@@ -2,10 +2,18 @@ package flagsmith
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"time"
 
 	"log/slog"
+
+	"github.com/go-resty/resty/v2"
+)
+
+const (
+	OptionWithHTTPClient  = "WithHTTPClient"
+	OptionWithRestyClient = "WithRestyClient"
 )
 
 type Option func(c *Client)
@@ -163,5 +171,21 @@ func WithRealtimeBaseURL(url string) Option {
 func WithPolling() Option {
 	return func(c *Client) {
 		c.config.polling = true
+	}
+}
+
+func WithHTTPClient(httpClient *http.Client) Option {
+	return func(c *Client) {
+		if httpClient != nil {
+			c.httpClient = httpClient
+		}
+	}
+}
+
+func WithRestyClient(restyClient *resty.Client) Option {
+	return func(c *Client) {
+		if restyClient != nil {
+			c.client = restyClient
+		}
 	}
 }

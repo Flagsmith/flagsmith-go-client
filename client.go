@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"reflect"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -34,6 +37,7 @@ type Client struct {
 	defaultFlagHandler func(string) (Flag, error)
 
 	client         *resty.Client
+	httpClient     *http.Client
 	ctxLocalEval   context.Context
 	ctxAnalytics   context.Context
 	log            *slog.Logger
@@ -52,12 +56,42 @@ func GetEvaluationContextFromCtx(ctx context.Context) (ec EvaluationContext, ok 
 	return ec, ok
 }
 
+func getOptionQualifiedName(opt Option) string {
+	return runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name()
+}
+
+func isClientOption(name string) bool {
+	return strings.Contains(name, OptionWithHTTPClient) || strings.Contains(name, OptionWithRestyClient)
+}
+
 // NewClient creates instance of Client with given configuration.
 func NewClient(apiKey string, options ...Option) *Client {
 	c := &Client{
 		apiKey: apiKey,
 		config: defaultConfig(),
-		client: resty.New(),
+	}
+
+	for _, opt := range options {
+		name := getOptionQualifiedName(opt)
+		if isClientOption(name) {
+			opt(c)
+		}
+	}
+
+	if c.client == nil {
+		if c.httpClient != nil {
+			c.client = resty.NewWithClient(c.httpClient)
+		} else {
+			c.client = resty.New()
+		}
+	}
+
+	for _, opt := range options {
+		name := getOptionQualifiedName(opt)
+		if isClientOption(name) {
+			continue
+		}
+		opt(c)
 	}
 
 	c.client.SetHeaders(map[string]string{
@@ -72,6 +106,16 @@ func NewClient(apiKey string, options ...Option) *Client {
 			opt(c)
 		}
 	}
+
+	// If a resty custom client has been provided, client is already set - otherwise we use a custom http client or default to a resty
+	if c.client == nil {
+		if c.httpClient != nil {
+			c.client = resty.NewWithClient(c.httpClient)
+		} else {
+			c.client = resty.New()
+		}
+	}
+
 	c.client = c.client.
 		SetLogger(newSlogToRestyAdapter(c.log)).
 		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
