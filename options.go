@@ -35,6 +35,8 @@ var _ = []Option{
 	WithRealtimeBaseURL(""),
 	WithLogger(nil),
 	WithSlogLogger(nil),
+	WithRestyClient(nil),
+	WithHTTPClient(nil),
 }
 
 func WithBaseURL(url string) Option {
