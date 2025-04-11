@@ -78,13 +78,28 @@ func NewClient(apiKey string, options ...Option) *Client {
 		}
 	}
 
+	// If a resty custom client has been provided, client is already set - otherwise we use a custom http client or default to a resty
 	if c.client == nil {
 		if c.httpClient != nil {
 			c.client = resty.NewWithClient(c.httpClient)
+			c.config.userProvidedClient = true
 		} else {
 			c.client = resty.New()
 		}
+	} else {
+		c.config.userProvidedClient = true
 	}
+
+	c.client.SetHeaders(map[string]string{
+		"Accept":             "application/json",
+		EnvironmentKeyHeader: c.apiKey,
+	})
+
+	if c.client.GetClient().Timeout == 0 {
+		c.client.SetTimeout(c.config.timeout)
+	}
+
+	c.log = createLogger()
 
 	for _, opt := range options {
 		name := getOptionQualifiedName(opt)
@@ -94,32 +109,12 @@ func NewClient(apiKey string, options ...Option) *Client {
 		opt(c)
 	}
 
-	c.client.SetHeaders(map[string]string{
-		"Accept":             "application/json",
-		EnvironmentKeyHeader: c.apiKey,
-	})
-	c.client.SetTimeout(c.config.timeout)
-	c.log = createLogger()
-
-	for _, opt := range options {
-		if opt != nil {
-			opt(c)
-		}
+	if !c.config.userProvidedClient {
+		c.client = c.client.
+			SetLogger(newSlogToRestyAdapter(c.log)).
+			OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
+			OnAfterResponse(newRestyLogResponseMiddleware(c.log))
 	}
-
-	// If a resty custom client has been provided, client is already set - otherwise we use a custom http client or default to a resty
-	if c.client == nil {
-		if c.httpClient != nil {
-			c.client = resty.NewWithClient(c.httpClient)
-		} else {
-			c.client = resty.New()
-		}
-	}
-
-	c.client = c.client.
-		SetLogger(newSlogToRestyAdapter(c.log)).
-		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
-		OnAfterResponse(newRestyLogResponseMiddleware(c.log))
 
 	c.log.Info("initialising Flagsmith client",
 		"base_url", c.config.baseURL,
