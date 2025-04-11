@@ -1021,7 +1021,7 @@ func (f writerFunc) Write(p []byte) (n int, err error) {
 	return f(p)
 }
 
-// Helper functions to implement a header interceptor
+// Helper function to implement a header interceptor.
 func roundTripperWithHeader(key, value string) http.RoundTripper {
 	return &injectHeaderTransport{key: key, value: value}
 }
