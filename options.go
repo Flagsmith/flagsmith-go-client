@@ -89,10 +89,8 @@ func WithAnalytics(ctx context.Context) Option {
 
 func WithRetries(count int, waitTime time.Duration) Option {
 	return func(c *Client) {
-		if c.config.userProvidedClient && c.client.RetryCount == 0 {
-			c.client.SetRetryCount(count)
-			c.client.SetRetryWaitTime(waitTime)
-		}
+		c.client.SetRetryCount(count)
+		c.client.SetRetryWaitTime(waitTime)
 	}
 }
 

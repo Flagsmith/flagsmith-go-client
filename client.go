@@ -82,12 +82,9 @@ func NewClient(apiKey string, options ...Option) *Client {
 	if c.client == nil {
 		if c.httpClient != nil {
 			c.client = resty.NewWithClient(c.httpClient)
-			c.config.userProvidedClient = true
 		} else {
 			c.client = resty.New()
 		}
-	} else {
-		c.config.userProvidedClient = true
 	}
 
 	c.client.SetHeaders(map[string]string{
@@ -109,12 +106,10 @@ func NewClient(apiKey string, options ...Option) *Client {
 		opt(c)
 	}
 
-	if !c.config.userProvidedClient {
-		c.client = c.client.
-			SetLogger(newSlogToRestyAdapter(c.log)).
-			OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
-			OnAfterResponse(newRestyLogResponseMiddleware(c.log))
-	}
+	c.client = c.client.
+		SetLogger(newSlogToRestyAdapter(c.log)).
+		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
+		OnAfterResponse(newRestyLogResponseMiddleware(c.log))
 
 	c.log.Info("initialising Flagsmith client",
 		"base_url", c.config.baseURL,

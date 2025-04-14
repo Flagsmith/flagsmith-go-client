@@ -27,7 +27,6 @@ type config struct {
 	realtimeBaseUrl    string
 	useRealtime        bool
 	polling            bool
-	userProvidedClient bool
 }
 
 // defaultConfig returns default configuration.
@@ -37,6 +36,5 @@ func defaultConfig() config {
 		timeout:            DefaultTimeout,
 		envRefreshInterval: time.Second * 60,
 		realtimeBaseUrl:    DefaultRealtimeBaseUrl,
-		userProvidedClient: false,
 	}
 }
