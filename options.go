@@ -65,6 +65,9 @@ func WithRemoteEvaluation() Option {
 
 func WithRequestTimeout(timeout time.Duration) Option {
 	return func(c *Client) {
+		if c.config.userProvidedClient {
+			panic("options modifying the client can not be used with a custom client")
+		}
 		c.client.SetTimeout(timeout)
 	}
 }
@@ -89,6 +92,9 @@ func WithAnalytics(ctx context.Context) Option {
 
 func WithRetries(count int, waitTime time.Duration) Option {
 	return func(c *Client) {
+		if c.config.userProvidedClient {
+			panic("options modifying the client can not be used with a custom client")
+		}
 		c.client.SetRetryCount(count)
 		c.client.SetRetryWaitTime(waitTime)
 	}
@@ -96,6 +102,9 @@ func WithRetries(count int, waitTime time.Duration) Option {
 
 func WithCustomHeaders(headers map[string]string) Option {
 	return func(c *Client) {
+		if c.config.userProvidedClient {
+			panic("options modifying the client can not be used with a custom client")
+		}
 		c.client.SetHeaders(headers)
 	}
 }
@@ -124,6 +133,9 @@ func WithSlogLogger(logger *slog.Logger) Option {
 // The proxyURL argument is a string representing the URL of the proxy server to use, e.g. "http://proxy.example.com:8080".
 func WithProxy(proxyURL string) Option {
 	return func(c *Client) {
+		if c.config.userProvidedClient {
+			panic("options modifying the client can not be used with a custom client")
+		}
 		c.client.SetProxy(proxyURL)
 	}
 }

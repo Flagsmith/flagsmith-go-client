@@ -1098,19 +1098,7 @@ func TestCustomRestyClientIsUsed(t *testing.T) {
 	assert.True(t, hasCustomHeader, "Expected custom resty header")
 }
 
-func TestRestyClientOverridesHTTPClient(t *testing.T) {
-	ctx := context.Background()
-
-	var customHeader string
-	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		customHeader = req.Header.Get("X-Test-Client")
-		rw.Header().Set("Content-Type", "application/json")
-		rw.WriteHeader(http.StatusOK)
-		_, err := io.WriteString(rw, fixtures.FlagsJson)
-		assert.NoError(t, err)
-	}))
-	defer server.Close()
-
+func TestRestyClientOverridesHTTPClientShouldPanic(t *testing.T) {
 	httpClient := &http.Client{
 		Transport: roundTripperWithHeader("X-Test-Client", "http"),
 	}
@@ -1118,16 +1106,12 @@ func TestRestyClientOverridesHTTPClient(t *testing.T) {
 	restyClient := resty.New().
 		SetHeader("X-Test-Client", "resty")
 
-	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
-		flagsmith.WithHTTPClient(httpClient),
-		flagsmith.WithRestyClient(restyClient),
-		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
-
-	flags, err := client.GetFlags(ctx, nil)
-
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(flags.AllFlags()))
-	assert.Equal(t, "resty", customHeader, "Expected resty header")
+	assert.Panics(t, func() {
+		_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+			flagsmith.WithHTTPClient(httpClient),
+			flagsmith.WithRestyClient(restyClient),
+			flagsmith.WithBaseURL("http://example.com/api/v1/"))
+	}, "Expected panic when both HTTP and Resty clients are provided")
 }
 
 func TestDefaultRestyClientIsUsed(t *testing.T) {
@@ -1156,4 +1140,40 @@ func TestDefaultRestyClientIsUsed(t *testing.T) {
 	assert.NoError(t, err)
 	assert.True(t, serverCalled, "Expected server to be")
 	assert.Equal(t, 1, len(flags.AllFlags()))
+}
+
+func TestCustomClientOptionsShoudPanic(t *testing.T) {
+	restyClient := resty.New()
+
+	testCases := []struct {
+		name   string
+		option flagsmith.Option
+	}{
+		{
+			name:   "WithRequestTimeout",
+			option: flagsmith.WithRequestTimeout(5 * time.Second),
+		},
+		{
+			name:   "WithRetries",
+			option: flagsmith.WithRetries(3, time.Second),
+		},
+		{
+			name:   "WithCustomHeaders",
+			option: flagsmith.WithCustomHeaders(map[string]string{"X-Custom": "value"}),
+		},
+		{
+			name:   "WithProxy",
+			option: flagsmith.WithProxy("http://proxy.example.com"),
+		},
+	}
+
+	for _, test := range testCases {
+		t.Run(test.name, func(t *testing.T) {
+			assert.Panics(t, func() {
+				_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+					flagsmith.WithRestyClient(restyClient),
+					test.option)
+			}, "Expected panic when using %s with custom resty client", test.name)
+		})
+	}
 }

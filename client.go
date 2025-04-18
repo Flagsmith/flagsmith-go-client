@@ -71,9 +71,14 @@ func NewClient(apiKey string, options ...Option) *Client {
 		config: defaultConfig(),
 	}
 
+	customClientCount := 0
 	for _, opt := range options {
 		name := getOptionQualifiedName(opt)
 		if isClientOption(name) {
+			customClientCount = customClientCount + 1
+			if customClientCount > 1 {
+				panic("Only one client option can be provided")
+			}
 			opt(c)
 		}
 	}
@@ -82,9 +87,13 @@ func NewClient(apiKey string, options ...Option) *Client {
 	if c.client == nil {
 		if c.httpClient != nil {
 			c.client = resty.NewWithClient(c.httpClient)
+			c.config.userProvidedClient = true
+
 		} else {
 			c.client = resty.New()
 		}
+	} else {
+		c.config.userProvidedClient = true
 	}
 
 	c.client.SetHeaders(map[string]string{
