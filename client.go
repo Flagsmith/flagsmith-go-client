@@ -88,7 +88,6 @@ func NewClient(apiKey string, options ...Option) *Client {
 		if c.httpClient != nil {
 			c.client = resty.NewWithClient(c.httpClient)
 			c.config.userProvidedClient = true
-
 		} else {
 			c.client = resty.New()
 		}
