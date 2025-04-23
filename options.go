@@ -2,10 +2,18 @@ package flagsmith
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"time"
 
 	"log/slog"
+
+	"github.com/go-resty/resty/v2"
+)
+
+const (
+	OptionWithHTTPClient  = "WithHTTPClient"
+	OptionWithRestyClient = "WithRestyClient"
 )
 
 type Option func(c *Client)
@@ -27,6 +35,8 @@ var _ = []Option{
 	WithRealtimeBaseURL(""),
 	WithLogger(nil),
 	WithSlogLogger(nil),
+	WithRestyClient(nil),
+	WithHTTPClient(nil),
 }
 
 func WithBaseURL(url string) Option {
@@ -55,6 +65,9 @@ func WithRemoteEvaluation() Option {
 
 func WithRequestTimeout(timeout time.Duration) Option {
 	return func(c *Client) {
+		if c.config.userProvidedClient {
+			panic("options modifying the client can not be used with a custom client")
+		}
 		c.client.SetTimeout(timeout)
 	}
 }
@@ -79,6 +92,9 @@ func WithAnalytics(ctx context.Context) Option {
 
 func WithRetries(count int, waitTime time.Duration) Option {
 	return func(c *Client) {
+		if c.config.userProvidedClient {
+			panic("options modifying the client can not be used with a custom client")
+		}
 		c.client.SetRetryCount(count)
 		c.client.SetRetryWaitTime(waitTime)
 	}
@@ -86,6 +102,9 @@ func WithRetries(count int, waitTime time.Duration) Option {
 
 func WithCustomHeaders(headers map[string]string) Option {
 	return func(c *Client) {
+		if c.config.userProvidedClient {
+			panic("options modifying the client can not be used with a custom client")
+		}
 		c.client.SetHeaders(headers)
 	}
 }
@@ -114,6 +133,9 @@ func WithSlogLogger(logger *slog.Logger) Option {
 // The proxyURL argument is a string representing the URL of the proxy server to use, e.g. "http://proxy.example.com:8080".
 func WithProxy(proxyURL string) Option {
 	return func(c *Client) {
+		if c.config.userProvidedClient {
+			panic("options modifying the client can not be used with a custom client")
+		}
 		c.client.SetProxy(proxyURL)
 	}
 }
@@ -163,5 +185,21 @@ func WithRealtimeBaseURL(url string) Option {
 func WithPolling() Option {
 	return func(c *Client) {
 		c.config.polling = true
+	}
+}
+
+func WithHTTPClient(httpClient *http.Client) Option {
+	return func(c *Client) {
+		if httpClient != nil {
+			c.httpClient = httpClient
+		}
+	}
+}
+
+func WithRestyClient(restyClient *resty.Client) Option {
+	return func(c *Client) {
+		if restyClient != nil {
+			c.client = restyClient
+		}
 	}
 }

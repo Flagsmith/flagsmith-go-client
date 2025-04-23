@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"reflect"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -34,6 +37,7 @@ type Client struct {
 	defaultFlagHandler func(string) (Flag, error)
 
 	client         *resty.Client
+	httpClient     *http.Client
 	ctxLocalEval   context.Context
 	ctxAnalytics   context.Context
 	log            *slog.Logger
@@ -52,26 +56,64 @@ func GetEvaluationContextFromCtx(ctx context.Context) (ec EvaluationContext, ok 
 	return ec, ok
 }
 
+func getOptionQualifiedName(opt Option) string {
+	return runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name()
+}
+
+func isClientOption(name string) bool {
+	return strings.Contains(name, OptionWithHTTPClient) || strings.Contains(name, OptionWithRestyClient)
+}
+
 // NewClient creates instance of Client with given configuration.
 func NewClient(apiKey string, options ...Option) *Client {
 	c := &Client{
 		apiKey: apiKey,
 		config: defaultConfig(),
-		client: resty.New(),
+	}
+
+	customClientCount := 0
+	for _, opt := range options {
+		name := getOptionQualifiedName(opt)
+		if isClientOption(name) {
+			customClientCount = customClientCount + 1
+			if customClientCount > 1 {
+				panic("Only one client option can be provided")
+			}
+			opt(c)
+		}
+	}
+
+	// If a resty custom client has been provided, client is already set - otherwise we use a custom http client or default to a resty
+	if c.client == nil {
+		if c.httpClient != nil {
+			c.client = resty.NewWithClient(c.httpClient)
+			c.config.userProvidedClient = true
+		} else {
+			c.client = resty.New()
+		}
+	} else {
+		c.config.userProvidedClient = true
 	}
 
 	c.client.SetHeaders(map[string]string{
 		"Accept":             "application/json",
 		EnvironmentKeyHeader: c.apiKey,
 	})
-	c.client.SetTimeout(c.config.timeout)
+
+	if c.client.GetClient().Timeout == 0 {
+		c.client.SetTimeout(c.config.timeout)
+	}
+
 	c.log = createLogger()
 
 	for _, opt := range options {
-		if opt != nil {
-			opt(c)
+		name := getOptionQualifiedName(opt)
+		if isClientOption(name) {
+			continue
 		}
+		opt(c)
 	}
+
 	c.client = c.client.
 		SetLogger(newSlogToRestyAdapter(c.log)).
 		OnBeforeRequest(newRestyLogRequestMiddleware(c.log)).
