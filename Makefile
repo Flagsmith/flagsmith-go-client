@@ -11,4 +11,5 @@ generate-evaluation-context:
 		--package flagsmith \
 		--omit-empty \
 		--just-types-and-package \
+		--top-level EvaluationContext \
 		-o evaluationcontext.go
