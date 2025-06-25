@@ -5,6 +5,7 @@ package flagsmith
 type EvaluationContext struct {
 	Environment *EnvironmentEvaluationContext `json:"environment,omitempty"`
 	Identity    *IdentityEvaluationContext    `json:"identity,omitempty"`
+	Feature     *FeatureEvaluationContext     `json:"feature,omitempty"`
 }
 
 // EnvironmentEvaluationContext represents a Flagsmith environment used in an EvaluationContext.
@@ -28,4 +29,9 @@ type IdentityEvaluationContext struct {
 type TraitEvaluationContext struct {
 	Transient *bool       `json:"transient,omitempty"`
 	Value     interface{} `json:"value"`
+}
+
+// FeatureEvaluationContext is not yet implemented.
+type FeatureEvaluationContext struct {
+	Name string `json:"name"`
 }
