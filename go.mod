@@ -11,7 +11,7 @@ require (
 
 require (
 	github.com/go-resty/resty/v2 v2.16.5
-	github.com/itlightning/dateparse v0.2.0
+	github.com/itlightning/dateparse v0.2.1
 )
 
 require (
