@@ -171,19 +171,13 @@ func NewClient(apiKey string, options ...Option) *Client {
 	return c
 }
 
-// Returns `Flags` struct holding all the flags for the current environment.
+// GetFlags evaluates the feature flags within an EvaluationContext.
 //
-// Provide `EvaluationContext` to evaluate flags for a specific environment or identity.
+// When flag evaluation fails, the value of each Flag is determined by the default flag handler
+// from WithDefaultHandler, if one was provided.
 //
-// If local evaluation is enabled this function will not call the Flagsmith API
-// directly, but instead read the asynchronously updated local environment or
-// use the default flag handler in case it has not yet been updated.
-//
-// Notes:
-//
-// * `EvaluationContext.Environment` is ignored in local evaluation mode.
-//
-// * `EvaluationContext.Feature` is not yet supported.
+// Flags are evaluated remotely by the Flagsmith API by default.
+// To evaluate flags locally, instantiate a client using WithLocalEvaluation.
 func (c *Client) GetFlags(ctx context.Context, ec *EvaluationContext) (f Flags, err error) {
 	if ec != nil {
 		ctx = WithEvaluationContext(ctx, *ec)
@@ -194,13 +188,8 @@ func (c *Client) GetFlags(ctx context.Context, ec *EvaluationContext) (f Flags, 
 	return c.GetEnvironmentFlags(ctx)
 }
 
-// Returns `Flags` struct holding all the flags for the current environment.
-//
-// If local evaluation is enabled this function will not call the Flagsmith API
-// directly, but instead read the asynchronously updated local environment or
-// use the default flag handler in case it has not yet been updated.
-//
-// Deprecated: Use `GetFlags` instead.
+// GetEnvironmentFlags calls GetFlags using the current environment as the EvaluationContext.
+// Equivalent to GetFlags(ctx, nil).
 func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 	if c.config.localEvaluation || c.config.offlineMode {
 		if f, err = c.getEnvironmentFlagsFromEnvironment(); err == nil {
@@ -219,18 +208,7 @@ func (c *Client) GetEnvironmentFlags(ctx context.Context) (f Flags, err error) {
 	return Flags{}, &FlagsmithClientError{msg: fmt.Sprintf("Failed to fetch flags with error: %s", err)}
 }
 
-// Returns `Flags` struct holding all the flags for the current environment for
-// a given identity.
-//
-// If local evaluation is disabled it will also upsert all traits to the
-// Flagsmith API for future evaluations. Providing a trait with a value of nil
-// will remove the trait from the identity if it exists.
-//
-// If local evaluation is enabled this function will not call the Flagsmith API
-// directly, but instead read the asynchronously updated local environment or
-// use the default flag handler in case it has not yet been updated.
-//
-// Deprecated: Use `GetFlags` providing `EvaluationContext.Identity` instead.
+// GetIdentityFlags calls GetFlags using this identifier and traits as the EvaluationContext.
 func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits []*Trait) (f Flags, err error) {
 	if c.config.localEvaluation || c.config.offlineMode {
 		if f, err = c.getIdentityFlagsFromEnvironment(identifier, traits); err == nil {

@@ -5,10 +5,11 @@ EVALUATION_CONTEXT_SCHEMA_URL ?= https://raw.githubusercontent.com/Flagsmith/fla
 
 .PHONY: generate-evaluation-context
 generate-evaluation-context:
-	npx quicktype ${EVALUATION_CONTEXT_SCHEMA_URL} \
+	curl ${EVALUATION_CONTEXT_SCHEMA_URL} | npx quicktype  \
 		--src-lang schema \
 		--lang go \
 		--package flagsmith \
 		--omit-empty \
 		--just-types-and-package \
-		> evaluationcontext.go
+		--top-level EvaluationContext \
+		-o evaluationcontext.go
