@@ -110,7 +110,7 @@ func TestIdentityGetAllFeatureStatesWithTraits(t *testing.T) {
 	}
 
 	allFeatureStates := flagengine.GetIdentityFeatureStates(envWithSegmentOverride, identity, traitModels...)
-	var found bool
+	found := false
 	for _, fs := range allFeatureStates {
 		if fs.RawValue == "segment_override" {
 			found = true
