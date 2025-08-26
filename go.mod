@@ -5,7 +5,7 @@ go 1.22
 require (
 	github.com/blang/semver/v4 v4.0.0
 	github.com/google/uuid v1.6.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.0
 	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1
 )
 
