@@ -17,6 +17,7 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/segments"
 	"github.com/go-resty/resty/v2"
 
+	"github.com/Flagsmith/flagsmith-go-client/v4/evalcontext"
 	enginetraits "github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
 )
 
@@ -45,16 +46,16 @@ type Client struct {
 	errorHandler   func(handler *FlagsmithAPIError)
 }
 
-// Returns context with provided EvaluationContext instance set.
-func WithEvaluationContext(ctx context.Context, ec EvaluationContext) context.Context {
-	return context.WithValue(ctx, contextKeyEvaluationContext, ec)
-}
+// // Returns context with provided EvaluationContext instance set.
+// func WithEvaluationContext(ctx context.Context, ec EvaluationContext) context.Context {
+// 	return context.WithValue(ctx, contextKeyEvaluationContext, ec)
+// }
 
-// Retrieve EvaluationContext instance from context.
-func GetEvaluationContextFromCtx(ctx context.Context) (ec EvaluationContext, ok bool) {
-	ec, ok = ctx.Value(contextKeyEvaluationContext).(EvaluationContext)
-	return ec, ok
-}
+// // Retrieve EvaluationContext instance from context.
+// func GetEvaluationContextFromCtx(ctx context.Context) (ec EvaluationContext, ok bool) {
+// 	ec, ok = ctx.Value(contextKeyEvaluationContext).(EvaluationContext)
+// 	return ec, ok
+// }
 
 func getOptionQualifiedName(opt Option) string {
 	return runtime.FuncForPC(reflect.ValueOf(opt).Pointer()).Name()
@@ -178,12 +179,12 @@ func NewClient(apiKey string, options ...Option) *Client {
 //
 // Flags are evaluated remotely by the Flagsmith API by default.
 // To evaluate flags locally, instantiate a client using WithLocalEvaluation.
-func (c *Client) GetFlags(ctx context.Context, ec *EvaluationContext) (f Flags, err error) {
+func (c *Client) GetFlags(ctx context.Context, ec *evalcontext.EvaluationContext) (f Flags, err error) {
 	if ec != nil {
-		ctx = WithEvaluationContext(ctx, *ec)
-		if ec.Identity != nil {
-			return c.GetIdentityFlags(ctx, *ec.Identity.Identifier, mapIdentityEvaluationContextToTraits(*ec.Identity))
-		}
+		//ctx = WithEvaluationContext(ctx, *ec)
+		// if ec.Identity != nil && ec.Identity.Identifier != nil {
+		// 	return c.GetIdentityFlags(ctx, *ec.Identity.Identifier, mapIdentityEvaluationContextToTraits(*ec.Identity))
+		// }
 	}
 	return c.GetEnvironmentFlags(ctx)
 }
@@ -272,13 +273,10 @@ func (c *Client) BulkIdentify(ctx context.Context, batch []*IdentityTraits) erro
 // Will return an error in case of failure or unexpected response.
 func (c *Client) GetEnvironmentFlagsFromAPI(ctx context.Context) (Flags, error) {
 	req := c.client.NewRequest()
-	ec, ok := GetEvaluationContextFromCtx(ctx)
-	if ok {
-		envCtx := ec.Environment
-		if envCtx != nil {
-			req.SetHeader(EnvironmentKeyHeader, envCtx.APIKey)
-		}
-	}
+	//ec, ok := GetEvaluationContextFromCtx(ctx)
+	// if ok && ec.Environment != nil {
+	// 	req.SetHeader(EnvironmentKeyHeader, ec.Environment.APIKey)
+	// }
 	resp, err := req.
 		SetContext(ctx).
 		ForceContentType("application/json").
@@ -303,18 +301,17 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 		Transient  *bool    `json:"transient,omitempty"`
 	}{Identifier: identifier, Traits: traits}
 	req := c.client.NewRequest()
-	ec, ok := GetEvaluationContextFromCtx(ctx)
-	if ok {
-		envCtx := ec.Environment
-		if envCtx != nil {
-			req.SetHeader(EnvironmentKeyHeader, envCtx.APIKey)
-		}
-		idCtx := ec.Identity
-		if idCtx != nil {
-			// `Identifier` and `Traits` had been set by `GetFlags` earlier.
-			body.Transient = idCtx.Transient
-		}
-	}
+	//ec, ok := GetEvaluationContextFromCtx(ctx)
+	// if ok {
+	// 	if ec.Environment != nil {
+	// 		req.SetHeader(EnvironmentKeyHeader, ec.Environment.APIKey)
+	// 	}
+	// 	idCtx := ec.Identity
+	// 	if idCtx != nil {
+	// 		// `Identifier` and `Traits` had been set by `GetFlags` earlier.
+	// 		body.Transient = idCtx.Transient
+	// 	}
+	// }
 	resp, err := req.
 		SetBody(&body).
 		SetContext(ctx).

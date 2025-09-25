@@ -22,9 +22,8 @@ func (m *SegmentConditionModel) MatchesTraitValue(traitValue string) bool {
 		return m.modulo(traitValue)
 	case Regex:
 		return m.regex(traitValue)
-	default:
-		return match(m.Operator, traitValue, m.Value)
 	}
+	return false
 }
 
 func (m *SegmentConditionModel) regex(traitValue string) bool {
@@ -79,4 +78,24 @@ type SegmentModel struct {
 	Name          string                        `json:"name"`
 	Rules         []*SegmentRuleModel           `json:"rules"`
 	FeatureStates []*features.FeatureStateModel `json:"feature_states"`
+}
+
+// ContextValue represents allowed types: nil, int, float64, bool, string
+type ContextValue interface{}
+
+// isContextValue checks if the given value is one of the allowed ContextValue types.
+func isContextValue(value interface{}) bool {
+	if value == nil {
+		return true
+	}
+
+	switch value.(type) {
+	case int, int8, int16, int32, int64,
+		float32, float64,
+		bool,
+		string:
+		return true
+	default:
+		return false
+	}
 }
