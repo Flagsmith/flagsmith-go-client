@@ -7,8 +7,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/projects"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/segments"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/utils"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/utils/fixtures"
@@ -260,7 +262,7 @@ func doTestIdentityInSegment(t *testing.T, segment *segments.SegmentModel, ident
 		EnvironmentAPIKey: "api-key",
 	}
 
-	assert.Equal(t, expected, segments.EvaluateIdentityInSegment(identity, segment))
+	assert.Equal(t, expected, segments.EvaluateIdentityInSegment(identity, segment, nil))
 }
 
 func TestIdentityInSegmentPercentageSplit(t *testing.T) {
@@ -292,7 +294,7 @@ func TestIdentityInSegmentPercentageSplit(t *testing.T) {
 			utils.MockSetHashedPercentageForObjectIds(func(_ []string, _ int) float64 {
 				return float64(c.identityHashedPercentage)
 			})
-			result := segments.EvaluateIdentityInSegment(identity, segment)
+			result := segments.EvaluateIdentityInSegment(identity, segment, nil)
 
 			assert.Equal(t, c.expectedResult, result)
 		})
@@ -328,7 +330,7 @@ func TestIdentityInSegmentPercentageSplitUsesDjangoID(t *testing.T) {
 			}
 			segment := &segments.SegmentModel{ID: 1, Name: "% split", Rules: []*segments.SegmentRuleModel{rule}}
 
-			result := segments.EvaluateIdentityInSegment(c.identity, segment)
+			result := segments.EvaluateIdentityInSegment(c.identity, segment, nil)
 
 			assert.Equal(t, result, c.expectedResult)
 		})
@@ -500,4 +502,163 @@ func TestSegmentRuleNone(t *testing.T) {
 			assert.Equal(t, c.expectedResult, utils.None(c.iterable))
 		})
 	}
+}
+
+func TestIdentityInSegmentWithContext(t *testing.T) {
+	// Create a test environment model with some project data
+	environment := &environments.EnvironmentModel{
+		ID:     1,
+		APIKey: "test-api-key",
+		Project: &projects.ProjectModel{
+			ID:   100,
+			Name: "Test Project",
+		},
+	}
+
+	// Create an identity with some traits
+	identity := &identities.IdentityModel{
+		Identifier:        "test-user",
+		EnvironmentAPIKey: "test-api-key",
+		DjangoID:          123,
+		IdentityTraits: []*traits.TraitModel{
+			{TraitKey: "age", TraitValue: "25"},
+			{TraitKey: "subscription", TraitValue: "premium"},
+		},
+	}
+
+	testCases := []struct {
+		name              string
+		conditionProperty string
+		conditionOperator segments.ConditionOperator
+		conditionValue    string
+		expectedResult    bool
+		description       string
+	}{
+		{
+			name:              "JSONPath - Environment ID",
+			conditionProperty: "$.environment.id",
+			conditionOperator: segments.Equal,
+			conditionValue:    "1",
+			expectedResult:    true,
+			description:       "Should match environment ID using JSONPath",
+		},
+		{
+			name:              "JSONPath - Environment ID",
+			conditionProperty: "$.environment.id",
+			conditionOperator: segments.Equal,
+			conditionValue:    "100",
+			expectedResult:    false,
+			description:       "Should notmatch environment ID using JSONPath",
+		},
+		{
+			name:              "JSONPath - Identity Identifier",
+			conditionProperty: "$.identity.identifier",
+			conditionOperator: segments.Equal,
+			conditionValue:    "test-user",
+			expectedResult:    true,
+			description:       "Should match identity identifier using JSONPath",
+		},
+		{
+			name:              "JSONPath - Identity Django ID",
+			conditionProperty: "$.identity.django_id",
+			conditionOperator: segments.Equal,
+			conditionValue:    "123",
+			expectedResult:    true,
+			description:       "Should match identity Django ID using JSONPath",
+		},
+		{
+			name:              "Fallback to trait - age",
+			conditionProperty: "age",
+			conditionOperator: segments.Equal,
+			conditionValue:    "25",
+			expectedResult:    true,
+			description:       "Should fallback to trait lookup when not a JSONPath",
+		},
+		{
+			name:              "Fallback to trait - subscription",
+			conditionProperty: "subscription",
+			conditionOperator: segments.Equal,
+			conditionValue:    "premium",
+			expectedResult:    true,
+			description:       "Should fallback to trait lookup for subscription",
+		},
+		{
+			name:              "Invalid JSONPath fallback to trait",
+			conditionProperty: "invalid_trait",
+			conditionOperator: segments.IsNotSet,
+			conditionValue:    "",
+			expectedResult:    true,
+			description:       "Should fallback to trait lookup for invalid JSONPath and find trait not set",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create a segment condition using the test case parameters
+			condition := &segments.SegmentConditionModel{
+				Operator: tc.conditionOperator,
+				Property: tc.conditionProperty,
+				Value:    tc.conditionValue,
+			}
+
+			// Create a segment rule with this condition
+			rule := &segments.SegmentRuleModel{
+				Type:       segments.All,
+				Conditions: []*segments.SegmentConditionModel{condition},
+			}
+
+			// Create a segment with this rule
+			segment := &segments.SegmentModel{
+				ID:    1,
+				Name:  "Context Test Segment",
+				Rules: []*segments.SegmentRuleModel{rule},
+			}
+
+			// Test the evaluation with environment context
+			result := segments.EvaluateIdentityInSegment(identity, segment, environment)
+			assert.Equal(t, tc.expectedResult, result, tc.description)
+		})
+	}
+}
+
+func TestIdentityInSegmentContextVsNilContext(t *testing.T) {
+	// Test that context provides additional capabilities over nil context
+	environment := &environments.EnvironmentModel{
+		ID:     42,
+		APIKey: "context-test",
+	}
+
+	identity := &identities.IdentityModel{
+		Identifier:        "context-user",
+		EnvironmentAPIKey: "context-test",
+		IdentityTraits: []*traits.TraitModel{
+			{TraitKey: "normal_trait", TraitValue: "trait_value"},
+		},
+	}
+
+	// Test JSONPath condition that should work with context but fail with nil
+	condition := &segments.SegmentConditionModel{
+		Operator: segments.Equal,
+		Property: "$.environment.id",
+		Value:    "42",
+	}
+
+	rule := &segments.SegmentRuleModel{
+		Type:       segments.All,
+		Conditions: []*segments.SegmentConditionModel{condition},
+	}
+
+	segment := &segments.SegmentModel{
+		ID:    1,
+		Name:  "Context vs Nil Test",
+		Rules: []*segments.SegmentRuleModel{rule},
+	}
+
+	// With environment context - should find the environment ID
+	resultWithContext := segments.EvaluateIdentityInSegment(identity, segment, environment)
+	assert.True(t, resultWithContext, "Should match when environment context is provided")
+
+	// With nil context - should not find the environment ID (fallback to trait lookup)
+	resultWithNil := segments.EvaluateIdentityInSegment(identity, segment, nil)
+	assert.False(t, resultWithNil, "Should not match when no context provided for JSONPath")
 }

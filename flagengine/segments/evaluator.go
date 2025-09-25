@@ -1,6 +1,7 @@
 package segments
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -8,12 +9,17 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/utils"
 	"github.com/blang/semver/v4"
+	"github.com/ohler55/ojg/jp"
 	"golang.org/x/exp/slices"
 )
+
+// that can be used in JSONPath evaluation context.
+type EnvironmentContext interface{}
 
 func EvaluateIdentityInSegment(
 	identity *identities.IdentityModel,
 	segment *SegmentModel,
+	env EnvironmentContext,
 	overrideTraits ...*traits.TraitModel,
 ) bool {
 	if len(segment.Rules) == 0 {
@@ -30,7 +36,7 @@ func EvaluateIdentityInSegment(
 		identityHashKey = strconv.Itoa(identity.DjangoID)
 	}
 	for _, rule := range segment.Rules {
-		if !traitsMatchSegmentRule(traits, rule, segment.ID, identityHashKey) {
+		if !traitsMatchSegmentRule(traits, rule, segment.ID, identityHashKey, env, identity) {
 			return false
 		}
 	}
@@ -43,16 +49,18 @@ func traitsMatchSegmentRule(
 	rule *SegmentRuleModel,
 	segmentID int,
 	identityID string,
+	env EnvironmentContext,
+	identity *identities.IdentityModel,
 ) bool {
 	conditions := make([]bool, len(rule.Conditions))
 	for i, c := range rule.Conditions {
-		conditions[i] = traitsMatchSegmentCondition(identityTraits, c, segmentID, identityID)
+		conditions[i] = traitsMatchSegmentCondition(identityTraits, c, segmentID, identityID, env, identity)
 	}
 	matchesConditions := rule.MatchingFunction()(conditions) || len(rule.Conditions) == 0
 
 	rules := make([]bool, len(rule.Rules))
 	for i, r := range rule.Rules {
-		rules[i] = traitsMatchSegmentRule(identityTraits, r, segmentID, identityID)
+		rules[i] = traitsMatchSegmentRule(identityTraits, r, segmentID, identityID, env, identity)
 	}
 
 	return matchesConditions && utils.All(rules)
@@ -63,15 +71,38 @@ func traitsMatchSegmentCondition(
 	condition *SegmentConditionModel,
 	segmentID int,
 	identityID string,
+	env EnvironmentContext,
+	identity *identities.IdentityModel,
 ) bool {
+	// Try to get value using JSONPath context if available
+	contextValueGetter := getContextValueGetter(condition.Property)
+	contextValue := contextValueGetter(env, identity)
+
 	if condition.Operator == PercentageSplit {
 		floatValue, _ := strconv.ParseFloat(condition.Value, 64)
 		return utils.GetHashedPercentageForObjectIds([]string{strconv.Itoa(segmentID), identityID}, 1) <= floatValue
 	}
+
 	var matchedTraitValue *string
-	for _, trait := range identityTraits {
-		if trait.TraitKey == condition.Property {
-			matchedTraitValue = &trait.TraitValue
+
+	// First try to get value from JSONPath context
+	if contextValue != nil {
+		if str, ok := contextValue.(string); ok {
+			matchedTraitValue = &str
+		} else {
+			// Convert non-string values to string
+			str := fmt.Sprintf("%v", contextValue)
+			matchedTraitValue = &str
+		}
+	}
+
+	// Fallback to trait lookup if no context value found
+	if matchedTraitValue == nil {
+		for _, trait := range identityTraits {
+			if trait.TraitKey == condition.Property {
+				matchedTraitValue = &trait.TraitValue
+				break
+			}
 		}
 	}
 
@@ -208,4 +239,39 @@ func matchString(c ConditionOperator, v1, v2 string) bool {
 		return v1 != v2
 	}
 	return v1 == v2
+}
+
+// getContextValueGetter returns a cached function to retrieve a value from a map[string]any
+// using either a JSONPath expression or a fallback trait key.
+func getContextValueGetter(property string) func(env EnvironmentContext, identity *identities.IdentityModel) any {
+	// First, try to parse the property as a JSONPath expression.
+	p, err := jp.ParseString(property)
+	if err == nil {
+		// If successful, create and cache a getter for the JSONPath.
+		getter := func(env EnvironmentContext, identity *identities.IdentityModel) any {
+			// Convert the struct to a map for JSONPath evaluation
+
+			data := map[string]interface{}{
+				"environment": env,
+				"identity":    identity,
+			}
+
+			results := p.Get(data)
+			// jp.Get returns []any - if we have one result, return it
+			if len(results) == 1 {
+				return results[0]
+			} else if len(results) == 0 {
+				return nil
+			}
+			// Return the first result if multiple
+			return results[0]
+		}
+		return getter
+	}
+
+	// If neither parsing method works, return a function that always returns nil.
+	getter := func(env EnvironmentContext, identity *identities.IdentityModel) any {
+		return nil
+	}
+	return getter
 }

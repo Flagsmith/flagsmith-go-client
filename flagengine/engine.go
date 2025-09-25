@@ -75,7 +75,7 @@ func GetIdentitySegments(
 	var list []*segments.SegmentModel
 
 	for _, s := range environment.Project.Segments {
-		if segments.EvaluateIdentityInSegment(identity, s, overrideTraits...) {
+		if segments.EvaluateIdentityInSegment(identity, s, environment, overrideTraits...) {
 			list = append(list, s)
 		}
 	}
