@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine"
+	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/engine_eval"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/segments"
@@ -352,12 +353,9 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	return makeFlagsFromFeatureStates(
-		env.FeatureStates,
-		c.analyticsProcessor,
-		c.defaultFlagHandler,
-		"",
-	), nil
+	engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(env)
+	result := flagengine.GetEvaluationResult(&engineEvalCtx)
+	return makeFlagsFromEngineEvaluationResult(&result, c.analyticsProcessor, c.defaultFlagHandler), nil
 }
 
 func (c *Client) pollEnvironment(ctx context.Context, pollForever bool) {

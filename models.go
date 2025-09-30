@@ -3,9 +3,10 @@ package flagsmith
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 
+	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/engine_eval"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
-
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
 )
 
@@ -46,6 +47,33 @@ func makeFlagFromFeatureState(featureState *features.FeatureStateModel, identity
 	}
 }
 
+func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) Flag {
+	var value interface{}
+	if flagResult.Value != nil {
+		if flagResult.Value.String != nil {
+			value = *flagResult.Value.String
+		} else if flagResult.Value.Bool != nil {
+			value = *flagResult.Value.Bool
+		} else if flagResult.Value.Double != nil {
+			value = *flagResult.Value.Double
+		}
+	}
+
+	// Convert FeatureKey (string ID) to integer FeatureID
+	featureID := 0
+	if id, err := strconv.Atoi(flagResult.FeatureKey); err == nil {
+		featureID = id
+	}
+
+	return Flag{
+		Enabled:     flagResult.Enabled,
+		Value:       value,
+		IsDefault:   false,
+		FeatureID:   featureID,
+		FeatureName: flagResult.Name,
+	}
+}
+
 type Flags struct {
 	flags              []Flag
 	analyticsProcessor *AnalyticsProcessor
@@ -59,6 +87,19 @@ func makeFlagsFromFeatureStates(featureStates []*features.FeatureStateModel,
 	flags := make([]Flag, len(featureStates))
 	for i, featureState := range featureStates {
 		flags[i] = makeFlagFromFeatureState(featureState, identityID)
+	}
+
+	return Flags{
+		flags:              flags,
+		analyticsProcessor: analyticsProcessor,
+		defaultFlagHandler: defaultFlagHandler,
+	}
+}
+
+func makeFlagsFromEngineEvaluationResult(evaluationResult *engine_eval.EvaluationResult, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) (Flag, error)) Flags {
+	flags := make([]Flag, len(evaluationResult.Flags))
+	for i, flagResult := range evaluationResult.Flags {
+		flags[i] = makeFlagFromEngineEvaluationFlagResult(&flagResult)
 	}
 
 	return Flags{
