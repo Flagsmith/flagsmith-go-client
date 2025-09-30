@@ -14,11 +14,8 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/engine_eval"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/segments"
 	"github.com/go-resty/resty/v2"
-
-	enginetraits "github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
 )
 
 type contextKey string
@@ -30,9 +27,8 @@ type Client struct {
 	apiKey string
 	config config
 
-	environment             atomic.Value
-	evaluationContext       atomic.Value
-	identitiesWithOverrides atomic.Value
+	environment       atomic.Value
+	evaluationContext atomic.Value
 
 	analyticsProcessor *AnalyticsProcessor
 	realtime           *realtime
@@ -235,9 +231,12 @@ func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits
 
 // Returns an array of segments that the given identity is part of.
 func (c *Client) GetIdentitySegments(identifier string, traits []*Trait) ([]*segments.SegmentModel, error) {
-	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
-		identity := c.getIdentityModel(identifier, env.APIKey, traits)
-		return flagengine.GetIdentitySegments(env, &identity), nil
+	if evalCtx, ok := c.evaluationContext.Load().(*engine_eval.EngineEvaluationContext); ok {
+		engineEvalCtx := engine_eval.MapContextAndIdentityDataToContext(*evalCtx, identifier, traits)
+		result := flagengine.GetEvaluationResult(&engineEvalCtx)
+
+		// Use the new mapper to convert evaluation result segments to SegmentModel
+		return engine_eval.MapEvaluationResultSegmentsToSegmentModels(&result), nil
 	}
 	return nil, &FlagsmithClientError{msg: "flagsmith: Local evaluation required to obtain identity segments"}
 }
@@ -461,35 +460,9 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(&env)
 	c.evaluationContext.Store(&engineEvalCtx)
 
-	identitiesWithOverrides := make(map[string]identities.IdentityModel)
-	for _, id := range env.IdentityOverrides {
-		identitiesWithOverrides[id.Identifier] = *id
-	}
-	c.identitiesWithOverrides.Store(identitiesWithOverrides)
-
 	if isNew {
 		c.log.Info("environment updated", "environment", env.APIKey, "updated_at", env.UpdatedAt)
 	}
 
 	return nil
-}
-
-func (c *Client) getIdentityModel(identifier string, apiKey string, traits []*Trait) identities.IdentityModel {
-	identityTraits := make([]*enginetraits.TraitModel, len(traits))
-	for i, trait := range traits {
-		identityTraits[i] = trait.ToTraitModel()
-	}
-
-	identitiesWithOverrides, _ := c.identitiesWithOverrides.Load().(map[string]identities.IdentityModel)
-	identity, ok := identitiesWithOverrides[identifier]
-	if ok {
-		identity.IdentityTraits = identityTraits
-		return identity
-	}
-
-	return identities.IdentityModel{
-		Identifier:        identifier,
-		IdentityTraits:    identityTraits,
-		EnvironmentAPIKey: apiKey,
-	}
 }

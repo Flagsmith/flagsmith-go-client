@@ -402,3 +402,32 @@ func convertTraitValueToValue(traitValue interface{}) *Value {
 		return &Value{String: &str}
 	}
 }
+
+// MapEvaluationResultSegmentsToSegmentModels converts evaluation result segments
+// to segments.SegmentModel with only ID and Name populated.
+func MapEvaluationResultSegmentsToSegmentModels(
+	result *EvaluationResult,
+) []*segments.SegmentModel {
+	if len(result.Segments) == 0 {
+		return nil
+	}
+
+	segmentModels := make([]*segments.SegmentModel, 0, len(result.Segments))
+
+	for _, segmentResult := range result.Segments {
+		// Convert key to ID
+		id := 0
+		if parsedID, err := strconv.Atoi(segmentResult.Key); err == nil {
+			id = parsedID
+		}
+
+		segmentModel := &segments.SegmentModel{
+			ID:   id,
+			Name: segmentResult.Name,
+		}
+
+		segmentModels = append(segmentModels, segmentModel)
+	}
+
+	return segmentModels
+}

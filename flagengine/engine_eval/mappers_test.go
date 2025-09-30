@@ -527,3 +527,96 @@ func TestMapContextAndIdentityDataToContextWithEmptyEnvironmentKey(t *testing.T)
 		t.Errorf("Expected key to use environment name when key is empty, got %v", result.Identity.Key)
 	}
 }
+
+func TestMapEvaluationResultSegmentsToSegmentModels(t *testing.T) {
+	// Create a test evaluation result with segments
+	result := EvaluationResult{
+		Segments: []SegmentResult{
+			{
+				Key:  "1",
+				Name: "test-segment",
+			},
+			{
+				Key:  "42",
+				Name: "another-segment",
+			},
+		},
+	}
+
+	// Test the mapper
+	segmentModels := MapEvaluationResultSegmentsToSegmentModels(&result)
+
+	// Assertions
+	if len(segmentModels) != 2 {
+		t.Errorf("Expected 2 segment models, got %d", len(segmentModels))
+	}
+
+	// First segment
+	segment1 := segmentModels[0]
+	if segment1.ID != 1 {
+		t.Errorf("Expected segment ID to be 1, got %d", segment1.ID)
+	}
+
+	if segment1.Name != "test-segment" {
+		t.Errorf("Expected segment name to be 'test-segment', got %s", segment1.Name)
+	}
+
+	// Rules and FeatureStates should be nil/empty since we only populate ID and Name
+	if segment1.Rules != nil {
+		t.Errorf("Expected Rules to be nil, got %v", segment1.Rules)
+	}
+
+	if segment1.FeatureStates != nil {
+		t.Errorf("Expected FeatureStates to be nil, got %v", segment1.FeatureStates)
+	}
+
+	// Second segment
+	segment2 := segmentModels[1]
+	if segment2.ID != 42 {
+		t.Errorf("Expected segment ID to be 42, got %d", segment2.ID)
+	}
+
+	if segment2.Name != "another-segment" {
+		t.Errorf("Expected segment name to be 'another-segment', got %s", segment2.Name)
+	}
+}
+
+func TestMapEvaluationResultSegmentsToSegmentModelsEmpty(t *testing.T) {
+	// Test with empty segments
+	result := EvaluationResult{
+		Segments: []SegmentResult{},
+	}
+
+	segmentModels := MapEvaluationResultSegmentsToSegmentModels(&result)
+
+	if segmentModels != nil {
+		t.Errorf("Expected nil for empty segments, got %v", segmentModels)
+	}
+}
+
+func TestMapEvaluationResultSegmentsToSegmentModelsInvalidKey(t *testing.T) {
+	// Test with segment result that has invalid key (non-numeric)
+	result := EvaluationResult{
+		Segments: []SegmentResult{
+			{
+				Key:  "invalid-key",
+				Name: "segment-with-invalid-key",
+			},
+		},
+	}
+
+	segmentModels := MapEvaluationResultSegmentsToSegmentModels(&result)
+
+	if len(segmentModels) != 1 {
+		t.Errorf("Expected 1 segment model, got %d", len(segmentModels))
+	}
+
+	segment := segmentModels[0]
+	if segment.ID != 0 {
+		t.Errorf("Expected segment ID to be 0 for invalid key, got %d", segment.ID)
+	}
+
+	if segment.Name != "segment-with-invalid-key" {
+		t.Errorf("Expected segment name to be 'segment-with-invalid-key', got %s", segment.Name)
+	}
+}
