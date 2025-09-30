@@ -6,7 +6,6 @@ import (
 	"strconv"
 
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/engine_eval"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
 	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
 )
 
@@ -36,17 +35,6 @@ func (t *Trait) ToTraitModel() *traits.TraitModel {
 		TraitValue: fmt.Sprint(t.TraitValue),
 	}
 }
-
-func makeFlagFromFeatureState(featureState *features.FeatureStateModel, identityID string) Flag {
-	return Flag{
-		Enabled:     featureState.Enabled,
-		Value:       featureState.Value(identityID),
-		IsDefault:   false,
-		FeatureID:   featureState.Feature.ID,
-		FeatureName: featureState.Feature.Name,
-	}
-}
-
 func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) Flag {
 	var value interface{}
 	if flagResult.Value != nil {
@@ -78,22 +66,6 @@ type Flags struct {
 	flags              []Flag
 	analyticsProcessor *AnalyticsProcessor
 	defaultFlagHandler func(featureName string) (Flag, error)
-}
-
-func makeFlagsFromFeatureStates(featureStates []*features.FeatureStateModel,
-	analyticsProcessor *AnalyticsProcessor,
-	defaultFlagHandler func(featureName string) (Flag, error),
-	identityID string) Flags {
-	flags := make([]Flag, len(featureStates))
-	for i, featureState := range featureStates {
-		flags[i] = makeFlagFromFeatureState(featureState, identityID)
-	}
-
-	return Flags{
-		flags:              flags,
-		analyticsProcessor: analyticsProcessor,
-		defaultFlagHandler: defaultFlagHandler,
-	}
 }
 
 func makeFlagsFromEngineEvaluationResult(evaluationResult *engine_eval.EvaluationResult, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) (Flag, error)) Flags {

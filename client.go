@@ -31,6 +31,7 @@ type Client struct {
 	config config
 
 	environment             atomic.Value
+	evaluationContext       atomic.Value
 	identitiesWithOverrides atomic.Value
 
 	analyticsProcessor *AnalyticsProcessor
@@ -141,7 +142,11 @@ func NewClient(apiKey string, options ...Option) *Client {
 		panic("local evaluation and offline handler cannot be used together.")
 	}
 	if c.offlineHandler != nil {
-		c.environment.Store(c.offlineHandler.GetEnvironment())
+		env := c.offlineHandler.GetEnvironment()
+		c.environment.Store(env)
+		// Update evaluation context atomically for offline environment
+		engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(env)
+		c.evaluationContext.Store(&engineEvalCtx)
 	}
 
 	if c.config.localEvaluation {
@@ -333,23 +338,21 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 }
 
 func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits []*Trait) (Flags, error) {
-	env, ok := c.environment.Load().(*environments.EnvironmentModel)
+	evalCtx, ok := c.evaluationContext.Load().(*engine_eval.EngineEvaluationContext)
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(env)
-	engineEvalCtx = engine_eval.MapContextAndIdentityDataToContext(engineEvalCtx, identifier, traits)
+	engineEvalCtx := engine_eval.MapContextAndIdentityDataToContext(*evalCtx, identifier, traits)
 	result := flagengine.GetEvaluationResult(&engineEvalCtx)
 	return makeFlagsFromEngineEvaluationResult(&result, c.analyticsProcessor, c.defaultFlagHandler), nil
 }
 
 func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
-	env, ok := c.environment.Load().(*environments.EnvironmentModel)
+	evalCtx, ok := c.evaluationContext.Load().(*engine_eval.EngineEvaluationContext)
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(env)
-	result := flagengine.GetEvaluationResult(&engineEvalCtx)
+	result := flagengine.GetEvaluationResult(evalCtx)
 	return makeFlagsFromEngineEvaluationResult(&result, c.analyticsProcessor, c.defaultFlagHandler), nil
 }
 
@@ -453,6 +456,11 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		isNew = true
 	}
 	c.environment.Store(&env)
+
+	// Update evaluation context atomically when environment changes
+	engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(&env)
+	c.evaluationContext.Store(&engineEvalCtx)
+
 	identitiesWithOverrides := make(map[string]identities.IdentityModel)
 	for _, id := range env.IdentityOverrides {
 		identitiesWithOverrides[id.Identifier] = *id
