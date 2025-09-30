@@ -337,15 +337,10 @@ func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits []*Tr
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	identity := c.getIdentityModel(identifier, env.APIKey, traits)
-	featureStates := flagengine.GetIdentityFeatureStates(env, &identity)
-	flags := makeFlagsFromFeatureStates(
-		featureStates,
-		c.analyticsProcessor,
-		c.defaultFlagHandler,
-		identifier,
-	)
-	return flags, nil
+	engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(env)
+	engineEvalCtx = engine_eval.MapContextAndIdentityDataToContext(engineEvalCtx, identifier, traits)
+	result := flagengine.GetEvaluationResult(&engineEvalCtx)
+	return makeFlagsFromEngineEvaluationResult(&result, c.analyticsProcessor, c.defaultFlagHandler), nil
 }
 
 func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
