@@ -3,7 +3,7 @@ package flagsmith
 import (
 	"testing"
 
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/engine_eval"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
 )
 
 func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {

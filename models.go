@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/engine_eval"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/identities/traits"
 )
 
 type Flag struct {

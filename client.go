@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/engine_eval"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/segments"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/environments"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/segments"
 	"github.com/go-resty/resty/v2"
 )
 

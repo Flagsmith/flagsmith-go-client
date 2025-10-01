@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/environments"
 )
 
 // realtime handles the SSE connection and reconnection logic.

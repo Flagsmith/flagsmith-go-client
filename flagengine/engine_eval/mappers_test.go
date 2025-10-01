@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/projects"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/segments"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/utils"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/environments"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/features"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/identities"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/projects"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/segments"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/utils"
 )
 
 func TestMapEnvironmentDocumentToEvaluationContext(t *testing.T) {

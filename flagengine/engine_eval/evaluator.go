@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/utils"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/utils"
 	"github.com/blang/semver/v4"
 	"github.com/ohler55/ojg/jp"
 )

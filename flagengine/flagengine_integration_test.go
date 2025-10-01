@@ -9,9 +9,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/engine_eval"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/environments"
 )
 
 const TestData = "./engine-test-data/data/environment_n9fbf9h3v4fFgH3U3ngWhb.json"

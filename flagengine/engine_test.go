@@ -3,11 +3,11 @@ package flagengine_test
 import (
 	"testing"
 
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/utils/fixtures"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/environments"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/features"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/utils/fixtures"
 	"github.com/stretchr/testify/assert"
 )
 
