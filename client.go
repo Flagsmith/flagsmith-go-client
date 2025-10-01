@@ -27,8 +27,8 @@ type Client struct {
 	apiKey string
 	config config
 
-	environment       atomic.Value
-	evaluationContext atomic.Value
+	environment             atomic.Value
+	engineEvaluationContext atomic.Value
 
 	analyticsProcessor *AnalyticsProcessor
 	realtime           *realtime
@@ -142,7 +142,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 		c.environment.Store(env)
 		// Update evaluation context atomically for offline environment
 		engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(env)
-		c.evaluationContext.Store(&engineEvalCtx)
+		c.engineEvaluationContext.Store(&engineEvalCtx)
 	}
 
 	if c.config.localEvaluation {
@@ -231,7 +231,7 @@ func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits
 
 // Returns an array of segments that the given identity is part of.
 func (c *Client) GetIdentitySegments(identifier string, traits []*Trait) ([]*segments.SegmentModel, error) {
-	if evalCtx, ok := c.evaluationContext.Load().(*engine_eval.EngineEvaluationContext); ok {
+	if evalCtx, ok := c.engineEvaluationContext.Load().(*engine_eval.EngineEvaluationContext); ok {
 		engineEvalCtx := engine_eval.MapContextAndIdentityDataToContext(*evalCtx, identifier, traits)
 		result := flagengine.GetEvaluationResult(&engineEvalCtx)
 
@@ -337,7 +337,7 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 }
 
 func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits []*Trait) (Flags, error) {
-	evalCtx, ok := c.evaluationContext.Load().(*engine_eval.EngineEvaluationContext)
+	evalCtx, ok := c.engineEvaluationContext.Load().(*engine_eval.EngineEvaluationContext)
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
@@ -347,7 +347,7 @@ func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits []*Tr
 }
 
 func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
-	evalCtx, ok := c.evaluationContext.Load().(*engine_eval.EngineEvaluationContext)
+	evalCtx, ok := c.engineEvaluationContext.Load().(*engine_eval.EngineEvaluationContext)
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
@@ -458,7 +458,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 
 	// Update evaluation context atomically when environment changes
 	engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(&env)
-	c.evaluationContext.Store(&engineEvalCtx)
+	c.engineEvaluationContext.Store(&engineEvalCtx)
 
 	if isNew {
 		c.log.Info("environment updated", "environment", env.APIKey, "updated_at", env.UpdatedAt)
