@@ -808,3 +808,142 @@ func TestEdgeCases(t *testing.T) {
 		assert.False(t, result) // Should fail without identity
 	})
 }
+
+func TestRegexOperator(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name           string
+		traitValue     string
+		conditionValue string
+		expected       bool
+	}{
+		{"simple match", "foo", "[a-z]+", true},
+		{"no match", "FOO", "[a-z]+", false},
+		{"email match", "test@example.com", `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, true},
+		{"invalid regex", "test", "[", false},
+		{"empty values", "", "", true},
+		{"number match", "123", `^\d+$`, true},
+		{"number no match", "abc", `^\d+$`, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+				"test_trait": stringValue(c.traitValue),
+			})
+
+			segmentContext := createSegmentContext("regex_test", "regex_test", []engine_eval.SegmentRule{
+				{
+					Type: engine_eval.All,
+					Conditions: []engine_eval.Condition{
+						{
+							Operator: engine_eval.Regex,
+							Property: "test_trait",
+							Value:    &engine_eval.ValueUnion{String: stringPtr(c.conditionValue)},
+						},
+					},
+				},
+			})
+
+			result := engine_eval.IsContextInSegment(evalContext, segmentContext)
+			assert.Equal(t, c.expected, result)
+		})
+	}
+}
+
+func TestModuloOperator(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name           string
+		traitValue     string
+		conditionValue string
+		expected       bool
+	}{
+		{"simple modulo match", "2", "2|0", true},
+		{"simple modulo no match", "1", "2|0", false},
+		{"float modulo match", "1.1", "2.1|1.1", true},
+		{"float modulo no match", "3", "2|0", false},
+		{"large number match", "35.0", "4|3", true},
+		{"large number no match", "34.2", "4|3", false},
+		{"invalid trait value", "foo", "4|3", false},
+		{"invalid condition format", "1", "invalid", false},
+		{"invalid divisor", "1", "abc|3", false},
+		{"invalid remainder", "1", "4|abc", false},
+		{"missing separator", "1", "43", false},
+		{"too many parts", "1", "4|3|2", false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+				"test_trait": stringValue(c.traitValue),
+			})
+
+			segmentContext := createSegmentContext("modulo_test", "modulo_test", []engine_eval.SegmentRule{
+				{
+					Type: engine_eval.All,
+					Conditions: []engine_eval.Condition{
+						{
+							Operator: engine_eval.Modulo,
+							Property: "test_trait",
+							Value:    &engine_eval.ValueUnion{String: stringPtr(c.conditionValue)},
+						},
+					},
+				},
+			})
+
+			result := engine_eval.IsContextInSegment(evalContext, segmentContext)
+			assert.Equal(t, c.expected, result)
+		})
+	}
+}
+
+func TestMatchWithRegexOperator(t *testing.T) {
+	t.Parallel()
+
+	evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+		"email": stringValue("test@example.com"),
+	})
+
+	segmentContext := createSegmentContext("regex_test", "regex_test", []engine_eval.SegmentRule{
+		{
+			Type: engine_eval.All,
+			Conditions: []engine_eval.Condition{
+				{
+					Operator: engine_eval.Regex,
+					Property: "email",
+					Value:    &engine_eval.ValueUnion{String: stringPtr(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)},
+				},
+			},
+		},
+	})
+
+	result := engine_eval.IsContextInSegment(evalContext, segmentContext)
+	assert.True(t, result)
+}
+
+func TestMatchWithModuloOperator(t *testing.T) {
+	t.Parallel()
+
+	evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+		"user_id": stringValue("35"),
+	})
+
+	segmentContext := createSegmentContext("modulo_test", "modulo_test", []engine_eval.SegmentRule{
+		{
+			Type: engine_eval.All,
+			Conditions: []engine_eval.Condition{
+				{
+					Operator: engine_eval.Modulo,
+					Property: "user_id",
+					Value:    &engine_eval.ValueUnion{String: stringPtr("4|3")},
+				},
+			},
+		},
+	})
+
+	result := engine_eval.IsContextInSegment(evalContext, segmentContext)
+	assert.True(t, result)
+}

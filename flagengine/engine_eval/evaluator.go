@@ -2,6 +2,8 @@ package engine_eval
 
 import (
 	"fmt"
+	"math"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -156,6 +158,14 @@ func ToString(contextValue ContextValue) string {
 }
 
 func match(c Operator, traitValue, conditionValue string) bool {
+	// Handle special operators first
+	switch c {
+	case Modulo:
+		return matchModulo(traitValue, conditionValue)
+	case Regex:
+		return matchRegex(traitValue, conditionValue)
+	}
+
 	b1, e1 := strconv.ParseBool(traitValue)
 	b2, e2 := strconv.ParseBool(conditionValue)
 	if e1 == nil && e2 == nil {
@@ -274,4 +284,38 @@ func matchString(c Operator, v1, v2 string) bool {
 		return v1 != v2
 	}
 	return v1 == v2
+}
+
+// matchRegex performs regex matching on trait values.
+func matchRegex(traitValue, conditionValue string) bool {
+	match, err := regexp.Match(conditionValue, []byte(traitValue))
+	if err != nil {
+		return false
+	}
+	return match
+}
+
+// matchModulo performs modulo operation matching on trait values.
+func matchModulo(traitValue, conditionValue string) bool {
+	values := strings.Split(conditionValue, "|")
+	if len(values) != 2 {
+		return false
+	}
+
+	divisor, err := strconv.ParseFloat(values[0], 64)
+	if err != nil {
+		return false
+	}
+
+	remainder, err := strconv.ParseFloat(values[1], 64)
+	if err != nil {
+		return false
+	}
+
+	traitValueFloat, err := strconv.ParseFloat(traitValue, 64)
+	if err != nil {
+		return false
+	}
+
+	return math.Mod(traitValueFloat, divisor) == remainder
 }
