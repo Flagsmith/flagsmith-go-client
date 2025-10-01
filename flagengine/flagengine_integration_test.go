@@ -3,7 +3,6 @@ package flagengine_test
 import (
 	"encoding/json"
 	"os"
-	"sort"
 	"strconv"
 	"testing"
 
@@ -41,18 +40,16 @@ func TestEngine(t *testing.T) {
 			actual := flagengine.GetEvaluationResult(&c.EvaluationContext)
 			expected := c.EvaluationResult
 
-			sort.Slice(actual.Flags, func(i, j int) bool {
-				return actual.Flags[i].FeatureKey < actual.Flags[j].FeatureKey
-			})
-			sort.Slice(expected.Flags, func(i, j int) bool {
-				return expected.Flags[i].FeatureKey < expected.Flags[j].FeatureKey
-			})
+			// Note: Flags are now a map, so no need to sort them
+			// The comparison will be done by comparing the map contents directly
 
 			require.Len(actual.Flags, len(expected.Flags))
-			for i := range expected.Flags {
-				assert.Equal(expected.Flags[i].Value, actual.Flags[i].Value)
-				assert.Equal(expected.Flags[i].Enabled, actual.Flags[i].Enabled)
-				assert.Equal(expected.Flags[i].FeatureKey, actual.Flags[i].FeatureKey)
+			for featureName, expectedFlag := range expected.Flags {
+				actualFlag, exists := actual.Flags[featureName]
+				require.True(exists, "Expected flag %s not found in actual result", featureName)
+				assert.Equal(expectedFlag.Value, actualFlag.Value)
+				assert.Equal(expectedFlag.Enabled, actualFlag.Enabled)
+				assert.Equal(expectedFlag.FeatureKey, actualFlag.FeatureKey)
 			}
 		})
 	}

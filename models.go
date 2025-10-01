@@ -69,9 +69,9 @@ type Flags struct {
 }
 
 func makeFlagsFromEngineEvaluationResult(evaluationResult *engine_eval.EvaluationResult, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) (Flag, error)) Flags {
-	flags := make([]Flag, len(evaluationResult.Flags))
-	for i, flagResult := range evaluationResult.Flags {
-		flags[i] = makeFlagFromEngineEvaluationFlagResult(&flagResult)
+	flags := make([]Flag, 0, len(evaluationResult.Flags))
+	for _, flagResult := range evaluationResult.Flags {
+		flags = append(flags, makeFlagFromEngineEvaluationFlagResult(flagResult))
 	}
 
 	return Flags{

@@ -169,9 +169,8 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 		{
 			name: "evaluation result with multiple flags",
 			input: &engine_eval.EvaluationResult{
-				Context: engine_eval.EngineEvaluationContext{},
-				Flags: []engine_eval.FlagResult{
-					{
+				Flags: map[string]*engine_eval.FlagResult{
+					"feature1": {
 						Enabled:    true,
 						FeatureKey: "feature1_key",
 						Name:       "feature1",
@@ -179,7 +178,7 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 							String: stringPtr("value1"),
 						},
 					},
-					{
+					"feature2": {
 						Enabled:    false,
 						FeatureKey: "feature2_key",
 						Name:       "feature2",
@@ -187,7 +186,7 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 							Bool: boolPtr(true),
 						},
 					},
-					{
+					"feature3": {
 						Enabled:    true,
 						FeatureKey: "feature3_key",
 						Name:       "feature3",
@@ -225,8 +224,7 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 		{
 			name: "evaluation result with no flags",
 			input: &engine_eval.EvaluationResult{
-				Context:  engine_eval.EngineEvaluationContext{},
-				Flags:    []engine_eval.FlagResult{},
+				Flags:    map[string]*engine_eval.FlagResult{},
 				Segments: []engine_eval.SegmentResult{},
 			},
 			expected: []Flag{},
@@ -234,9 +232,8 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 		{
 			name: "evaluation result with single flag",
 			input: &engine_eval.EvaluationResult{
-				Context: engine_eval.EngineEvaluationContext{},
-				Flags: []engine_eval.FlagResult{
-					{
+				Flags: map[string]*engine_eval.FlagResult{
+					"single_feature": {
 						Enabled:    true,
 						FeatureKey: "single_feature_key",
 						Name:       "single_feature",
@@ -315,9 +312,8 @@ func TestMakeFlagsFromEngineEvaluationResultWithProcessorAndHandler(t *testing.T
 	}
 
 	input := &engine_eval.EvaluationResult{
-		Context: engine_eval.EngineEvaluationContext{},
-		Flags: []engine_eval.FlagResult{
-			{
+		Flags: map[string]*engine_eval.FlagResult{
+			"test_feature": {
 				Enabled:    true,
 				FeatureKey: "test_feature_key",
 				Name:       "test_feature",

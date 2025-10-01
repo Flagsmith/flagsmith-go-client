@@ -130,7 +130,7 @@ func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.Ev
 	const defaultPriority = 0.0
 
 	segments := []engine_eval.SegmentResult{}
-	flags := []engine_eval.FlagResult{}
+	flags := make(map[string]*engine_eval.FlagResult)
 	segmentFeatureContexts := make(map[string]featureContextWithSegmentName)
 
 	// Process segments
@@ -195,23 +195,22 @@ func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.Ev
 				// Use segment override
 				fc := segmentFeatureCtx.featureContext
 				reason := fmt.Sprintf("TARGETING_MATCH; segment=%s", segmentFeatureCtx.segmentName)
-				flags = append(flags, engine_eval.FlagResult{
+				flags[featureContext.Name] = &engine_eval.FlagResult{
 					Enabled:    fc.Enabled,
 					FeatureKey: fc.FeatureKey,
 					Name:       fc.Name,
 					Reason:     &reason,
 					Value:      fc.Value,
-				})
+				}
 			} else {
 				// Use default feature context
 				flagResult := getFlagResultFromFeatureContext(&featureContext, identityKey)
-				flags = append(flags, flagResult)
+				flags[featureContext.Name] = &flagResult
 			}
 		}
 	}
 
 	return engine_eval.EvaluationResult{
-		Context:  *ec,
 		Flags:    flags,
 		Segments: segments,
 	}

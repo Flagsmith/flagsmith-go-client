@@ -1,11 +1,10 @@
 package engine_eval
 
-// Evaluation result object containing the used context, flag evaluation results, and
+// Evaluation result object containing flag evaluation results, and
 // segments used in the evaluation.
 type EvaluationResult struct {
-	Context EngineEvaluationContext `json:"context"`
-	// List of feature flags evaluated for the context.
-	Flags []FlagResult `json:"flags"`
+	// Feature flags evaluated for the context, mapped by feature names.
+	Flags map[string]*FlagResult `json:"flags"`
 	// List of segments which the provided context belongs to.
 	Segments []SegmentResult `json:"segments"`
 }
