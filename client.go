@@ -140,7 +140,6 @@ func NewClient(apiKey string, options ...Option) *Client {
 	if c.offlineHandler != nil {
 		env := c.offlineHandler.GetEnvironment()
 		c.environment.Store(env)
-		// Update evaluation context atomically for offline environment
 		engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(env)
 		c.engineEvaluationContext.Store(&engineEvalCtx)
 	}
@@ -234,8 +233,6 @@ func (c *Client) GetIdentitySegments(identifier string, traits []*Trait) ([]*seg
 	if evalCtx, ok := c.engineEvaluationContext.Load().(*engine_eval.EngineEvaluationContext); ok {
 		engineEvalCtx := engine_eval.MapContextAndIdentityDataToContext(*evalCtx, identifier, traits)
 		result := flagengine.GetEvaluationResult(&engineEvalCtx)
-
-		// Use the new mapper to convert evaluation result segments to SegmentModel
 		return engine_eval.MapEvaluationResultSegmentsToSegmentModels(&result), nil
 	}
 	return nil, &FlagsmithClientError{msg: "flagsmith: Local evaluation required to obtain identity segments"}
@@ -456,7 +453,6 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	}
 	c.environment.Store(&env)
 
-	// Update evaluation context atomically when environment changes
 	engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(&env)
 	c.engineEvaluationContext.Store(&engineEvalCtx)
 

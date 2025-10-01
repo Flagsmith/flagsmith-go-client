@@ -121,41 +121,7 @@ func getContextValueGetter(property string) func(ec *EngineEvaluationContext) an
 	if err == nil {
 		// If successful, create and cache a getter for the JSONPath.
 		getter := func(evalCtx *EngineEvaluationContext) any {
-			// Convert the struct to a map for JSONPath evaluation
-			data := map[string]interface{}{
-				"environment": map[string]interface{}{
-					"key":  evalCtx.Environment.Key,
-					"name": evalCtx.Environment.Name,
-				},
-			}
-
-			if evalCtx.Identity != nil {
-				identityMap := map[string]interface{}{
-					"identifier": evalCtx.Identity.Identifier,
-					"key":        evalCtx.Identity.Key,
-				}
-
-				if evalCtx.Identity.Traits != nil {
-					traitsMap := make(map[string]interface{})
-					for k, v := range evalCtx.Identity.Traits {
-						if v != nil {
-							if v.String != nil {
-								traitsMap[k] = *v.String
-							} else if v.Bool != nil {
-								traitsMap[k] = *v.Bool
-							} else if v.Double != nil {
-								traitsMap[k] = *v.Double
-							}
-						}
-					}
-					identityMap["traits"] = traitsMap
-				}
-
-				data["identity"] = identityMap
-			}
-
-			// Use JSONPath to get the value
-			results := p.Get(data)
+			results := p.Get(evalCtx)
 			if len(results) > 0 {
 				return results[0]
 			}
