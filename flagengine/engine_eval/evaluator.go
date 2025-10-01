@@ -113,13 +113,13 @@ func getContextValue(ec *EngineEvaluationContext, property string) ContextValue 
 	return nil
 }
 
-// getContextValueGetter returns a cached function to retrieve a value from a map[string]any
-// using either a JSONPath expression or a fallback trait key.
+// getContextValueGetter returns a function to retrieve a value from the evaluation context
+// using either a JSONPath expression or returning nil if the property is not a valid JSONPath.
 func getContextValueGetter(property string) func(ec *EngineEvaluationContext) any {
 	// First, try to parse the property as a JSONPath expression.
 	p, err := jp.ParseString(property)
 	if err == nil {
-		// If successful, create and cache a getter for the JSONPath.
+		// If successful, create a getter for the JSONPath.
 		getter := func(evalCtx *EngineEvaluationContext) any {
 			results := p.Get(evalCtx)
 			if len(results) > 0 {
