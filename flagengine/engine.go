@@ -2,6 +2,7 @@ package flagengine
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/utils"
@@ -13,13 +14,12 @@ type featureContextWithSegmentName struct {
 	segmentName    string
 }
 
-// GetEvaluationResult computes flags and matched segments given a context and a segment matcher.
-// The matcher should return true when the provided segment applies to the provided context.
-func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.EvaluationResult {
-	const defaultPriority = 0.0
+// processSegments processes all segments in the evaluation context and returns matched segments
+// and segment feature contexts for overrides.
+func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
+	var defaultPriority = math.Inf(1)
 
 	segments := []engine_eval.SegmentResult{}
-	flags := make(map[string]*engine_eval.FlagResult)
 	segmentFeatureContexts := make(map[string]featureContextWithSegmentName)
 
 	// Process segments
@@ -40,7 +40,6 @@ func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.Ev
 				override := &segmentContext.Overrides[i]
 				featureKey := override.FeatureKey
 
-				// Get priority, defaulting to 0 if not set
 				overridePriority := defaultPriority
 				if override.Priority != nil {
 					overridePriority = *override.Priority
@@ -69,6 +68,17 @@ func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.Ev
 			}
 		}
 	}
+
+	return segments, segmentFeatureContexts
+}
+
+// GetEvaluationResult computes flags and matched segments given a context and a segment matcher.
+// The matcher should return true when the provided segment applies to the provided context.
+func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.EvaluationResult {
+	flags := make(map[string]*engine_eval.FlagResult)
+
+	// Process segments
+	segments, segmentFeatureContexts := processSegments(ec)
 
 	// Get identity key if identity exists
 	var identityKey *string
