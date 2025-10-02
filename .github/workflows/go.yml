@@ -29,10 +29,6 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Get dependencies
-      run: |
-        go get -v -t -d ./...
-
     - name: Lint
       uses: golangci/golangci-lint-action@v6
 
