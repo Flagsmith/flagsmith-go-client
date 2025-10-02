@@ -71,7 +71,6 @@ func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.Seg
 	return segments, segmentFeatureContexts
 }
 
-// processFeatures processes all features in the evaluation context and returns flag results.
 func processFeatures(ec *engine_eval.EngineEvaluationContext, segmentFeatureContexts map[string]featureContextWithSegmentName) map[string]*engine_eval.FlagResult {
 	flags := make(map[string]*engine_eval.FlagResult)
 
