@@ -10,7 +10,7 @@ import (
 
 // featureContextWithSegmentName holds a feature context along with the segment name it came from.
 type featureContextWithSegmentName struct {
-	featureContext *engine_eval.FeatureContext
+	featureContext engine_eval.FeatureContext
 	segmentName    string
 }
 
@@ -60,7 +60,7 @@ func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.Seg
 
 				if shouldUpdate {
 					segmentFeatureContexts[featureKey] = featureContextWithSegmentName{
-						featureContext: override,
+						featureContext: *override,
 						segmentName:    segmentContext.Name,
 					}
 				}
