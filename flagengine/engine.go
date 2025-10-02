@@ -14,8 +14,7 @@ type featureContextWithSegmentName struct {
 	segmentName    string
 }
 
-// processSegments processes all segments in the evaluation context and returns matched segments
-// and segment feature contexts for overrides.
+// 2. A map of feature overrides from matching segments, with priority-based selection.
 func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
 	var defaultPriority = math.Inf(1)
 
@@ -72,13 +71,9 @@ func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.Seg
 	return segments, segmentFeatureContexts
 }
 
-// GetEvaluationResult computes flags and matched segments given a context and a segment matcher.
-// The matcher should return true when the provided segment applies to the provided context.
-func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.EvaluationResult {
+// processFeatures processes all features in the evaluation context and returns flag results.
+func processFeatures(ec *engine_eval.EngineEvaluationContext, segmentFeatureContexts map[string]featureContextWithSegmentName) map[string]*engine_eval.FlagResult {
 	flags := make(map[string]*engine_eval.FlagResult)
-
-	// Process segments
-	segments, segmentFeatureContexts := processSegments(ec)
 
 	// Get identity key if identity exists
 	var identityKey *string
@@ -108,6 +103,17 @@ func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.Ev
 			}
 		}
 	}
+
+	return flags
+}
+
+// GetEvaluationResult computes flags and matched segments.
+func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.EvaluationResult {
+	// Process segments
+	segments, segmentFeatureContexts := processSegments(ec)
+
+	// Process features
+	flags := processFeatures(ec, segmentFeatureContexts)
 
 	return engine_eval.EvaluationResult{
 		Flags:    flags,
