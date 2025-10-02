@@ -10,14 +10,19 @@ import (
 
 // featureContextWithSegmentName holds a feature context along with the segment name it came from.
 type featureContextWithSegmentName struct {
-	featureContext engine_eval.FeatureContext
+	featureContext *engine_eval.FeatureContext
 	segmentName    string
 }
 
-// 2. A map of feature overrides from matching segments, with priority-based selection.
-func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
-	var defaultPriority = math.Inf(1)
+// getPriorityOrDefault returns the priority value if it exists, otherwise returns the default priority.
+func getPriorityOrDefault(priority *float64) float64 {
+	if priority != nil {
+		return *priority
+	}
+	return math.Inf(1)
+}
 
+func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
 	segments := []engine_eval.SegmentResult{}
 	segmentFeatureContexts := make(map[string]featureContextWithSegmentName)
 
@@ -39,20 +44,14 @@ func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.Seg
 				override := &segmentContext.Overrides[i]
 				featureKey := override.FeatureKey
 
-				overridePriority := defaultPriority
-				if override.Priority != nil {
-					overridePriority = *override.Priority
-				}
+				overridePriority := getPriorityOrDefault(override.Priority)
 
 				// Check if we should update the segment feature context
 				shouldUpdate := false
 				if existing, exists := segmentFeatureContexts[featureKey]; !exists {
 					shouldUpdate = true
 				} else {
-					existingPriority := defaultPriority
-					if existing.featureContext.Priority != nil {
-						existingPriority = *existing.featureContext.Priority
-					}
+					existingPriority := getPriorityOrDefault(existing.featureContext.Priority)
 					if overridePriority < existingPriority {
 						shouldUpdate = true
 					}
@@ -60,7 +59,7 @@ func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.Seg
 
 				if shouldUpdate {
 					segmentFeatureContexts[featureKey] = featureContextWithSegmentName{
-						featureContext: *override,
+						featureContext: override,
 						segmentName:    segmentContext.Name,
 					}
 				}
