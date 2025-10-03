@@ -35,15 +35,15 @@ func newSlogToRestyAdapter(logger *slog.Logger) *slogToRestyAdapter {
 }
 
 func (l *slogToRestyAdapter) Errorf(format string, v ...interface{}) {
-	l.logger.Error(format, v...)
+	l.logger.Error(fmt.Sprintf(format, v...))
 }
 
 func (l *slogToRestyAdapter) Warnf(format string, v ...interface{}) {
-	l.logger.Warn(format, v...)
+	l.logger.Warn(fmt.Sprintf(format, v...))
 }
 
 func (l *slogToRestyAdapter) Debugf(format string, v ...interface{}) {
-	l.logger.Debug(format, v...)
+	l.logger.Debug(fmt.Sprintf(format, v...))
 }
 
 // slogToLoggerAdapter adapts a slog.Logger to our Logger interface.
