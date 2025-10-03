@@ -98,6 +98,9 @@ func contextMatchesCondition(ec *EngineEvaluationContext, segmentCondition *Cond
 	if segmentCondition.Operator == PercentageSplit {
 		return matchPercentageSplit(ec, segmentCondition, segmentKey, contextValue)
 	}
+	if segmentCondition.Operator == In {
+		return matchInOperator(segmentCondition, contextValue)
+	}
 	if segmentCondition.Operator == IsNotSet {
 		return contextValue == nil
 	}
@@ -107,6 +110,28 @@ func contextMatchesCondition(ec *EngineEvaluationContext, segmentCondition *Cond
 	if contextValue != nil {
 		return match(segmentCondition.Operator, ToString(contextValue), *segmentCondition.Value.String)
 	}
+	return false
+}
+
+// matchInOperator handles the IN operator for segment conditions, supporting both StringArray and comma-separated strings.
+func matchInOperator(segmentCondition *Condition, contextValue ContextValue) bool {
+	if contextValue == nil {
+		return false
+	}
+
+	traitValue := ToString(contextValue)
+
+	// First try to use StringArray if available
+	if segmentCondition.Value != nil && len(segmentCondition.Value.StringArray) > 0 {
+		return slices.Contains(segmentCondition.Value.StringArray, traitValue)
+	}
+
+	// Fall back to comma-separated string approach
+	if segmentCondition.Value != nil && segmentCondition.Value.String != nil {
+		values := strings.Split(*segmentCondition.Value.String, ",")
+		return slices.Contains(values, traitValue)
+	}
+
 	return false
 }
 
@@ -277,8 +302,6 @@ func matchString(c Operator, v1, v2 string) bool {
 		return strings.Contains(v1, v2)
 	case NotContains:
 		return !strings.Contains(v1, v2)
-	case In:
-		return slices.Contains(strings.Split(v2, ","), v1)
 	case Equal:
 		return v1 == v2
 	case GreaterThan:

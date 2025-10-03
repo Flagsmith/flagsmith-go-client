@@ -329,6 +329,51 @@ func TestContextMatchesCondition(t *testing.T) {
 	}
 }
 
+func TestContextMatchesConditionInOperatorStringArray(t *testing.T) {
+	traitKey1 := "trait1"
+
+	cases := []struct {
+		name        string
+		stringArray []string
+		traitValue  string
+		expected    bool
+	}{
+		{"in string array first", []string{"a", "b", "c"}, "a", true},
+		{"in string array middle", []string{"a", "b", "c"}, "b", true},
+		{"in string array last", []string{"a", "b", "c"}, "c", true},
+		{"not in string array", []string{"a", "b", "c"}, "d", false},
+		{"in single item array", []string{"test"}, "test", true},
+		{"empty string array", []string{}, "test", false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			condition := &engine_eval.Condition{
+				Operator: engine_eval.In,
+				Property: traitKey1,
+				Value:    &engine_eval.ValueUnion{StringArray: c.stringArray},
+			}
+
+			traitValuePtr := stringValue(c.traitValue)
+
+			evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+				traitKey1: traitValuePtr,
+			})
+
+			// Test via IsContextInSegment
+			segmentContext := createSegmentContext("test", "test", []engine_eval.SegmentRule{
+				{
+					Type:       engine_eval.All,
+					Conditions: []engine_eval.Condition{*condition},
+				},
+			})
+
+			result := engine_eval.IsContextInSegment(evalContext, segmentContext)
+			assert.Equal(t, c.expected, result)
+		})
+	}
+}
+
 func TestContextMatchesConditionIsSetAndIsNotSet(t *testing.T) {
 	t.Parallel()
 
