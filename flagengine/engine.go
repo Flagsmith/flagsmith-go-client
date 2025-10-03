@@ -136,6 +136,7 @@ func getFlagResultFromFeatureContext(featureContext *engine_eval.FeatureContext,
 			cumulativeWeight += variant.Weight
 			if hashPercentage <= cumulativeWeight {
 				value = variant.Value
+				reason = fmt.Sprintf("SPLIT; weight=%.0f", variant.Weight)
 				break
 			}
 		}

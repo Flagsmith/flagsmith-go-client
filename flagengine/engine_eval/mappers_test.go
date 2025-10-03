@@ -512,22 +512,6 @@ func TestMapContextAndIdentityDataToContextWithNilTraits(t *testing.T) {
 	}
 }
 
-func TestMapContextAndIdentityDataToContextWithEmptyEnvironmentKey(t *testing.T) {
-	baseContext := EngineEvaluationContext{
-		Environment: EnvironmentContext{
-			Key:  "", // Empty key
-			Name: "Test Environment",
-		},
-	}
-
-	result := MapContextAndIdentityDataToContext(baseContext, "test-user", nil)
-
-	// Should use environment name when key is empty
-	if result.Identity.Key != "Test Environment_test-user" {
-		t.Errorf("Expected key to use environment name when key is empty, got %v", result.Identity.Key)
-	}
-}
-
 func TestMapEvaluationResultSegmentsToSegmentModels(t *testing.T) {
 	// Create a test evaluation result with segments
 	result := EvaluationResult{

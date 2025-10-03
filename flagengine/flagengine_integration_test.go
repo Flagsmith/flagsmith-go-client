@@ -36,21 +36,10 @@ func TestEngine(t *testing.T) {
 	for i, c := range testData.TestCases {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			assert := assert.New(t)
-			require := require.New(t)
 			actual := flagengine.GetEvaluationResult(&c.EvaluationContext)
 			expected := c.EvaluationResult
 
-			// Note: Flags are now a map, so no need to sort them
-			// The comparison will be done by comparing the map contents directly
-
-			require.Len(actual.Flags, len(expected.Flags))
-			for featureName, expectedFlag := range expected.Flags {
-				actualFlag, exists := actual.Flags[featureName]
-				require.True(exists, "Expected flag %s not found in actual result", featureName)
-				assert.Equal(expectedFlag.Value, actualFlag.Value)
-				assert.Equal(expectedFlag.Enabled, actualFlag.Enabled)
-				assert.Equal(expectedFlag.FeatureKey, actualFlag.FeatureKey)
-			}
+			assert.Equal(expected.Flags, actual.Flags)
 		})
 	}
 }

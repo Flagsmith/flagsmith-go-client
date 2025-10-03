@@ -138,12 +138,10 @@ func matchInOperator(segmentCondition *Condition, contextValue ContextValue) boo
 func getContextValue(ec *EngineEvaluationContext, property string) ContextValue {
 	if strings.HasPrefix(property, "$.") {
 		return getContextValueGetter(property)(ec)
-	} else if ec.Identity != nil {
-		if ec.Identity.Traits != nil {
-			value, exists := ec.Identity.Traits[property]
-			if exists {
-				return value
-			}
+	} else if ec.Identity != nil && ec.Identity.Traits != nil {
+		value, exists := ec.Identity.Traits[property]
+		if exists {
+			return value
 		}
 	}
 	return nil
