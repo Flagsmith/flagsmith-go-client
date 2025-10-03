@@ -336,13 +336,7 @@ func MapContextAndIdentityDataToContext(
 	}
 
 	// Create the identity context
-	var environmentKey string
-	if newContext.Environment.Key != "" {
-		environmentKey = newContext.Environment.Key
-	} else {
-		environmentKey = newContext.Environment.Name
-	}
-
+	environmentKey := newContext.Environment.Key
 	identity := IdentityContext{
 		Identifier: identifier,
 		Key:        fmt.Sprintf("%s_%s", environmentKey, identifier),

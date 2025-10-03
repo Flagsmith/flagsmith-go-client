@@ -38,8 +38,10 @@ func contextMatchesSegmentRule(ec *EngineEvaluationContext, segmentRule *Segment
 			matchesConditions = utils.All(conditions)
 		case Any:
 			matchesConditions = utils.Any(conditions)
-		default:
+		case None:
 			matchesConditions = utils.None(conditions)
+		default:
+			return false
 		}
 	}
 
@@ -55,39 +57,46 @@ func contextMatchesSegmentRule(ec *EngineEvaluationContext, segmentRule *Segment
 	return true
 }
 
+// matchPercentageSplit handles the PercentageSplit operator for segment conditions.
+func matchPercentageSplit(ec *EngineEvaluationContext, segmentCondition *Condition, segmentKey string, contextValue ContextValue) bool {
+	var objectIds []string
+
+	if contextValue != nil {
+		// Try to get string representation of the context value
+		var strValue string
+		switch v := contextValue.(type) {
+		case string:
+			strValue = v
+		case *Value:
+			if v != nil && v.String != nil {
+				strValue = *v.String
+			} else {
+				return false
+			}
+		default:
+			return false
+		}
+		objectIds = []string{segmentKey, strValue}
+	} else if ec.Identity != nil {
+		objectIds = []string{segmentKey, ec.Identity.Key}
+	} else {
+		return false
+	}
+
+	if segmentCondition.Value != nil && segmentCondition.Value.String != nil {
+		floatValue, _ := strconv.ParseFloat(*segmentCondition.Value.String, 64)
+		return utils.GetHashedPercentageForObjectIds(objectIds, 1) <= floatValue
+	}
+	return false
+}
+
 func contextMatchesCondition(ec *EngineEvaluationContext, segmentCondition *Condition, segmentKey string) bool {
 	var contextValue ContextValue
 	if segmentCondition.Property != "" {
 		contextValue = getContextValue(ec, segmentCondition.Property)
 	}
 	if segmentCondition.Operator == PercentageSplit {
-		var objectIds []string
-		if contextValue != nil {
-			// Try to get string representation of the context value
-			var strValue string
-			switch v := contextValue.(type) {
-			case string:
-				strValue = v
-			case *Value:
-				if v != nil && v.String != nil {
-					strValue = *v.String
-				} else {
-					return false
-				}
-			default:
-				return false
-			}
-			objectIds = []string{segmentKey, strValue}
-		} else if ec.Identity != nil {
-			objectIds = []string{segmentKey, ec.Identity.Key}
-		} else {
-			return false
-		}
-		if segmentCondition.Value != nil && segmentCondition.Value.String != nil {
-			floatValue, _ := strconv.ParseFloat(*segmentCondition.Value.String, 64)
-			return utils.GetHashedPercentageForObjectIds(objectIds, 1) <= floatValue
-		}
-		return false
+		return matchPercentageSplit(ec, segmentCondition, segmentKey, contextValue)
 	}
 	if segmentCondition.Operator == IsNotSet {
 		return contextValue == nil
