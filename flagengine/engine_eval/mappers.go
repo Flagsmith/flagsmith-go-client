@@ -63,6 +63,23 @@ func MapEnvironmentDocumentToEvaluationContext(env *environments.EnvironmentMode
 	return ctx
 }
 
+// mapMultivariateFeatureStateValuesToVariants converts multivariate feature state values to FeatureValue variants.
+func mapMultivariateFeatureStateValuesToVariants(multivariateValues []*features.MultivariateFeatureStateValueModel) []FeatureValue {
+	if len(multivariateValues) == 0 {
+		return nil
+	}
+
+	variants := make([]FeatureValue, 0, len(multivariateValues))
+	for _, mv := range multivariateValues {
+		valueStr := fmt.Sprint(mv.MultivariateFeatureOption.Value)
+		variants = append(variants, FeatureValue{
+			Value:  &Value{String: &valueStr},
+			Weight: mv.PercentageAllocation,
+		})
+	}
+	return variants
+}
+
 func mapFeatureStateToFeatureContext(fs *features.FeatureStateModel) FeatureContext {
 	var key string
 	if fs.DjangoID != 0 {
@@ -85,17 +102,7 @@ func mapFeatureStateToFeatureContext(fs *features.FeatureStateModel) FeatureCont
 	}
 
 	// Variants
-	if len(fs.MultivariateFeatureStateValues) > 0 {
-		variants := make([]FeatureValue, 0, len(fs.MultivariateFeatureStateValues))
-		for _, mv := range fs.MultivariateFeatureStateValues {
-			valueStr := fmt.Sprint(mv.MultivariateFeatureOption.Value)
-			variants = append(variants, FeatureValue{
-				Value:  &Value{String: &valueStr},
-				Weight: mv.PercentageAllocation,
-			})
-		}
-		fc.Variants = variants
-	}
+	fc.Variants = mapMultivariateFeatureStateValuesToVariants(fs.MultivariateFeatureStateValues)
 
 	// Priority (if present via segment override)
 	if fs.FeatureSegment != nil {
@@ -260,7 +267,7 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 
 		// Create overrides for each feature
 		for _, override := range overrides {
-			priority := math.Inf(-1) // Highest possible priority
+			priority := math.Inf(-1) // Strongest possible priority
 			featureOverride := FeatureContext{
 				Key:        "", // Identity overrides never carry multivariate options
 				FeatureKey: override.featureKey,

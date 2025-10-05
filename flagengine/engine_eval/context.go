@@ -83,7 +83,7 @@ func (f *FlexibleString) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	return fmt.Errorf("unable to unmarshal FlexibleString from %s", string(data))
+	return fmt.Errorf("unable to unmarshal FlexibleString: invalid format")
 }
 
 type IdentityContext struct {
@@ -256,7 +256,7 @@ func (v *ValueUnion) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 
-	return fmt.Errorf("unable to unmarshal ValueUnion from %s", string(data))
+	return fmt.Errorf("unable to unmarshal ValueUnion: invalid format")
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for IdentityContext.

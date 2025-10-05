@@ -265,23 +265,34 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 				return
 			}
 
-			for i, expectedFlag := range tt.expected {
-				actualFlag := result.flags[i]
+			// Create a map of actual flags by feature name for order-independent comparison
+			actualFlagsByName := make(map[string]Flag)
+			for _, flag := range result.flags {
+				actualFlagsByName[flag.FeatureName] = flag
+			}
+
+			// Compare each expected flag with the corresponding actual flag
+			for _, expectedFlag := range tt.expected {
+				actualFlag, exists := actualFlagsByName[expectedFlag.FeatureName]
+				if !exists {
+					t.Errorf("Expected flag %s not found in actual result", expectedFlag.FeatureName)
+					continue
+				}
 
 				if actualFlag.Enabled != expectedFlag.Enabled {
-					t.Errorf("Flag %d: Expected Enabled %v, got %v", i, expectedFlag.Enabled, actualFlag.Enabled)
+					t.Errorf("Flag %s: Expected Enabled %v, got %v", expectedFlag.FeatureName, expectedFlag.Enabled, actualFlag.Enabled)
 				}
 				if actualFlag.Value != expectedFlag.Value {
-					t.Errorf("Flag %d: Expected Value %v, got %v", i, expectedFlag.Value, actualFlag.Value)
+					t.Errorf("Flag %s: Expected Value %v, got %v", expectedFlag.FeatureName, expectedFlag.Value, actualFlag.Value)
 				}
 				if actualFlag.IsDefault != expectedFlag.IsDefault {
-					t.Errorf("Flag %d: Expected IsDefault %v, got %v", i, expectedFlag.IsDefault, actualFlag.IsDefault)
+					t.Errorf("Flag %s: Expected IsDefault %v, got %v", expectedFlag.FeatureName, expectedFlag.IsDefault, actualFlag.IsDefault)
 				}
 				if actualFlag.FeatureID != expectedFlag.FeatureID {
-					t.Errorf("Flag %d: Expected FeatureID %v, got %v", i, expectedFlag.FeatureID, actualFlag.FeatureID)
+					t.Errorf("Flag %s: Expected FeatureID %v, got %v", expectedFlag.FeatureName, expectedFlag.FeatureID, actualFlag.FeatureID)
 				}
 				if actualFlag.FeatureName != expectedFlag.FeatureName {
-					t.Errorf("Flag %d: Expected FeatureName %v, got %v", i, expectedFlag.FeatureName, actualFlag.FeatureName)
+					t.Errorf("Flag %s: Expected FeatureName %v, got %v", expectedFlag.FeatureName, expectedFlag.FeatureName, actualFlag.FeatureName)
 				}
 			}
 
