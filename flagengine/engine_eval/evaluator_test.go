@@ -21,17 +21,17 @@ const (
 	traitValue3 = "2021-01-01"
 )
 
-// Helper function to create a Value pointer.
-func stringValue(s string) *engine_eval.Value {
-	return &engine_eval.Value{String: &s}
+// Helper function to create a string value.
+func stringValue(s string) string {
+	return s
 }
 
-func boolValue(b bool) *engine_eval.Value {
-	return &engine_eval.Value{Bool: &b}
+func boolValue(b bool) bool {
+	return b
 }
 
-func doubleValue(d float64) *engine_eval.Value {
-	return &engine_eval.Value{Double: &d}
+func doubleValue(d float64) float64 {
+	return d
 }
 
 // Helper function to create string pointer.
@@ -40,7 +40,7 @@ func stringPtr(s string) *string {
 }
 
 // Helper function to create evaluation context with traits.
-func createEvaluationContext(traits map[string]*engine_eval.Value) *engine_eval.EngineEvaluationContext {
+func createEvaluationContext(traits map[string]any) *engine_eval.EngineEvaluationContext {
 	return &engine_eval.EngineEvaluationContext{
 		Environment: engine_eval.EnvironmentContext{
 			Key:  "test-env",
@@ -92,7 +92,7 @@ func TestIsContextInSegment(t *testing.T) {
 					},
 				},
 			}),
-			evalContext: createEvaluationContext(map[string]*engine_eval.Value{
+			evalContext: createEvaluationContext(map[string]any{
 				traitKey1: stringValue(traitValue1),
 			}),
 			expected: true,
@@ -111,7 +111,7 @@ func TestIsContextInSegment(t *testing.T) {
 					},
 				},
 			}),
-			evalContext: createEvaluationContext(map[string]*engine_eval.Value{
+			evalContext: createEvaluationContext(map[string]any{
 				traitKey1: stringValue("different@example.com"),
 			}),
 			expected: false,
@@ -135,7 +135,7 @@ func TestIsContextInSegment(t *testing.T) {
 					},
 				},
 			}),
-			evalContext: createEvaluationContext(map[string]*engine_eval.Value{
+			evalContext: createEvaluationContext(map[string]any{
 				traitKey1: stringValue(traitValue1),
 				traitKey2: stringValue(traitValue2),
 			}),
@@ -160,7 +160,7 @@ func TestIsContextInSegment(t *testing.T) {
 					},
 				},
 			}),
-			evalContext: createEvaluationContext(map[string]*engine_eval.Value{
+			evalContext: createEvaluationContext(map[string]any{
 				traitKey1: stringValue(traitValue1),
 				traitKey2: stringValue("different_value"),
 			}),
@@ -185,7 +185,7 @@ func TestIsContextInSegment(t *testing.T) {
 					},
 				},
 			}),
-			evalContext: createEvaluationContext(map[string]*engine_eval.Value{
+			evalContext: createEvaluationContext(map[string]any{
 				traitKey1: stringValue(traitValue1),
 				traitKey2: stringValue("different_value"),
 			}),
@@ -225,7 +225,7 @@ func TestIsContextInSegment(t *testing.T) {
 					},
 				},
 			}),
-			evalContext: createEvaluationContext(map[string]*engine_eval.Value{
+			evalContext: createEvaluationContext(map[string]any{
 				traitKey1: stringValue(traitValue1),
 				traitKey2: stringValue(traitValue2),
 				traitKey3: stringValue(traitValue3),
@@ -299,20 +299,20 @@ func TestContextMatchesCondition(t *testing.T) {
 				Value:    &engine_eval.ValueUnion{String: stringPtr(c.conditionValue)},
 			}
 
-			var traitValuePtr *engine_eval.Value
+			var traitValue any
 			switch v := c.traitValue.(type) {
 			case string:
-				traitValuePtr = stringValue(v)
+				traitValue = stringValue(v)
 			case bool:
-				traitValuePtr = boolValue(v)
+				traitValue = boolValue(v)
 			case float64:
-				traitValuePtr = doubleValue(v)
+				traitValue = doubleValue(v)
 			default:
-				traitValuePtr = stringValue(fmt.Sprint(v))
+				traitValue = stringValue(fmt.Sprint(v))
 			}
 
-			evalContext := createEvaluationContext(map[string]*engine_eval.Value{
-				c.property: traitValuePtr,
+			evalContext := createEvaluationContext(map[string]any{
+				c.property: traitValue,
 			})
 
 			// We need to access the internal function, so we'll test via IsContextInSegment
@@ -356,7 +356,7 @@ func TestContextMatchesConditionInOperatorStringArray(t *testing.T) {
 
 			traitValuePtr := stringValue(c.traitValue)
 
-			evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+			evalContext := createEvaluationContext(map[string]any{
 				traitKey1: traitValuePtr,
 			})
 
@@ -397,9 +397,9 @@ func TestContextMatchesConditionIsSetAndIsNotSet(t *testing.T) {
 				Property: c.property,
 			}
 
-			var traits map[string]*engine_eval.Value
+			var traits map[string]any
 			if c.hasProperty {
-				traits = map[string]*engine_eval.Value{
+				traits = map[string]any{
 					c.property: stringValue("some_value"),
 				}
 			}
@@ -468,7 +468,7 @@ func TestGetContextValueIntegration(t *testing.T) {
 	// This tests that the function works correctly in the context it's used
 
 	t.Run("simple trait lookup works", func(t *testing.T) {
-		evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+		evalContext := createEvaluationContext(map[string]any{
 			"email": stringValue("test@example.com"),
 		})
 
@@ -537,7 +537,7 @@ func TestToStringIntegration(t *testing.T) {
 	// This tests that the function works correctly in the context it's used
 
 	t.Run("string values work correctly", func(t *testing.T) {
-		evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+		evalContext := createEvaluationContext(map[string]any{
 			"test_prop": stringValue("test_string"),
 		})
 
@@ -559,7 +559,7 @@ func TestToStringIntegration(t *testing.T) {
 	})
 
 	t.Run("boolean values work correctly", func(t *testing.T) {
-		evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+		evalContext := createEvaluationContext(map[string]any{
 			"test_prop": boolValue(true),
 		})
 
@@ -581,7 +581,7 @@ func TestToStringIntegration(t *testing.T) {
 	})
 
 	t.Run("numeric values work correctly", func(t *testing.T) {
-		evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+		evalContext := createEvaluationContext(map[string]any{
 			"test_prop": doubleValue(123.45),
 		})
 
@@ -652,7 +652,7 @@ func TestSemverComparisons(t *testing.T) {
 				Value:    &engine_eval.ValueUnion{String: stringPtr(c.conditionValue)},
 			}
 
-			evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+			evalContext := createEvaluationContext(map[string]any{
 				"version": stringValue(c.traitValue),
 			})
 
@@ -710,7 +710,7 @@ func TestComplexSegmentRules(t *testing.T) {
 		})
 
 		// Should match when all conditions are met
-		evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+		evalContext := createEvaluationContext(map[string]any{
 			traitKey1: stringValue(traitValue1),
 			traitKey2: stringValue(traitValue2),
 			traitKey3: stringValue(traitValue3),
@@ -720,7 +720,7 @@ func TestComplexSegmentRules(t *testing.T) {
 		assert.True(t, result)
 
 		// Should not match when one condition fails
-		evalContextPartial := createEvaluationContext(map[string]*engine_eval.Value{
+		evalContextPartial := createEvaluationContext(map[string]any{
 			traitKey1: stringValue(traitValue1),
 			traitKey2: stringValue(traitValue2),
 			// Missing traitKey3
@@ -750,7 +750,7 @@ func TestComplexSegmentRules(t *testing.T) {
 		})
 
 		// Should match when no conditions are met (NONE rule)
-		evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+		evalContext := createEvaluationContext(map[string]any{
 			traitKey1: stringValue("different1"),
 			traitKey2: stringValue("different2"),
 		})
@@ -759,7 +759,7 @@ func TestComplexSegmentRules(t *testing.T) {
 		assert.True(t, result)
 
 		// Should not match when any condition is met
-		evalContextWithMatch := createEvaluationContext(map[string]*engine_eval.Value{
+		evalContextWithMatch := createEvaluationContext(map[string]any{
 			traitKey1: stringValue(traitValue1), // This matches
 			traitKey2: stringValue("different2"),
 		})
@@ -874,7 +874,7 @@ func TestRegexOperator(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+			evalContext := createEvaluationContext(map[string]any{
 				"test_trait": stringValue(c.traitValue),
 			})
 
@@ -922,7 +922,7 @@ func TestModuloOperator(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+			evalContext := createEvaluationContext(map[string]any{
 				"test_trait": stringValue(c.traitValue),
 			})
 
@@ -948,7 +948,7 @@ func TestModuloOperator(t *testing.T) {
 func TestMatchWithRegexOperator(t *testing.T) {
 	t.Parallel()
 
-	evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+	evalContext := createEvaluationContext(map[string]any{
 		"email": stringValue("test@example.com"),
 	})
 
@@ -972,7 +972,7 @@ func TestMatchWithRegexOperator(t *testing.T) {
 func TestMatchWithModuloOperator(t *testing.T) {
 	t.Parallel()
 
-	evalContext := createEvaluationContext(map[string]*engine_eval.Value{
+	evalContext := createEvaluationContext(map[string]any{
 		"user_id": stringValue("35"),
 	})
 

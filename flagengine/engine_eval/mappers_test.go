@@ -106,8 +106,10 @@ func TestMapEnvironmentDocumentToEvaluationContext(t *testing.T) {
 		if testFeature.Key != "123" {
 			t.Errorf("Expected Key to be '123' (from DjangoID), got %v", testFeature.Key)
 		}
-		if testFeature.Value == nil || testFeature.Value.String == nil || *testFeature.Value.String != "test-value" {
-			t.Errorf("Expected Value.String to be 'test-value', got %v", testFeature.Value)
+		if testFeature.Value == nil {
+			t.Error("Expected Value to be set")
+		} else if valueStr, ok := testFeature.Value.(string); !ok || valueStr != "test-value" {
+			t.Errorf("Expected Value to be 'test-value', got %v", testFeature.Value)
 		}
 	}
 
@@ -175,7 +177,9 @@ func TestMapEnvironmentDocumentToEvaluationContext(t *testing.T) {
 			if !override.Enabled {
 				t.Error("Expected segment override to be enabled")
 			}
-			if override.Value == nil || override.Value.String == nil || *override.Value.String != "segment-value" {
+			if override.Value == nil {
+				t.Error("Expected override Value to be set")
+			} else if valueStr, ok := override.Value.(string); !ok || valueStr != "segment-value" {
 				t.Errorf("Expected override value to be 'segment-value', got %v", override.Value)
 			}
 		}
@@ -431,55 +435,57 @@ func TestMapContextAndIdentityDataToContext(t *testing.T) {
 	// Test string trait
 	if stringTrait, exists := identity.Traits["string_trait"]; !exists {
 		t.Error("Expected string_trait to exist")
-	} else if stringTrait.String == nil || *stringTrait.String != "string_value" {
+	} else if stringTrait != "string_value" {
 		t.Errorf("Expected string_trait to be 'string_value', got %v", stringTrait)
 	}
 
-	// Test int trait (int 42 converted to float64)
+	// Test int trait
 	if intTrait, exists := identity.Traits["int_trait"]; !exists {
 		t.Error("Expected int_trait to exist")
-	} else if intTrait.Double == nil || *intTrait.Double != 42.0 {
-		t.Errorf("Expected int_trait to be 42.0, got %v", intTrait)
+	} else if intTrait != 42 {
+		t.Errorf("Expected int_trait to be 42, got %v", intTrait)
 	}
 
 	// Test float trait (float64 3.14)
 	if floatTrait, exists := identity.Traits["float_trait"]; !exists {
 		t.Error("Expected float_trait to exist")
-	} else if floatTrait.Double == nil || *floatTrait.Double != 3.14 {
+	} else if floatTrait != 3.14 {
 		t.Errorf("Expected float_trait to be 3.14, got %v", floatTrait)
 	}
 
 	// Test bool true trait (bool true)
 	if boolTrueTrait, exists := identity.Traits["bool_true_trait"]; !exists {
 		t.Error("Expected bool_true_trait to exist")
-	} else if boolTrueTrait.Bool == nil || *boolTrueTrait.Bool != true {
+	} else if boolTrueTrait != true {
 		t.Errorf("Expected bool_true_trait to be true, got %v", boolTrueTrait)
 	}
 
 	// Test bool false trait (bool false)
 	if boolFalseTrait, exists := identity.Traits["bool_false_trait"]; !exists {
 		t.Error("Expected bool_false_trait to exist")
-	} else if boolFalseTrait.Bool == nil || *boolFalseTrait.Bool != false {
+	} else if boolFalseTrait != false {
 		t.Errorf("Expected bool_false_trait to be false, got %v", boolFalseTrait)
 	}
 
 	// Test string number trait (string "99" parsed as float64)
 	if stringNumberTrait, exists := identity.Traits["string_number_trait"]; !exists {
 		t.Error("Expected string_number_trait to exist")
-	} else if stringNumberTrait.Double == nil || *stringNumberTrait.Double != 99.0 {
+	} else if stringNumberTrait != "99" {
 		t.Errorf("Expected string_number_trait to be 99.0, got %v", stringNumberTrait)
 	}
 
 	// Test string bool trait (string "true" parsed as bool)
 	if stringBoolTrait, exists := identity.Traits["string_bool_trait"]; !exists {
 		t.Error("Expected string_bool_trait to exist")
-	} else if stringBoolTrait.Bool == nil || *stringBoolTrait.Bool != true {
+	} else if stringBoolTrait != "true" {
 		t.Errorf("Expected string_bool_trait to be true, got %v", stringBoolTrait)
 	}
 
-	// Test empty trait (should not be included)
-	if _, exists := identity.Traits["empty_trait"]; exists {
-		t.Error("Expected empty_trait to not be included")
+	// Test empty trait (should be included as empty string is a valid value)
+	if emptyTrait, exists := identity.Traits["empty_trait"]; !exists {
+		t.Error("Expected empty_trait to be included")
+	} else if emptyStr, ok := emptyTrait.(string); !ok || emptyStr != "" {
+		t.Errorf("Expected empty_trait to be empty string, got %v", emptyTrait)
 	}
 }
 

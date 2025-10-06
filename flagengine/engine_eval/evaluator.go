@@ -67,12 +67,6 @@ func matchPercentageSplit(ec *EngineEvaluationContext, segmentCondition *Conditi
 		switch v := contextValue.(type) {
 		case string:
 			strValue = v
-		case *Value:
-			if v != nil && v.String != nil {
-				strValue = *v.String
-			} else {
-				return false
-			}
 		default:
 			return false
 		}
@@ -174,17 +168,14 @@ func ToString(contextValue ContextValue) string {
 	if s, ok := contextValue.(string); ok {
 		return s
 	}
-	// Handle *Value type
-	if v, ok := contextValue.(*Value); ok && v != nil {
-		if v.String != nil {
-			return *v.String
-		}
-		if v.Bool != nil {
-			return strconv.FormatBool(*v.Bool)
-		}
-		if v.Double != nil {
-			return strconv.FormatFloat(*v.Double, 'f', -1, 64)
-		}
+	if b, ok := contextValue.(bool); ok {
+		return strconv.FormatBool(b)
+	}
+	if f, ok := contextValue.(float64); ok {
+		return strconv.FormatFloat(f, 'f', -1, 64)
+	}
+	if i, ok := contextValue.(int); ok {
+		return strconv.Itoa(i)
 	}
 	return fmt.Sprint(contextValue)
 }

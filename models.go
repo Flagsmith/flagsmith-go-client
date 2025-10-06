@@ -36,16 +36,7 @@ func (t *Trait) ToTraitModel() *traits.TraitModel {
 	}
 }
 func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) Flag {
-	var value interface{}
-	if flagResult.Value != nil {
-		if flagResult.Value.String != nil {
-			value = *flagResult.Value.String
-		} else if flagResult.Value.Bool != nil {
-			value = *flagResult.Value.Bool
-		} else if flagResult.Value.Double != nil {
-			value = *flagResult.Value.Double
-		}
-	}
+	value := flagResult.Value
 
 	// Convert FeatureKey (string ID) to integer FeatureID
 	featureID := 0

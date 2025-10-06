@@ -19,7 +19,7 @@ type FlagResult struct {
 	// Reason for the feature flag evaluation.
 	Reason *string `json:"reason,omitempty"`
 	// Feature flag value.
-	Value *Value `json:"value,omitempty"`
+	Value any `json:"value,omitempty"`
 }
 
 type SegmentResult struct {

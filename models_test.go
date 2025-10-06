@@ -18,9 +18,7 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 				Enabled:    true,
 				FeatureKey: "test_feature_key",
 				Name:       "test_feature",
-				Value: &engine_eval.Value{
-					String: stringPtr("test_value"),
-				},
+				Value:      "test_value",
 			},
 			expected: Flag{
 				Enabled:     true,
@@ -36,9 +34,7 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 				Enabled:    false,
 				FeatureKey: "bool_feature_key",
 				Name:       "bool_feature",
-				Value: &engine_eval.Value{
-					Bool: boolPtr(true),
-				},
+				Value:      true,
 			},
 			expected: Flag{
 				Enabled:     false,
@@ -54,9 +50,7 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 				Enabled:    true,
 				FeatureKey: "double_feature_key",
 				Name:       "double_feature",
-				Value: &engine_eval.Value{
-					Double: float64Ptr(42.5),
-				},
+				Value:      42.5,
 			},
 			expected: Flag{
 				Enabled:     true,
@@ -88,7 +82,7 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 				Enabled:    false,
 				FeatureKey: "empty_feature_key",
 				Name:       "empty_feature",
-				Value:      &engine_eval.Value{},
+				Value:      nil,
 			},
 			expected: Flag{
 				Enabled:     false,
@@ -104,9 +98,7 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 				Enabled:    false,
 				FeatureKey: "",
 				Name:       "",
-				Value: &engine_eval.Value{
-					String: stringPtr(""),
-				},
+				Value:      "",
 			},
 			expected: Flag{
 				Enabled:     false,
@@ -123,9 +115,7 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 				FeatureKey: "reason_feature_key",
 				Name:       "reason_feature",
 				Reason:     stringPtr("TARGETING_MATCH"),
-				Value: &engine_eval.Value{
-					String: stringPtr("reason_value"),
-				},
+				Value:      "reason_value",
 			},
 			expected: Flag{
 				Enabled:     true,
@@ -174,25 +164,19 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 						Enabled:    true,
 						FeatureKey: "feature1_key",
 						Name:       "feature1",
-						Value: &engine_eval.Value{
-							String: stringPtr("value1"),
-						},
+						Value:      "value1",
 					},
 					"feature2": {
 						Enabled:    false,
 						FeatureKey: "feature2_key",
 						Name:       "feature2",
-						Value: &engine_eval.Value{
-							Bool: boolPtr(true),
-						},
+						Value:      true,
 					},
 					"feature3": {
 						Enabled:    true,
 						FeatureKey: "feature3_key",
 						Name:       "feature3",
-						Value: &engine_eval.Value{
-							Double: float64Ptr(123.45),
-						},
+						Value:      123.45,
 					},
 				},
 				Segments: []engine_eval.SegmentResult{},
@@ -237,9 +221,7 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 						Enabled:    true,
 						FeatureKey: "single_feature_key",
 						Name:       "single_feature",
-						Value: &engine_eval.Value{
-							String: stringPtr("single_value"),
-						},
+						Value:      "single_value",
 					},
 				},
 				Segments: []engine_eval.SegmentResult{},
@@ -328,9 +310,7 @@ func TestMakeFlagsFromEngineEvaluationResultWithProcessorAndHandler(t *testing.T
 				Enabled:    true,
 				FeatureKey: "test_feature_key",
 				Name:       "test_feature",
-				Value: &engine_eval.Value{
-					String: stringPtr("test_value"),
-				},
+				Value:      "test_value",
 			},
 		},
 		Segments: []engine_eval.SegmentResult{},
@@ -364,12 +344,4 @@ func TestMakeFlagsFromEngineEvaluationResultWithProcessorAndHandler(t *testing.T
 // Helper functions for creating pointers.
 func stringPtr(s string) *string {
 	return &s
-}
-
-func boolPtr(b bool) *bool {
-	return &b
-}
-
-func float64Ptr(f float64) *float64 {
-	return &f
 }

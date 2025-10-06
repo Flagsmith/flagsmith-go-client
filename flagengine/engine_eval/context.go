@@ -43,7 +43,7 @@ type FeatureContext struct {
 	Priority *float64 `json:"priority,omitempty"`
 	// A default environment value for the feature. If the feature is multivariate, this will be
 	// the control value.
-	Value *Value `json:"value"`
+	Value any `json:"value"`
 	// An array of environment default values associated with the feature. Contains a single
 	// value for standard features, or multiple values for multivariate features.
 	Variants []FeatureValue `json:"variants,omitempty"`
@@ -52,7 +52,7 @@ type FeatureContext struct {
 // Represents a multivariate value for a feature flag.
 type FeatureValue struct {
 	// The value of the feature.
-	Value *Value `json:"value"`
+	Value any `json:"value"`
 	// The weight of the feature value variant, as a percentage number (i.e. 100.0).
 	Weight float64 `json:"weight"`
 }
@@ -96,7 +96,7 @@ type IdentityContext struct {
 	Key string `json:"key"`
 	// A map of traits associated with the identity, where the key is the trait name and the
 	// value is the trait value.
-	Traits map[string]*Value `json:"traits,omitempty"`
+	Traits map[string]any `json:"traits,omitempty"`
 }
 
 // Represents a segment context for feature flag evaluation.
@@ -168,60 +168,9 @@ const (
 // the control value.
 //
 // The value of the feature.
-type Value struct {
-	Bool   *bool
-	Double *float64
-	String *string
-}
-
 type ValueUnion struct {
 	String      *string
 	StringArray []string
-}
-
-// UnmarshalJSON implements custom JSON unmarshaling for Value.
-func (v *Value) UnmarshalJSON(data []byte) error {
-	// Try to unmarshal as null first
-	if string(data) == "null" {
-		return nil
-	}
-
-	// Try to unmarshal as a structured object
-	var structured struct {
-		Bool   *bool    `json:"bool"`
-		Double *float64 `json:"double"`
-		String *string  `json:"string"`
-	}
-	if err := json.Unmarshal(data, &structured); err == nil && (structured.Bool != nil || structured.Double != nil || structured.String != nil) {
-		v.Bool = structured.Bool
-		v.Double = structured.Double
-		v.String = structured.String
-		return nil
-	}
-
-	// Try to unmarshal as a raw value
-	var rawValue interface{}
-	if err := json.Unmarshal(data, &rawValue); err != nil {
-		return err
-	}
-
-	switch val := rawValue.(type) {
-	case bool:
-		v.Bool = &val
-	case float64:
-		v.Double = &val
-	case string:
-		v.String = &val
-	case nil:
-		// Already handled above, but just in case
-		return nil
-	default:
-		// If it's not a basic type, convert to string
-		str := fmt.Sprintf("%v", val)
-		v.String = &str
-	}
-
-	return nil
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for ValueUnion.

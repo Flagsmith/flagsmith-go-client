@@ -71,9 +71,8 @@ func mapMultivariateFeatureStateValuesToVariants(multivariateValues []*features.
 
 	variants := make([]FeatureValue, 0, len(multivariateValues))
 	for _, mv := range multivariateValues {
-		valueStr := fmt.Sprint(mv.MultivariateFeatureOption.Value)
 		variants = append(variants, FeatureValue{
-			Value:  &Value{String: &valueStr},
+			Value:  mv.MultivariateFeatureOption.Value,
 			Weight: mv.PercentageAllocation,
 		})
 	}
@@ -97,8 +96,7 @@ func mapFeatureStateToFeatureContext(fs *features.FeatureStateModel) FeatureCont
 
 	// Value
 	if fs.RawValue != nil {
-		valueStr := fmt.Sprint(fs.RawValue)
-		fc.Value = &Value{String: &valueStr}
+		fc.Value = fs.RawValue
 	}
 
 	// Variants
@@ -278,7 +276,7 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 
 			// Set the value if provided
 			if override.featureValue != "" {
-				featureOverride.Value = &Value{String: &override.featureValue}
+				featureOverride.Value = override.featureValue
 			}
 
 			sc.Overrides = append(sc.Overrides, featureOverride)
@@ -328,17 +326,16 @@ func MapContextAndIdentityDataToContext(
 	newContext := context
 
 	// Create traits map for the identity
-	identityTraits := make(map[string]*Value)
+	identityTraits := make(map[string]any)
 
 	for _, trait := range traitList {
 		if trait == nil {
 			continue
 		}
 
-		// Convert trait value to *Value
-		valuePtr := convertTraitValueToValue(trait.TraitValue)
-		if valuePtr != nil {
-			identityTraits[trait.TraitKey] = valuePtr
+		// Store trait value directly as any
+		if trait.TraitValue != nil {
+			identityTraits[trait.TraitKey] = trait.TraitValue
 		}
 	}
 
@@ -354,54 +351,6 @@ func MapContextAndIdentityDataToContext(
 	newContext.Identity = &identity
 
 	return newContext
-}
-
-// This function handles interface{} values and converts them appropriately.
-func convertTraitValueToValue(traitValue interface{}) *Value {
-	if traitValue == nil {
-		return nil
-	}
-
-	switch v := traitValue.(type) {
-	case bool:
-		return &Value{Bool: &v}
-	case int:
-		f := float64(v)
-		return &Value{Double: &f}
-	case int64:
-		f := float64(v)
-		return &Value{Double: &f}
-	case float64:
-		return &Value{Double: &v}
-	case float32:
-		f := float64(v)
-		return &Value{Double: &f}
-	case string:
-		if v == "" {
-			return nil
-		}
-		// Try to parse string as boolean
-		if v == "true" {
-			b := true
-			return &Value{Bool: &b}
-		} else if v == "false" {
-			b := false
-			return &Value{Bool: &b}
-		}
-		// Try to parse string as float64
-		if f, err := strconv.ParseFloat(v, 64); err == nil {
-			return &Value{Double: &f}
-		}
-		// Default to string
-		return &Value{String: &v}
-	default:
-		// For other types, convert to string
-		str := fmt.Sprint(v)
-		if str == "" {
-			return nil
-		}
-		return &Value{String: &str}
-	}
 }
 
 // MapEvaluationResultSegmentsToSegmentModels converts evaluation result segments
