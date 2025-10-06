@@ -19,7 +19,7 @@ func getPriorityOrDefault(priority *float64) float64 {
 	if priority != nil {
 		return *priority
 	}
-	return math.Inf(1)
+	return math.Inf(1) // Weakest possible priority
 }
 
 func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
