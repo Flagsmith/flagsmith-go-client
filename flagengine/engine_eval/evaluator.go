@@ -25,18 +25,34 @@ func IsContextInSegment(ec *EngineEvaluationContext, segmentContext *SegmentCont
 
 func contextMatchesSegmentRule(ec *EngineEvaluationContext, segmentRule *SegmentRule, segmentKey string) bool {
 	matchesConditions := true
+
 	if len(segmentRule.Conditions) > 0 {
-		conditions := make([]bool, len(segmentRule.Conditions))
-		for i := range segmentRule.Conditions {
-			conditions[i] = contextMatchesCondition(ec, &segmentRule.Conditions[i], segmentKey)
-		}
 		switch segmentRule.Type {
 		case All:
-			matchesConditions = utils.All(conditions)
+			// Short-circuit on first false
+			for i := range segmentRule.Conditions {
+				if !contextMatchesCondition(ec, &segmentRule.Conditions[i], segmentKey) {
+					matchesConditions = false
+					break
+				}
+			}
 		case Any:
-			matchesConditions = utils.Any(conditions)
+			// Short-circuit on first true
+			matchesConditions = false
+			for i := range segmentRule.Conditions {
+				if contextMatchesCondition(ec, &segmentRule.Conditions[i], segmentKey) {
+					matchesConditions = true
+					break
+				}
+			}
 		case None:
-			matchesConditions = utils.None(conditions)
+			// Short-circuit on first true
+			for i := range segmentRule.Conditions {
+				if contextMatchesCondition(ec, &segmentRule.Conditions[i], segmentKey) {
+					matchesConditions = false
+					break
+				}
+			}
 		default:
 			return false
 		}
