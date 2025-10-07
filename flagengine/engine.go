@@ -42,14 +42,13 @@ func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext) ([
 				override := &segmentContext.Overrides[i]
 				featureKey := override.FeatureKey
 
-				overridePriority := getPriorityOrDefault(override.Priority)
-
 				// Check if we should update the segment feature context
 				shouldUpdate := false
 				if existing, exists := segmentFeatureContexts[featureKey]; !exists {
 					shouldUpdate = true
 				} else {
 					existingPriority := getPriorityOrDefault(existing.featureContext.Priority)
+					overridePriority := getPriorityOrDefault(override.Priority)
 					if overridePriority < existingPriority {
 						shouldUpdate = true
 					}
@@ -77,7 +76,6 @@ func getFlagResults(ec *engine_eval.EngineEvaluationContext, segmentFeatureConte
 		identityKey = &ec.Identity.Key
 	}
 
-	// Process features
 	if ec.Features != nil {
 		for _, featureContext := range ec.Features {
 			// Check if we have a segment override for this feature

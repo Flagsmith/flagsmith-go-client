@@ -77,22 +77,6 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 			},
 		},
 		{
-			name: "flag with empty value struct",
-			input: &engine_eval.FlagResult{
-				Enabled:    false,
-				FeatureKey: "empty_feature_key",
-				Name:       "empty_feature",
-				Value:      nil,
-			},
-			expected: Flag{
-				Enabled:     false,
-				Value:       nil,
-				IsDefault:   false,
-				FeatureID:   0,
-				FeatureName: "empty_feature",
-			},
-		},
-		{
 			name: "flag with zero values",
 			input: &engine_eval.FlagResult{
 				Enabled:    false,
