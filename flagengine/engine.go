@@ -8,13 +8,11 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/utils"
 )
 
-// featureContextWithSegmentName holds a feature context along with the segment name it came from.
 type featureContextWithSegmentName struct {
 	featureContext *engine_eval.FeatureContext
 	segmentName    string
 }
 
-// getPriorityOrDefault returns the priority value if it exists, otherwise returns the default priority.
 func getPriorityOrDefault(priority *float64) float64 {
 	if priority != nil {
 		return *priority
@@ -22,7 +20,7 @@ func getPriorityOrDefault(priority *float64) float64 {
 	return math.Inf(1) // Weakest possible priority
 }
 
-func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
+func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
 	segments := []engine_eval.SegmentResult{}
 	segmentFeatureContexts := make(map[string]featureContextWithSegmentName)
 
@@ -70,7 +68,7 @@ func processSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.Seg
 	return segments, segmentFeatureContexts
 }
 
-func processFeatures(ec *engine_eval.EngineEvaluationContext, segmentFeatureContexts map[string]featureContextWithSegmentName) map[string]*engine_eval.FlagResult {
+func getFlagResults(ec *engine_eval.EngineEvaluationContext, segmentFeatureContexts map[string]featureContextWithSegmentName) map[string]*engine_eval.FlagResult {
 	flags := make(map[string]*engine_eval.FlagResult)
 
 	// Get identity key if identity exists
@@ -108,10 +106,10 @@ func processFeatures(ec *engine_eval.EngineEvaluationContext, segmentFeatureCont
 // GetEvaluationResult computes flags and matched segments.
 func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.EvaluationResult {
 	// Process segments
-	segments, segmentFeatureContexts := processSegments(ec)
+	segments, segmentFeatureContexts := getMatchingSegmentsAndOverrides(ec)
 
-	// Process features
-	flags := processFeatures(ec, segmentFeatureContexts)
+	// Get flag results
+	flags := getFlagResults(ec, segmentFeatureContexts)
 
 	return engine_eval.EvaluationResult{
 		Flags:    flags,
