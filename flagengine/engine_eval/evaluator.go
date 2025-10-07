@@ -70,19 +70,11 @@ func contextMatchesSegmentRule(ec *EngineEvaluationContext, segmentRule *Segment
 	return true
 }
 
-// matchPercentageSplit handles the PercentageSplit operator for segment conditions.
 func matchPercentageSplit(ec *EngineEvaluationContext, segmentCondition *Condition, segmentKey string, contextValue ContextValue) bool {
 	var objectIds []string
 
 	if contextValue != nil {
-		// Try to get string representation of the context value
-		var strValue string
-		switch v := contextValue.(type) {
-		case string:
-			strValue = v
-		default:
-			return false
-		}
+		strValue := ToString(contextValue)
 		objectIds = []string{segmentKey, strValue}
 	} else if ec.Identity != nil {
 		objectIds = []string{segmentKey, ec.Identity.Key}
@@ -91,7 +83,10 @@ func matchPercentageSplit(ec *EngineEvaluationContext, segmentCondition *Conditi
 	}
 
 	if segmentCondition.Value != nil && segmentCondition.Value.String != nil {
-		floatValue, _ := strconv.ParseFloat(*segmentCondition.Value.String, 64)
+		floatValue, err := strconv.ParseFloat(*segmentCondition.Value.String, 64)
+		if err != nil {
+			return false
+		}
 		return utils.GetHashedPercentageForObjectIds(objectIds, 1) <= floatValue
 	}
 	return false
