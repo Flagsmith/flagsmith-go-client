@@ -49,7 +49,7 @@ func TestEngine(t *testing.T) {
 			if strings.HasSuffix(testFile, ".jsonc") {
 				ast, err := hujson.Parse(testSpec)
 				require.NoError(t, err)
-				ast.Standardize() //nolint:misspell // hujson uses American spelling
+				ast.Standardize()
 				testSpec = ast.Pack()
 			}
 

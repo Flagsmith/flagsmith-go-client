@@ -1,6 +1,8 @@
 linters-settings:
   misspell:
     locale: UK
+    ignore-words:
+      - standardize  # hujson library uses US spelling
 linters:
   enable:
     - contextcheck
