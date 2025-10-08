@@ -23,43 +23,38 @@ func IsContextInSegment(ec *EngineEvaluationContext, segmentContext *SegmentCont
 	return true
 }
 
-func contextMatchesSegmentRule(ec *EngineEvaluationContext, segmentRule *SegmentRule, segmentKey string) bool {
-	matchesConditions := true
+// Returns true if conditions match according to the rule type.
+func matchesConditionsByRuleType(ec *EngineEvaluationContext, conditions []Condition, ruleType Type, segmentKey string) bool {
+	for i := range conditions {
+		conditionMatches := contextMatchesCondition(ec, &conditions[i], segmentKey)
 
-	if len(segmentRule.Conditions) > 0 {
-		switch segmentRule.Type {
+		switch ruleType {
 		case All:
-			// Short-circuit on first false
-			for i := range segmentRule.Conditions {
-				if !contextMatchesCondition(ec, &segmentRule.Conditions[i], segmentKey) {
-					matchesConditions = false
-					break
-				}
-			}
-		case Any:
-			// Short-circuit on first true
-			matchesConditions = false
-			for i := range segmentRule.Conditions {
-				if contextMatchesCondition(ec, &segmentRule.Conditions[i], segmentKey) {
-					matchesConditions = true
-					break
-				}
+			if !conditionMatches {
+				return false // Short-circuit: ALL requires all conditions to match
 			}
 		case None:
-			// Short-circuit on first true
-			for i := range segmentRule.Conditions {
-				if contextMatchesCondition(ec, &segmentRule.Conditions[i], segmentKey) {
-					matchesConditions = false
-					break
-				}
+			if conditionMatches {
+				return false // Short-circuit: NONE requires no conditions to match
+			}
+		case Any:
+			if conditionMatches {
+				return true // Short-circuit: ANY requires at least one condition to match
 			}
 		default:
 			return false
 		}
 	}
 
-	if !matchesConditions {
-		return false
+	// If we reach here: ALL/NONE passed all checks, ANY found no matches
+	return ruleType != Any
+}
+
+func contextMatchesSegmentRule(ec *EngineEvaluationContext, segmentRule *SegmentRule, segmentKey string) bool {
+	if len(segmentRule.Conditions) > 0 {
+		if !matchesConditionsByRuleType(ec, segmentRule.Conditions, segmentRule.Type, segmentKey) {
+			return false
+		}
 	}
 
 	for i := range segmentRule.Rules {
