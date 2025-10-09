@@ -3,7 +3,6 @@ package engine_eval
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -14,6 +13,7 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/features"
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/identities"
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/segments"
+	"github.com/Flagsmith/flagsmith-go-client/v5/trait"
 )
 
 // MapEnvironmentDocumentToEvaluationContext maps an environment document model
@@ -288,12 +288,7 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 	return segmentContexts
 }
 
-// Trait represents a trait with key-value pair, compatible with the main package Trait struct.
-type Trait struct {
-	TraitKey   string      `json:"trait_key"`
-	TraitValue interface{} `json:"trait_value"`
-	Transient  bool        `json:"transient,omitempty"`
-}
+type Trait = trait.Trait
 
 // MapContextAndIdentityDataToContext maps context and identity data to create an evaluation context
 // with identity information. This function takes an existing context and enriches it with identity
@@ -301,34 +296,15 @@ type Trait struct {
 func MapContextAndIdentityDataToContext(
 	context EngineEvaluationContext,
 	identifier string,
-	traits interface{},
+	traits []*trait.Trait,
 ) EngineEvaluationContext {
-	// Convert traits to local type
-	var traitList []*Trait
-
-	if traits != nil {
-		// Handle different trait types by copying field values
-		switch v := traits.(type) {
-		case []*Trait:
-			traitList = v
-		default:
-			// Try to extract traits using reflection-like approach
-			// Since both Trait structs have the same JSON tags, we can marshal/unmarshal
-			if jsonBytes, err := json.Marshal(traits); err == nil {
-				if err := json.Unmarshal(jsonBytes, &traitList); err != nil {
-					// Log error or handle gracefully - for now, continue with empty list
-					traitList = nil
-				}
-			}
-		}
-	}
 	// Create a copy of the context
 	newContext := context
 
 	// Create traits map for the identity
 	identityTraits := make(map[string]any)
 
-	for _, trait := range traitList {
+	for _, trait := range traits {
 		if trait == nil {
 			continue
 		}

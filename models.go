@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
-	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/v5/trait"
 )
 
 type Flag struct {
@@ -17,24 +17,14 @@ type Flag struct {
 	FeatureName string
 }
 
-type Trait struct {
-	TraitKey   string      `json:"trait_key"`
-	TraitValue interface{} `json:"trait_value"`
-	Transient  bool        `json:"transient,omitempty"`
-}
+type Trait = trait.Trait
 
 type IdentityTraits struct {
-	Identifier string   `json:"identifier"`
-	Traits     []*Trait `json:"traits"`
-	Transient  bool     `json:"transient,omitempty"`
+	Identifier string         `json:"identifier"`
+	Traits     []*trait.Trait `json:"traits"`
+	Transient  bool           `json:"transient,omitempty"`
 }
 
-func (t *Trait) ToTraitModel() *traits.TraitModel {
-	return &traits.TraitModel{
-		TraitKey:   t.TraitKey,
-		TraitValue: fmt.Sprint(t.TraitValue),
-	}
-}
 func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) Flag {
 	value := flagResult.Value
 
