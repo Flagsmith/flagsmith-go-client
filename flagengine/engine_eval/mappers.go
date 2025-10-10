@@ -25,10 +25,7 @@ func MapEnvironmentDocumentToEvaluationContext(env *environments.EnvironmentMode
 	// map environment -> EnvironmentContext
 	ctx.Environment = EnvironmentContext{
 		Key:  env.APIKey,
-		Name: env.APIKey, // Default to APIKey, will be overridden below if project exists
-	}
-	if env.Project != nil {
-		ctx.Environment.Name = env.Project.Name
+		Name: env.APIKey,
 	}
 
 	// Features (environment defaults)
@@ -119,10 +116,8 @@ func mapSegmentToSegmentContext(s *segments.SegmentModel) SegmentContext {
 	}
 
 	// Overrides
-	if len(s.FeatureStates) > 0 {
-		for _, fs := range s.FeatureStates {
-			sc.Overrides = append(sc.Overrides, mapFeatureStateToFeatureContext(fs))
-		}
+	for _, fs := range s.FeatureStates {
+		sc.Overrides = append(sc.Overrides, mapFeatureStateToFeatureContext(fs))
 	}
 
 	// Rules
@@ -136,20 +131,16 @@ func mapSegmentToSegmentContext(s *segments.SegmentModel) SegmentContext {
 func mapSegmentRuleToRule(r *segments.SegmentRuleModel) SegmentRule {
 	er := SegmentRule{Type: mapRuleType(r.Type)}
 	// Conditions
-	if len(r.Conditions) > 0 {
-		for _, c := range r.Conditions {
-			er.Conditions = append(er.Conditions, Condition{
-				Operator: mapConditionOperator(c.Operator),
-				Property: c.Property,
-				Value:    &ValueUnion{String: &c.Value},
-			})
-		}
+	for _, c := range r.Conditions {
+		er.Conditions = append(er.Conditions, Condition{
+			Operator: Operator(c.Operator),
+			Property: c.Property,
+			Value:    &ValueUnion{String: &c.Value},
+		})
 	}
 	// Nested rules
-	if len(r.Rules) > 0 {
-		for _, sr := range r.Rules {
-			er.Rules = append(er.Rules, mapSegmentRuleToRule(sr))
-		}
+	for _, sr := range r.Rules {
+		er.Rules = append(er.Rules, mapSegmentRuleToRule(sr))
 	}
 	return er
 }
@@ -163,14 +154,6 @@ func mapRuleType(t segments.RuleType) Type {
 	default:
 		return None
 	}
-}
-
-func mapConditionOperator(op segments.ConditionOperator) Operator {
-	// Normalise NOT EQUAL -> NOT_EQUAL
-	if op == "NOT EQUAL" {
-		return NotEqual
-	}
-	return Operator(op)
 }
 
 // overridesKey represents a unique set of feature overrides for grouping identities.
@@ -309,10 +292,7 @@ func MapContextAndIdentityDataToContext(
 			continue
 		}
 
-		// Store trait value directly as any
-		if trait.TraitValue != nil {
-			identityTraits[trait.TraitKey] = trait.TraitValue
-		}
+		identityTraits[trait.TraitKey] = trait.TraitValue
 	}
 
 	// Create the identity context

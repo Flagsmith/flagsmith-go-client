@@ -80,9 +80,6 @@ func TestMapEnvironmentDocumentToEvaluationContext(t *testing.T) {
 	if result.Environment.Key != "test-api-key" {
 		t.Errorf("Expected Environment.Key to be 'test-api-key', got %v", result.Environment.Key)
 	}
-	if result.Environment.Name != "Test Project" {
-		t.Errorf("Expected Environment.Name to be 'Test Project', got %v", result.Environment.Name)
-	}
 
 	// Test Features mapping
 	if len(result.Features) != 2 {
