@@ -1,6 +1,7 @@
 package engine_eval
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strconv"
@@ -141,8 +142,15 @@ func matchInOperator(segmentCondition *Condition, contextValue ContextValue) boo
 		return false
 	}
 
-	// Fall back to comma-separated string approach
+	// Fall back to string - try JSON parsing first, then comma-separated
 	if strValue, ok := segmentCondition.Value.(string); ok {
+		// Try to parse as JSON array first
+		var jsonArray []string
+		if err := json.Unmarshal([]byte(strValue), &jsonArray); err == nil {
+			return slices.Contains(jsonArray, traitValue)
+		}
+
+		// Fall back to comma-separated string
 		values := strings.Split(strValue, ",")
 		return slices.Contains(values, traitValue)
 	}
