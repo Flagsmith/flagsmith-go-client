@@ -77,12 +77,14 @@ func matchPercentageSplit(ec *EngineEvaluationContext, segmentCondition *Conditi
 		return false
 	}
 
-	if segmentCondition.Value != nil && segmentCondition.Value.String != nil {
-		floatValue, err := strconv.ParseFloat(*segmentCondition.Value.String, 64)
-		if err != nil {
-			return false
+	if segmentCondition.Value != nil {
+		if strValue, ok := segmentCondition.Value.(string); ok {
+			floatValue, err := strconv.ParseFloat(strValue, 64)
+			if err != nil {
+				return false
+			}
+			return utils.GetHashedPercentageForObjectIds(objectIds, 1) <= floatValue
 		}
-		return utils.GetHashedPercentageForObjectIds(objectIds, 1) <= floatValue
 	}
 	return false
 }
@@ -104,8 +106,10 @@ func contextMatchesCondition(ec *EngineEvaluationContext, segmentCondition *Cond
 	if segmentCondition.Operator == IsSet {
 		return contextValue != nil
 	}
-	if contextValue != nil {
-		return parseAndMatch(segmentCondition.Operator, ToString(contextValue), *segmentCondition.Value.String)
+	if contextValue != nil && segmentCondition.Value != nil {
+		if strValue, ok := segmentCondition.Value.(string); ok {
+			return parseAndMatch(segmentCondition.Operator, ToString(contextValue), strValue)
+		}
 	}
 	return false
 }
@@ -118,14 +122,28 @@ func matchInOperator(segmentCondition *Condition, contextValue ContextValue) boo
 
 	traitValue := ToString(contextValue)
 
-	// First try to use StringArray if available
-	if segmentCondition.Value != nil && len(segmentCondition.Value.StringArray) > 0 {
-		return slices.Contains(segmentCondition.Value.StringArray, traitValue)
+	if segmentCondition.Value == nil {
+		return false
+	}
+
+	// First try to use []string if available
+	if strArray, ok := segmentCondition.Value.([]string); ok {
+		return slices.Contains(strArray, traitValue)
+	}
+
+	// Convert []interface{} to []string (happens during JSON unmarshaling)
+	if ifaceArray, ok := segmentCondition.Value.([]interface{}); ok {
+		for _, v := range ifaceArray {
+			if str, ok := v.(string); ok && str == traitValue {
+				return true
+			}
+		}
+		return false
 	}
 
 	// Fall back to comma-separated string approach
-	if segmentCondition.Value != nil && segmentCondition.Value.String != nil {
-		values := strings.Split(*segmentCondition.Value.String, ",")
+	if strValue, ok := segmentCondition.Value.(string); ok {
+		values := strings.Split(strValue, ",")
 		return slices.Contains(values, traitValue)
 	}
 

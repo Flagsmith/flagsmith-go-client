@@ -157,7 +157,9 @@ func TestMapEnvironmentDocumentToEvaluationContext(t *testing.T) {
 				if condition.Property != "test_property" {
 					t.Errorf("Expected condition property to be 'test_property', got %v", condition.Property)
 				}
-				if condition.Value == nil || condition.Value.String == nil || *condition.Value.String != "test_value" {
+				if condition.Value == nil {
+					t.Error("Expected condition value to be set")
+				} else if strValue, ok := condition.Value.(string); !ok || strValue != "test_value" {
 					t.Errorf("Expected condition value to be 'test_value', got %v", condition.Value)
 				}
 			}
@@ -343,8 +345,8 @@ func TestMapEnvironmentDocumentToEvaluationContextWithIdentityOverrides(t *testi
 					if condition.Property != "$.identity.identifier" {
 						t.Errorf("Expected condition property to be '$.identity.identifier', got %v", condition.Property)
 					}
-					if condition.Value == nil || condition.Value.String == nil {
-						t.Error("Expected condition value to have String")
+					if condition.Value == nil {
+						t.Error("Expected condition value to be set")
 					}
 				}
 			}

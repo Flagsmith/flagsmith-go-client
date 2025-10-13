@@ -149,9 +149,8 @@ type Condition struct {
 	// A reference to the identity trait or value in the evaluation context.
 	Property string `json:"property"`
 	// The value to compare against the trait or context value.
-	//
-	// The values to compare against the trait or context value.
-	Value *ValueUnion `json:"value"`
+	// Can be a string or []string.
+	Value any `json:"value"`
 }
 
 // The operator to use for evaluating the condition.
@@ -182,50 +181,6 @@ const (
 	Any  Type = "ANY"
 	None Type = "NONE"
 )
-
-// A default environment value for the feature. If the feature is multivariate, this will be
-// the control value.
-//
-// The value of the feature.
-type ValueUnion struct {
-	String      *string
-	StringArray []string
-}
-
-// UnmarshalJSON implements custom JSON unmarshaling for ValueUnion.
-func (v *ValueUnion) UnmarshalJSON(data []byte) error {
-	// Try to unmarshal as null first
-	if string(data) == "null" {
-		return nil
-	}
-
-	// Try to unmarshal as a string array
-	var strArray []string
-	if err := json.Unmarshal(data, &strArray); err == nil {
-		v.StringArray = strArray
-		return nil
-	}
-
-	// Try to unmarshal as a single string
-	var str string
-	if err := json.Unmarshal(data, &str); err == nil {
-		v.String = &str
-		return nil
-	}
-
-	// Try to unmarshal as a structured object
-	var structured struct {
-		String      *string  `json:"string"`
-		StringArray []string `json:"stringArray"`
-	}
-	if err := json.Unmarshal(data, &structured); err == nil {
-		v.String = structured.String
-		v.StringArray = structured.StringArray
-		return nil
-	}
-
-	return fmt.Errorf("unable to unmarshal ValueUnion: invalid format")
-}
 
 // UnmarshalJSON implements custom JSON unmarshaling for IdentityContext.
 func (ic *IdentityContext) UnmarshalJSON(data []byte) error {

@@ -139,7 +139,7 @@ func mapSegmentRuleToRule(r *segments.SegmentRuleModel) SegmentRule {
 		er.Conditions = append(er.Conditions, Condition{
 			Operator: Operator(c.Operator),
 			Property: c.Property,
-			Value:    &ValueUnion{String: &c.Value},
+			Value:    c.Value,
 		})
 	}
 	// Nested rules
@@ -246,7 +246,7 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 						{
 							Operator: "IN",
 							Property: "$.identity.identifier",
-							Value:    &ValueUnion{String: func() *string { s := strings.Join(identifiers, ","); return &s }()},
+							Value:    strings.Join(identifiers, ","),
 						},
 					},
 				},

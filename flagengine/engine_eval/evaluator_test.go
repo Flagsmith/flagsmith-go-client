@@ -35,11 +35,6 @@ func doubleValue(d float64) float64 {
 	return d
 }
 
-// Helper function to create string pointer.
-func stringPtr(s string) *string {
-	return &s
-}
-
 // Helper function to create evaluation context with traits.
 func createEvaluationContext(traits map[string]any) *engine_eval.EngineEvaluationContext {
 	return &engine_eval.EngineEvaluationContext{
@@ -98,7 +93,7 @@ func TestIsContextInSegment(t *testing.T) {
 						{
 							Operator: engine_eval.Equal,
 							Property: traitKey1,
-							Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue1)},
+							Value:    traitValue1,
 						},
 					},
 				},
@@ -117,7 +112,7 @@ func TestIsContextInSegment(t *testing.T) {
 						{
 							Operator: engine_eval.Equal,
 							Property: traitKey1,
-							Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue1)},
+							Value:    traitValue1,
 						},
 					},
 				},
@@ -136,12 +131,12 @@ func TestIsContextInSegment(t *testing.T) {
 						{
 							Operator: engine_eval.Equal,
 							Property: traitKey1,
-							Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue1)},
+							Value:    traitValue1,
 						},
 						{
 							Operator: engine_eval.Equal,
 							Property: traitKey2,
-							Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue2)},
+							Value:    traitValue2,
 						},
 					},
 				},
@@ -161,12 +156,12 @@ func TestIsContextInSegment(t *testing.T) {
 						{
 							Operator: engine_eval.Equal,
 							Property: traitKey1,
-							Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue1)},
+							Value:    traitValue1,
 						},
 						{
 							Operator: engine_eval.Equal,
 							Property: traitKey2,
-							Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue2)},
+							Value:    traitValue2,
 						},
 					},
 				},
@@ -186,12 +181,12 @@ func TestIsContextInSegment(t *testing.T) {
 						{
 							Operator: engine_eval.Equal,
 							Property: traitKey1,
-							Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue1)},
+							Value:    traitValue1,
 						},
 						{
 							Operator: engine_eval.Equal,
 							Property: traitKey2,
-							Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue2)},
+							Value:    traitValue2,
 						},
 					},
 				},
@@ -214,12 +209,12 @@ func TestIsContextInSegment(t *testing.T) {
 								{
 									Operator: engine_eval.Equal,
 									Property: traitKey1,
-									Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue1)},
+									Value:    traitValue1,
 								},
 								{
 									Operator: engine_eval.Equal,
 									Property: traitKey2,
-									Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue2)},
+									Value:    traitValue2,
 								},
 							},
 						},
@@ -229,7 +224,7 @@ func TestIsContextInSegment(t *testing.T) {
 								{
 									Operator: engine_eval.Equal,
 									Property: traitKey3,
-									Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue3)},
+									Value:    traitValue3,
 								},
 							},
 						},
@@ -307,7 +302,7 @@ func TestContextMatchesCondition(t *testing.T) {
 			condition := &engine_eval.Condition{
 				Operator: c.operator,
 				Property: c.property,
-				Value:    &engine_eval.ValueUnion{String: stringPtr(c.conditionValue)},
+				Value:    c.conditionValue,
 			}
 
 			var traitValue any
@@ -362,7 +357,7 @@ func TestContextMatchesConditionInOperatorStringArray(t *testing.T) {
 			condition := &engine_eval.Condition{
 				Operator: engine_eval.In,
 				Property: traitKey1,
-				Value:    &engine_eval.ValueUnion{StringArray: c.stringArray},
+				Value:    c.stringArray,
 			}
 
 			traitValuePtr := stringValue(c.traitValue)
@@ -448,7 +443,7 @@ func TestContextMatchesConditionPercentageSplit(t *testing.T) {
 			condition := &engine_eval.Condition{
 				Operator: engine_eval.PercentageSplit,
 				Property: "",
-				Value:    &engine_eval.ValueUnion{String: stringPtr(c.segmentSplitValue)},
+				Value:    c.segmentSplitValue,
 			}
 
 			evalContext := createEvaluationContext(nil)
@@ -490,7 +485,7 @@ func TestGetContextValueIntegration(t *testing.T) {
 					{
 						Operator: engine_eval.Equal,
 						Property: "email",
-						Value:    &engine_eval.ValueUnion{String: stringPtr("test@example.com")},
+						Value:    "test@example.com",
 					},
 				},
 			},
@@ -510,7 +505,7 @@ func TestGetContextValueIntegration(t *testing.T) {
 					{
 						Operator: engine_eval.Equal,
 						Property: "$.identity.identifier",
-						Value:    &engine_eval.ValueUnion{String: stringPtr("test-user")},
+						Value:    "test-user",
 					},
 				},
 			},
@@ -530,7 +525,7 @@ func TestGetContextValueIntegration(t *testing.T) {
 					{
 						Operator: engine_eval.Equal,
 						Property: "$.environment.key",
-						Value:    &engine_eval.ValueUnion{String: stringPtr("test-env")},
+						Value:    "test-env",
 					},
 				},
 			},
@@ -559,7 +554,7 @@ func TestToStringIntegration(t *testing.T) {
 					{
 						Operator: engine_eval.Equal,
 						Property: "test_prop",
-						Value:    &engine_eval.ValueUnion{String: stringPtr("test_string")},
+						Value:    "test_string",
 					},
 				},
 			},
@@ -581,7 +576,7 @@ func TestToStringIntegration(t *testing.T) {
 					{
 						Operator: engine_eval.Equal,
 						Property: "test_prop",
-						Value:    &engine_eval.ValueUnion{String: stringPtr("true")},
+						Value:    "true",
 					},
 				},
 			},
@@ -603,7 +598,7 @@ func TestToStringIntegration(t *testing.T) {
 					{
 						Operator: engine_eval.Equal,
 						Property: "test_prop",
-						Value:    &engine_eval.ValueUnion{String: stringPtr("123.45")},
+						Value:    "123.45",
 					},
 				},
 			},
@@ -660,7 +655,7 @@ func TestSemverComparisons(t *testing.T) {
 			condition := &engine_eval.Condition{
 				Operator: c.operator,
 				Property: "version",
-				Value:    &engine_eval.ValueUnion{String: stringPtr(c.conditionValue)},
+				Value:    c.conditionValue,
 			}
 
 			evalContext := createEvaluationContext(map[string]any{
@@ -692,7 +687,7 @@ func TestComplexSegmentRules(t *testing.T) {
 					{
 						Operator: engine_eval.Equal,
 						Property: traitKey1,
-						Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue1)},
+						Value:    traitValue1,
 					},
 				},
 				Rules: []engine_eval.SegmentRule{
@@ -702,7 +697,7 @@ func TestComplexSegmentRules(t *testing.T) {
 							{
 								Operator: engine_eval.Equal,
 								Property: traitKey2,
-								Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue2)},
+								Value:    traitValue2,
 							},
 						},
 					},
@@ -712,7 +707,7 @@ func TestComplexSegmentRules(t *testing.T) {
 							{
 								Operator: engine_eval.Equal,
 								Property: traitKey3,
-								Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue3)},
+								Value:    traitValue3,
 							},
 						},
 					},
@@ -749,12 +744,12 @@ func TestComplexSegmentRules(t *testing.T) {
 					{
 						Operator: engine_eval.Equal,
 						Property: traitKey1,
-						Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue1)},
+						Value:    traitValue1,
 					},
 					{
 						Operator: engine_eval.Equal,
 						Property: traitKey2,
-						Value:    &engine_eval.ValueUnion{String: stringPtr(traitValue2)},
+						Value:    traitValue2,
 					},
 				},
 			},
@@ -799,7 +794,7 @@ func TestEdgeCases(t *testing.T) {
 					{
 						Operator: engine_eval.Equal,
 						Property: "some_trait",
-						Value:    &engine_eval.ValueUnion{String: stringPtr("value")},
+						Value:    "value",
 					},
 				},
 			},
@@ -854,7 +849,7 @@ func TestEdgeCases(t *testing.T) {
 					{
 						Operator: engine_eval.PercentageSplit,
 						Property: "",
-						Value:    &engine_eval.ValueUnion{String: stringPtr("50")},
+						Value:    "50",
 					},
 				},
 			},
@@ -896,7 +891,7 @@ func TestRegexOperator(t *testing.T) {
 						{
 							Operator: engine_eval.Regex,
 							Property: "test_trait",
-							Value:    &engine_eval.ValueUnion{String: stringPtr(c.conditionValue)},
+							Value:    c.conditionValue,
 						},
 					},
 				},
@@ -944,7 +939,7 @@ func TestModuloOperator(t *testing.T) {
 						{
 							Operator: engine_eval.Modulo,
 							Property: "test_trait",
-							Value:    &engine_eval.ValueUnion{String: stringPtr(c.conditionValue)},
+							Value:    c.conditionValue,
 						},
 					},
 				},
@@ -970,7 +965,7 @@ func TestMatchWithRegexOperator(t *testing.T) {
 				{
 					Operator: engine_eval.Regex,
 					Property: "email",
-					Value:    &engine_eval.ValueUnion{String: stringPtr(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)},
+					Value:    `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`,
 				},
 			},
 		},
@@ -994,7 +989,7 @@ func TestMatchWithModuloOperator(t *testing.T) {
 				{
 					Operator: engine_eval.Modulo,
 					Property: "user_id",
-					Value:    &engine_eval.ValueUnion{String: stringPtr("4|3")},
+					Value:    "4|3",
 				},
 			},
 		},
