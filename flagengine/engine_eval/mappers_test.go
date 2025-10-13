@@ -522,10 +522,26 @@ func TestMapEvaluationResultSegmentsToSegmentModels(t *testing.T) {
 			{
 				Key:  "1",
 				Name: "test-segment",
+				Metadata: &SegmentMetadata{
+					SegmentID: 1,
+					Source:    SegmentSourceAPI,
+				},
 			},
 			{
 				Key:  "42",
 				Name: "another-segment",
+				Metadata: &SegmentMetadata{
+					SegmentID: 42,
+					Source:    SegmentSourceAPI,
+				},
+			},
+			{
+				Key:  "",
+				Name: "identity-override-segment",
+				Metadata: &SegmentMetadata{
+					SegmentID: 0,
+					Source:    SegmentSourceIdentityOverride,
+				},
 			},
 		},
 	}
@@ -533,7 +549,7 @@ func TestMapEvaluationResultSegmentsToSegmentModels(t *testing.T) {
 	// Test the mapper
 	segmentModels := MapEvaluationResultSegmentsToSegmentModels(&result)
 
-	// Assertions
+	// Assertions - should only include API segments (2), not identity overrides
 	if len(segmentModels) != 2 {
 		t.Errorf("Expected 2 segment models, got %d", len(segmentModels))
 	}
@@ -582,28 +598,20 @@ func TestMapEvaluationResultSegmentsToSegmentModelsEmpty(t *testing.T) {
 }
 
 func TestMapEvaluationResultSegmentsToSegmentModelsInvalidKey(t *testing.T) {
-	// Test with segment result that has invalid key (non-numeric)
+	// Test with segment result that has no metadata (should be filtered out)
 	result := EvaluationResult{
 		Segments: []SegmentResult{
 			{
 				Key:  "invalid-key",
-				Name: "segment-with-invalid-key",
+				Name: "segment-without-metadata",
 			},
 		},
 	}
 
 	segmentModels := MapEvaluationResultSegmentsToSegmentModels(&result)
 
-	if len(segmentModels) != 1 {
-		t.Errorf("Expected 1 segment model, got %d", len(segmentModels))
-	}
-
-	segment := segmentModels[0]
-	if segment.ID != 0 {
-		t.Errorf("Expected segment ID to be 0 for invalid key, got %d", segment.ID)
-	}
-
-	if segment.Name != "segment-with-invalid-key" {
-		t.Errorf("Expected segment name to be 'segment-with-invalid-key', got %s", segment.Name)
+	// Segments without metadata should be filtered out
+	if len(segmentModels) != 0 {
+		t.Errorf("Expected 0 segment models (no metadata), got %d", len(segmentModels))
 	}
 }

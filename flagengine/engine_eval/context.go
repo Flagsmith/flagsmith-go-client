@@ -99,12 +99,31 @@ type IdentityContext struct {
 	Traits map[string]any `json:"traits,omitempty"`
 }
 
+// SegmentSource represents the source/origin of a segment.
+type SegmentSource string
+
+const (
+	// SegmentSourceAPI indicates the segment came from the Flagsmith API.
+	SegmentSourceAPI SegmentSource = "api"
+	// SegmentSourceIdentityOverride indicates the segment was created from identity overrides.
+	SegmentSourceIdentityOverride SegmentSource = "identity_override"
+)
+
+// SegmentMetadata contains metadata information about a segment.
+type SegmentMetadata struct {
+	SegmentID int `json:"segment_id,omitempty"`
+	// Source of the segment.
+	Source SegmentSource `json:"source,omitempty"`
+}
+
 // Represents a segment context for feature flag evaluation.
 type SegmentContext struct {
 	// Key used for % split segmentation.
 	Key string `json:"key"`
 	// The name of the segment.
 	Name string `json:"name"`
+	// Metadata about the segment.
+	Metadata *SegmentMetadata `json:"metadata,omitempty"`
 	// Feature overrides for the segment.
 	Overrides []FeatureContext `json:"overrides,omitempty"`
 	// Rules that define the segment.

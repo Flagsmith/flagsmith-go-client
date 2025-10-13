@@ -110,8 +110,12 @@ func mapFeatureStateToFeatureContext(fs *features.FeatureStateModel) FeatureCont
 
 func mapSegmentToSegmentContext(s *segments.SegmentModel) SegmentContext {
 	sc := SegmentContext{
-		Key:   strconv.Itoa(s.ID),
-		Name:  s.Name,
+		Key:  strconv.Itoa(s.ID),
+		Name: s.Name,
+		Metadata: &SegmentMetadata{
+			SegmentID: s.ID,
+			Source:    SegmentSourceAPI,
+		},
 		Rules: make([]SegmentRule, 0, len(s.Rules)),
 	}
 
@@ -232,6 +236,9 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 		sc := SegmentContext{
 			Key:  "", // Identity override segments never use % Split operator
 			Name: "identity_overrides",
+			Metadata: &SegmentMetadata{
+				Source: SegmentSourceIdentityOverride,
+			},
 			Rules: []SegmentRule{
 				{
 					Type: All,
@@ -311,6 +318,7 @@ func MapContextAndIdentityDataToContext(
 
 // MapEvaluationResultSegmentsToSegmentModels converts evaluation result segments
 // to segments.SegmentModel with only ID and Name populated.
+// Only segments with API source are included (identity overrides are filtered out).
 func MapEvaluationResultSegmentsToSegmentModels(
 	result *EvaluationResult,
 ) []*segments.SegmentModel {
@@ -321,14 +329,13 @@ func MapEvaluationResultSegmentsToSegmentModels(
 	segmentModels := make([]*segments.SegmentModel, 0, len(result.Segments))
 
 	for _, segmentResult := range result.Segments {
-		// Convert key to ID
-		id := 0
-		if parsedID, err := strconv.Atoi(segmentResult.Key); err == nil {
-			id = parsedID
+		// Only include segments from API source (filter out identity overrides)
+		if segmentResult.Metadata == nil || segmentResult.Metadata.Source != SegmentSourceAPI {
+			continue
 		}
 
 		segmentModel := &segments.SegmentModel{
-			ID:   id,
+			ID:   segmentResult.Metadata.SegmentID,
 			Name: segmentResult.Name,
 		}
 

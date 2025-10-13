@@ -27,4 +27,6 @@ type SegmentResult struct {
 	Key string `json:"key"`
 	// Segment name.
 	Name string `json:"name"`
+	// Metadata about the segment.
+	Metadata *SegmentMetadata `json:"metadata,omitempty"`
 }

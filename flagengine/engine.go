@@ -32,8 +32,9 @@ func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext) ([
 
 		// Add segment to results
 		segments = append(segments, engine_eval.SegmentResult{
-			Key:  segmentContext.Key,
-			Name: segmentContext.Name,
+			Key:      segmentContext.Key,
+			Name:     segmentContext.Name,
+			Metadata: segmentContext.Metadata,
 		})
 
 		// Process segment overrides

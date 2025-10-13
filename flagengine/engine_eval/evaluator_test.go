@@ -2,6 +2,7 @@ package engine_eval_test
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -56,9 +57,19 @@ func createEvaluationContext(traits map[string]any) *engine_eval.EngineEvaluatio
 
 // Helper function to create segment context.
 func createSegmentContext(key, name string, rules []engine_eval.SegmentRule) *engine_eval.SegmentContext {
+	// Convert key to int for SegmentID, defaulting to 0 if invalid
+	segmentID := 0
+	if id, err := strconv.Atoi(key); err == nil {
+		segmentID = id
+	}
+
 	return &engine_eval.SegmentContext{
-		Key:   key,
-		Name:  name,
+		Key:  key,
+		Name: name,
+		Metadata: &engine_eval.SegmentMetadata{
+			SegmentID: segmentID,
+			Source:    engine_eval.SegmentSourceAPI,
+		},
 		Rules: rules,
 	}
 }
