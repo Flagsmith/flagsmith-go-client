@@ -95,6 +95,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 
 	c.client.SetHeaders(map[string]string{
 		"Accept":             "application/json",
+		"User-Agent":         getUserAgent(),
 		EnvironmentKeyHeader: c.apiKey,
 	})
 

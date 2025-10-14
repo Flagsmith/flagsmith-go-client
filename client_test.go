@@ -107,6 +107,38 @@ func TestClientErrorsIfLocalEvaluationModeAndOfflineHandlerAreBothSet(t *testing
 		flagsmith.WithLocalEvaluation(context.Background()))
 }
 
+func TestUserAgentHeaderIsSent(t *testing.T) {
+	// Given
+	userAgentReceived := ""
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		userAgentReceived = req.Header.Get("User-Agent")
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, fixtures.EnvironmentJson)
+		if err != nil {
+			panic(err)
+		}
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	_, _ = client.GetEnvironmentFlags(context.Background())
+
+	// Then
+	// Get the expected User-Agent value from the SDK's getUserAgent() function
+	expectedUserAgent := flagsmith.GetUserAgentForTest()
+
+	assert.NotEmpty(t, userAgentReceived, "User-Agent header should be sent")
+	assert.Equal(t, expectedUserAgent, userAgentReceived,
+		"User-Agent header should match the value returned by getUserAgent()")
+
+	// Verify basic format requirements
+	assert.True(t, strings.HasPrefix(userAgentReceived, "flagsmith-go-sdk/"),
+		"User-Agent should start with 'flagsmith-go-sdk/', got: %s", userAgentReceived)
+}
+
 func TestClientUpdatesEnvironmentOnStartForLocalEvaluation(t *testing.T) {
 	// Given
 	ctx := context.Background()
