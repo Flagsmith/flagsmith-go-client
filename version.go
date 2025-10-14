@@ -20,7 +20,7 @@ func getUserAgent() string {
 
 	// Check if SDK module path matches (supports any major version: v4, v5, etc.)
 	isSDKModule := func(path string) bool {
-		return path == modulePrefix || strings.HasPrefix(path, modulePrefix+"/")
+		return strings.HasPrefix(path, modulePrefix+"/")
 	}
 
 	// If this is the main module (running tests or examples from within the SDK repo),
