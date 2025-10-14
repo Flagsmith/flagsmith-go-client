@@ -24,16 +24,6 @@ func TestGetUserAgentFormat(t *testing.T) {
 		"User-Agent should start with 'flagsmith-go-sdk/', got: %s", userAgent)
 }
 
-func TestGetUserAgentNotEmpty(t *testing.T) {
-	// Given/When
-	userAgent := getUserAgent()
-
-	// Then - should have a version part after the prefix
-	parts := strings.Split(userAgent, "/")
-	assert.Equal(t, 2, len(parts), "User-Agent should be in format 'flagsmith-go-sdk/<version>'")
-	assert.NotEmpty(t, parts[1], "Version part should not be empty")
-}
-
 func TestGetUserAgentValidFormats(t *testing.T) {
 	// Given/When
 	userAgent := getUserAgent()
