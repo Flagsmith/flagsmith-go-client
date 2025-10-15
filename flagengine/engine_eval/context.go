@@ -55,6 +55,8 @@ type FeatureValue struct {
 	Value any `json:"value"`
 	// The weight of the feature value variant, as a percentage number (i.e. 100.0).
 	Weight float64 `json:"weight"`
+	// Priority of the feature flag variant. Lower values indicate a higher priority when multiple variants apply to the same context key.
+	Priority *float64 `json:"priority,omitempty"`
 }
 
 // FlexibleString is a type that can unmarshal from either string or number JSON values.

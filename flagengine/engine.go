@@ -3,6 +3,7 @@ package flagengine
 import (
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/utils"
@@ -123,13 +124,16 @@ func getFlagResultFromFeatureContext(featureContext *engine_eval.FeatureContext,
 
 	// Handle multivariate features
 	if len(featureContext.Variants) > 0 && identityKey != nil && featureContext.Key != "" {
+		// Sort variants by priority (lower priority value = higher priority)
+		sortedVariants := getSortedVariantsByPriority(featureContext.Variants)
+
 		// Calculate hash percentage for the identity and feature combination
 		objectIds := []string{featureContext.Key, *identityKey}
 		hashPercentage := utils.GetHashedPercentageForObjectIds(objectIds, 1)
 
 		// Select variant based on weighted distribution
 		cumulativeWeight := 0.0
-		for _, variant := range featureContext.Variants {
+		for _, variant := range sortedVariants {
 			cumulativeWeight += variant.Weight
 			if hashPercentage <= cumulativeWeight {
 				value = variant.Value
@@ -148,4 +152,21 @@ func getFlagResultFromFeatureContext(featureContext *engine_eval.FeatureContext,
 	}
 
 	return flagResult
+}
+
+// getSortedVariantsByPriority returns a copy of variants sorted by priority (lower priority number = higher priority).
+// Variants without priority are treated as having the weakest priority (placed at the end).
+func getSortedVariantsByPriority(variants []engine_eval.FeatureValue) []engine_eval.FeatureValue {
+	// Create a copy to avoid modifying the original slice
+	sortedVariants := make([]engine_eval.FeatureValue, len(variants))
+	copy(sortedVariants, variants)
+
+	// Sort by priority (lower number = higher priority)
+	sort.SliceStable(sortedVariants, func(i, j int) bool {
+		pi := getPriorityOrDefault(sortedVariants[i].Priority)
+		pj := getPriorityOrDefault(sortedVariants[j].Priority)
+		return pi < pj
+	})
+
+	return sortedVariants
 }
