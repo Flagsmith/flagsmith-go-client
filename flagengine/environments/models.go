@@ -10,6 +10,7 @@ import (
 
 type EnvironmentModel struct {
 	ID                int                           `json:"id"`
+	Name              string                        `json:"name"`
 	APIKey            string                        `json:"api_key"`
 	Project           *projects.ProjectModel        `json:"project"`
 	FeatureStates     []*features.FeatureStateModel `json:"feature_states"`

@@ -17,6 +17,7 @@ func TestMapEnvironmentDocumentToEvaluationContext(t *testing.T) {
 	// Create test data
 	env := &environments.EnvironmentModel{
 		ID:     1,
+		Name:   "Test Environment",
 		APIKey: "test-api-key",
 		Project: &projects.ProjectModel{
 			ID:   1,
@@ -79,6 +80,9 @@ func TestMapEnvironmentDocumentToEvaluationContext(t *testing.T) {
 	// Test Environment mapping
 	if result.Environment.Key != "test-api-key" {
 		t.Errorf("Expected Environment.Key to be 'test-api-key', got %v", result.Environment.Key)
+	}
+	if result.Environment.Name != "Test Environment" {
+		t.Errorf("Expected Environment.Name to be 'Test Environment', got %v", result.Environment.Name)
 	}
 
 	// Test Features mapping
@@ -188,6 +192,7 @@ func TestMapEnvironmentDocumentToEvaluationContext(t *testing.T) {
 func TestMapEnvironmentDocumentToEvaluationContextWithNilProject(t *testing.T) {
 	env := &environments.EnvironmentModel{
 		ID:            1,
+		Name:          "Test Env Without Project",
 		APIKey:        "test-api-key",
 		Project:       nil,
 		FeatureStates: []*features.FeatureStateModel{},
@@ -196,9 +201,9 @@ func TestMapEnvironmentDocumentToEvaluationContextWithNilProject(t *testing.T) {
 
 	result := MapEnvironmentDocumentToEvaluationContext(env)
 
-	// When project is nil, name should default to APIKey
-	if result.Environment.Name != "test-api-key" {
-		t.Errorf("Expected Environment.Name to default to APIKey 'test-api-key', got %v", result.Environment.Name)
+	// Environment name should be preserved
+	if result.Environment.Name != "Test Env Without Project" {
+		t.Errorf("Expected Environment.Name to be 'Test Env Without Project', got %v", result.Environment.Name)
 	}
 
 	// Should have no segments when project is nil

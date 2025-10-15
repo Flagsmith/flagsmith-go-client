@@ -25,7 +25,7 @@ func MapEnvironmentDocumentToEvaluationContext(env *environments.EnvironmentMode
 	// map environment -> EnvironmentContext
 	ctx.Environment = EnvironmentContext{
 		Key:  env.APIKey,
-		Name: env.APIKey,
+		Name: env.Name,
 	}
 
 	// Features (environment defaults)
