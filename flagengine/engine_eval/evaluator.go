@@ -160,14 +160,38 @@ func matchInOperator(segmentCondition *Condition, contextValue ContextValue) boo
 
 func getContextValue(ec *EngineEvaluationContext, property string) ContextValue {
 	if strings.HasPrefix(property, "$.") {
-		return getContextValueGetter(property)(ec)
-	} else if ec.Identity != nil && ec.Identity.Traits != nil {
+		value := getContextValueGetter(property)(ec)
+		// Only use JSONPath result if it's a primitive value (not an object/array/map)
+		if value != nil && isPrimitive(value) {
+			return value
+		}
+		// If JSONPath returned non-primitive or nil, fall back to checking traits by exact key name
+	}
+
+	// Check traits by property name (handles both regular traits and invalid JSONPath strings)
+	if ec.Identity != nil && ec.Identity.Traits != nil {
 		value, exists := ec.Identity.Traits[property]
 		if exists {
 			return value
 		}
 	}
 	return nil
+}
+
+// isPrimitive checks if a value is a primitive type (string, number, bool, nil)
+// Objects, arrays, and maps are not considered primitive.
+func isPrimitive(value any) bool {
+	if value == nil {
+		return true
+	}
+	switch value.(type) {
+	case string, bool, int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64:
+		return true
+	default:
+		return false
+	}
 }
 
 // getContextValueGetter returns a function to retrieve a value from the evaluation context
