@@ -68,9 +68,15 @@ func mapMultivariateFeatureStateValuesToVariants(multivariateValues []*features.
 
 	variants := make([]FeatureValue, 0, len(multivariateValues))
 	for _, mv := range multivariateValues {
+		var priority *float64
+		if mv.ID != nil {
+			p := float64(*mv.ID)
+			priority = &p
+		}
 		variants = append(variants, FeatureValue{
-			Value:  mv.MultivariateFeatureOption.Value,
-			Weight: mv.PercentageAllocation,
+			Value:    mv.MultivariateFeatureOption.Value,
+			Weight:   mv.PercentageAllocation,
+			Priority: priority,
 		})
 	}
 	return variants
