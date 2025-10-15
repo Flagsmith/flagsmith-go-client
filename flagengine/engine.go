@@ -25,8 +25,16 @@ func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext) ([
 	segments := []engine_eval.SegmentResult{}
 	segmentFeatureContexts := make(map[string]featureContextWithSegmentName)
 
-	// Process segments
-	for _, segmentContext := range ec.Segments {
+	// Get sorted segment keys for deterministic ordering
+	segmentKeys := make([]string, 0, len(ec.Segments))
+	for key := range ec.Segments {
+		segmentKeys = append(segmentKeys, key)
+	}
+	sort.Strings(segmentKeys)
+
+	// Process segments in sorted order
+	for _, key := range segmentKeys {
+		segmentContext := ec.Segments[key]
 		if !engine_eval.IsContextInSegment(ec, &segmentContext) {
 			continue
 		}
