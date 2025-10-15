@@ -171,9 +171,8 @@ func getSortedVariantsByPriority(variants []engine_eval.FeatureValue) []engine_e
 
 	// Sort by priority (lower number = higher priority)
 	sort.SliceStable(sortedVariants, func(i, j int) bool {
-		pi := getPriorityOrDefault(sortedVariants[i].Priority)
-		pj := getPriorityOrDefault(sortedVariants[j].Priority)
-		return pi < pj
+		// Use big.Int Cmp: returns -1 if i < j (i has higher priority)
+		return sortedVariants[i].Priority.Cmp(&sortedVariants[j].Priority) < 0
 	})
 
 	return sortedVariants

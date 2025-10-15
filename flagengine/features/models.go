@@ -2,8 +2,10 @@ package features
 
 import (
 	"encoding/json"
+	"math/big"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/utils"
 )
@@ -70,6 +72,21 @@ func (mfsv *MultivariateFeatureStateValueModel) Key() string {
 		return strconv.Itoa(*mfsv.ID)
 	}
 	return mfsv.MVFSValueUUID
+}
+func (mfsv *MultivariateFeatureStateValueModel) Priority() big.Int {
+	if mfsv.ID != nil {
+		return *big.NewInt(int64(*mfsv.ID))
+	}
+	// When ID is not set, convert the UUID to a big integer for priority
+	if mfsv.MVFSValueUUID != "" {
+		// Remove hyphens from UUID and parse as hexadecimal
+		hexStr := strings.ReplaceAll(mfsv.MVFSValueUUID, "-", "")
+		if bigInt, ok := new(big.Int).SetString(hexStr, 16); ok {
+			return *bigInt
+		}
+	}
+	// Return max int64 as default (weakest priority - no priority set)
+	return *big.NewInt(9223372036854775807)
 }
 
 func (fs *FeatureStateModel) Value(identityID string) interface{} {
