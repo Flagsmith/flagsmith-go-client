@@ -69,12 +69,13 @@ func TestEngine(t *testing.T) {
 			// Compare the results
 			assert.Equal(t, expected.Flags, actual.Flags, "Flags should match")
 
-			// Compare segments - check key and name only since metadata is an implementation detail
+			// Compare segments
 			if len(expected.Segments) > 0 {
 				require.Len(t, actual.Segments, len(expected.Segments), "Segment count should match")
 				for i, expectedSeg := range expected.Segments {
 					assert.Equal(t, expectedSeg.Key, actual.Segments[i].Key, "Segment key should match")
 					assert.Equal(t, expectedSeg.Name, actual.Segments[i].Name, "Segment name should match")
+					assert.Equal(t, expectedSeg.Metadata, actual.Segments[i].Metadata, "Segment metadata should match")
 				}
 			}
 		})
