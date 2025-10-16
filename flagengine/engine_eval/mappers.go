@@ -263,11 +263,7 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 				Name:       override.featureName,
 				Enabled:    override.enabled,
 				Priority:   &priority,
-			}
-
-			// Set the value if provided
-			if override.featureValue != "" {
-				featureOverride.Value = override.featureValue
+				Value:      override.featureValue,
 			}
 
 			sc.Overrides = append(sc.Overrides, featureOverride)
