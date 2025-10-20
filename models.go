@@ -3,7 +3,6 @@ package flagsmith
 import (
 	"encoding/json"
 	"fmt"
-	"strconv"
 
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
 	"github.com/Flagsmith/flagsmith-go-client/v5/trait"
@@ -28,10 +27,10 @@ type IdentityTraits struct {
 func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) Flag {
 	value := flagResult.Value
 
-	// Convert FeatureKey (string ID) to integer FeatureID
+	// Get FeatureID from metadata
 	featureID := 0
-	if id, err := strconv.Atoi(flagResult.FeatureKey); err == nil {
-		featureID = id
+	if flagResult.Metadata != nil {
+		featureID = flagResult.Metadata.FeatureID
 	}
 
 	return Flag{

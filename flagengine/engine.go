@@ -99,6 +99,7 @@ func getFlagResults(ec *engine_eval.EngineEvaluationContext, segmentFeatureConte
 					Name:       fc.Name,
 					Reason:     &reason,
 					Value:      fc.Value,
+					Metadata:   fc.Metadata,
 				}
 			} else {
 				// Use default feature context
@@ -157,6 +158,7 @@ func getFlagResultFromFeatureContext(featureContext *engine_eval.FeatureContext,
 		Name:       featureContext.Name,
 		Value:      value,
 		Reason:     &reason,
+		Metadata:   featureContext.Metadata,
 	}
 
 	return flagResult

@@ -90,6 +90,9 @@ func mapFeatureStateToFeatureContext(fs *features.FeatureStateModel) FeatureCont
 		FeatureKey: strconv.Itoa(fs.Feature.ID),
 		Key:        key,
 		Name:       fs.Feature.Name,
+		Metadata: &FeatureMetadata{
+			FeatureID: fs.Feature.ID,
+		},
 	}
 
 	// Value
@@ -163,7 +166,6 @@ func mapRuleType(t segments.RuleType) Type {
 
 // overridesKey represents a unique set of feature overrides for grouping identities.
 type overridesKey struct {
-	featureKey   string
 	featureName  string
 	enabled      bool
 	featureValue string
@@ -184,7 +186,7 @@ func generateHash(overrides overridesKeyList) string {
 	// Create a string representation of the overrides
 	var hashInput string
 	for _, override := range overrides {
-		hashInput += fmt.Sprintf("%s:%s:%t:%s;", override.featureKey, override.featureName, override.enabled, override.featureValue)
+		hashInput += fmt.Sprintf("%s:%t:%s;", override.featureName, override.enabled, override.featureValue)
 	}
 
 	// Generate SHA256 hash
@@ -197,6 +199,7 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 	// Map from overrides key to list of identifiers
 	featuresToIdentifiers := make(map[string][]string)
 	overridesKeyToList := make(map[string]overridesKeyList)
+	featureNameToID := make(map[string]int)
 
 	for _, identityOverride := range identityOverrides {
 		if len(identityOverride.IdentityFeatures) == 0 {
@@ -211,8 +214,10 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 				featureValue = fmt.Sprint(featureState.RawValue)
 			}
 
+			// Store feature name to ID mapping for later lookup
+			featureNameToID[featureState.Feature.Name] = featureState.Feature.ID
+
 			overrides = append(overrides, overridesKey{
-				featureKey:   strconv.Itoa(featureState.Feature.ID),
 				featureName:  featureState.Feature.Name,
 				enabled:      featureState.Enabled,
 				featureValue: featureValue,
@@ -257,13 +262,17 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 		// Create overrides for each feature
 		for _, override := range overrides {
 			priority := math.Inf(-1) // Strongest possible priority
+			featureID := featureNameToID[override.featureName]
 			featureOverride := FeatureContext{
 				Key:        "", // Identity overrides never carry multivariate options
-				FeatureKey: override.featureKey,
+				FeatureKey: strconv.Itoa(featureID),
 				Name:       override.featureName,
 				Enabled:    override.enabled,
 				Priority:   &priority,
 				Value:      override.featureValue,
+				Metadata: &FeatureMetadata{
+					FeatureID: featureID,
+				},
 			}
 
 			sc.Overrides = append(sc.Overrides, featureOverride)

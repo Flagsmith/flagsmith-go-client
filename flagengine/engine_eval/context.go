@@ -48,6 +48,8 @@ type FeatureContext struct {
 	// An array of environment default values associated with the feature. Contains a single
 	// value for standard features, or multiple values for multivariate features.
 	Variants []FeatureValue `json:"variants,omitempty"`
+	// Metadata about the feature.
+	Metadata *FeatureMetadata `json:"metadata,omitempty"`
 }
 
 // Represents a multivariate value for a feature flag.
@@ -117,6 +119,11 @@ type SegmentMetadata struct {
 	SegmentID int `json:"segment_id,omitempty"`
 	// Source of the segment.
 	Source SegmentSource `json:"source,omitempty"`
+}
+
+// FeatureMetadata contains metadata information about a feature.
+type FeatureMetadata struct {
+	FeatureID int `json:"feature_id,omitempty"`
 }
 
 // Represents a segment context for feature flag evaluation.

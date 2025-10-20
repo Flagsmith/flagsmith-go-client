@@ -20,6 +20,8 @@ type FlagResult struct {
 	Reason *string `json:"reason,omitempty"`
 	// Feature flag value.
 	Value any `json:"value,omitempty"`
+	// Metadata about the feature.
+	Metadata *FeatureMetadata `json:"metadata,omitempty"`
 }
 
 type SegmentResult struct {
