@@ -4,9 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
-
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
+	"github.com/Flagsmith/flagsmith-go-client/v5/trait"
 )
 
 type Flag struct {
@@ -17,32 +16,29 @@ type Flag struct {
 	FeatureName string
 }
 
-type Trait struct {
-	TraitKey   string      `json:"trait_key"`
-	TraitValue interface{} `json:"trait_value"`
-	Transient  bool        `json:"transient,omitempty"`
-}
+type Trait = trait.Trait
 
 type IdentityTraits struct {
-	Identifier string   `json:"identifier"`
-	Traits     []*Trait `json:"traits"`
-	Transient  bool     `json:"transient,omitempty"`
+	Identifier string         `json:"identifier"`
+	Traits     []*trait.Trait `json:"traits"`
+	Transient  bool           `json:"transient,omitempty"`
 }
 
-func (t *Trait) ToTraitModel() *traits.TraitModel {
-	return &traits.TraitModel{
-		TraitKey:   t.TraitKey,
-		TraitValue: fmt.Sprint(t.TraitValue),
+func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) Flag {
+	value := flagResult.Value
+
+	// Get FeatureID from metadata
+	featureID := 0
+	if flagResult.Metadata != nil {
+		featureID = flagResult.Metadata.FeatureID
 	}
-}
 
-func makeFlagFromFeatureState(featureState *features.FeatureStateModel, identityID string) Flag {
 	return Flag{
-		Enabled:     featureState.Enabled,
-		Value:       featureState.Value(identityID),
+		Enabled:     flagResult.Enabled,
+		Value:       value,
 		IsDefault:   false,
-		FeatureID:   featureState.Feature.ID,
-		FeatureName: featureState.Feature.Name,
+		FeatureID:   featureID,
+		FeatureName: flagResult.Name,
 	}
 }
 
@@ -52,13 +48,10 @@ type Flags struct {
 	defaultFlagHandler func(featureName string) (Flag, error)
 }
 
-func makeFlagsFromFeatureStates(featureStates []*features.FeatureStateModel,
-	analyticsProcessor *AnalyticsProcessor,
-	defaultFlagHandler func(featureName string) (Flag, error),
-	identityID string) Flags {
-	flags := make([]Flag, len(featureStates))
-	for i, featureState := range featureStates {
-		flags[i] = makeFlagFromFeatureState(featureState, identityID)
+func makeFlagsFromEngineEvaluationResult(evaluationResult *engine_eval.EvaluationResult, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) (Flag, error)) Flags {
+	flags := make([]Flag, 0, len(evaluationResult.Flags))
+	for _, flagResult := range evaluationResult.Flags {
+		flags = append(flags, makeFlagFromEngineEvaluationFlagResult(flagResult))
 	}
 
 	return Flags{

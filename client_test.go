@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	flagsmith "github.com/Flagsmith/flagsmith-go-client/v4"
-	"github.com/Flagsmith/flagsmith-go-client/v4/fixtures"
+	flagsmith "github.com/Flagsmith/flagsmith-go-client/v5"
+	"github.com/Flagsmith/flagsmith-go-client/v5/fixtures"
 	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
 )

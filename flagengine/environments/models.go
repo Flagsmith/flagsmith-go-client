@@ -3,13 +3,14 @@ package environments
 import (
 	"time"
 
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/projects"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/features"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/identities"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/projects"
 )
 
 type EnvironmentModel struct {
 	ID                int                           `json:"id"`
+	Name              string                        `json:"name"`
 	APIKey            string                        `json:"api_key"`
 	Project           *projects.ProjectModel        `json:"project"`
 	FeatureStates     []*features.FeatureStateModel `json:"feature_states"`

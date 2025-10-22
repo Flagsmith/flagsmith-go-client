@@ -1,115 +1,181 @@
 package flagengine
 
 import (
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/segments"
+	"fmt"
+	"math"
+	"sort"
+
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/utils"
 )
 
-// GetEnvironmentFeatureStates returns a list of feature states for a given environment.
-func GetEnvironmentFeatureStates(environment *environments.EnvironmentModel) []*features.FeatureStateModel {
-	if environment.Project.HideDisabledFlags {
-		var featureStates []*features.FeatureStateModel
-		for _, fs := range environment.FeatureStates {
-			if fs.Enabled {
-				featureStates = append(featureStates, fs)
-			}
-		}
-		return featureStates
-	}
-	return environment.FeatureStates
+type featureContextWithSegmentName struct {
+	featureContext *engine_eval.FeatureContext
+	segmentName    string
 }
 
-// GetEnvironmentFeatureState returns a specific feature state for a given featureName in a given environment, or nil feature state is not found.
-func GetEnvironmentFeatureState(environment *environments.EnvironmentModel, featureName string) *features.FeatureStateModel {
-	for _, fs := range environment.FeatureStates {
-		if fs.Feature.Name == featureName {
-			return fs
-		}
+func getPriorityOrDefault(priority *float64) float64 {
+	if priority != nil {
+		return *priority
 	}
-	return nil
+	return math.Inf(1) // Weakest possible priority
 }
 
-// GetIdentityFeatureStates returns a list of feature states for a given identity in a given environment.
-func GetIdentityFeatureStates(
-	environment *environments.EnvironmentModel,
-	identity *identities.IdentityModel,
-	overrideTraits ...*traits.TraitModel,
-) []*features.FeatureStateModel {
-	featureStatesMap := getIdentityFeatureStatesMap(environment, identity, overrideTraits...)
-	featureStates := make([]*features.FeatureStateModel, 0, len(featureStatesMap))
-	hideDisabled := environment.Project.HideDisabledFlags
-	for _, fs := range featureStatesMap {
-		if hideDisabled && !fs.Enabled {
+func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
+	segments := []engine_eval.SegmentResult{}
+	segmentFeatureContexts := make(map[string]featureContextWithSegmentName)
+
+	// Get sorted segment keys for deterministic ordering
+	segmentKeys := make([]string, 0, len(ec.Segments))
+	for key := range ec.Segments {
+		segmentKeys = append(segmentKeys, key)
+	}
+	sort.Strings(segmentKeys)
+
+	// Process segments in sorted order
+	for _, key := range segmentKeys {
+		segmentContext := ec.Segments[key]
+		if !engine_eval.IsContextInSegment(ec, &segmentContext) {
 			continue
 		}
-		featureStates = append(featureStates, fs)
-	}
 
-	return featureStates
-}
+		// Add segment to results
+		segments = append(segments, engine_eval.SegmentResult{
+			Key:      segmentContext.Key,
+			Name:     segmentContext.Name,
+			Metadata: segmentContext.Metadata,
+		})
 
-func GetIdentityFeatureState(
-	environment *environments.EnvironmentModel,
-	identity *identities.IdentityModel,
-	featureName string,
-	overrideTraits ...*traits.TraitModel,
-) *features.FeatureStateModel {
-	featureStates := getIdentityFeatureStatesMap(environment, identity, overrideTraits...)
+		// Process segment overrides
+		if segmentContext.Overrides != nil {
+			for i := range segmentContext.Overrides {
+				override := &segmentContext.Overrides[i]
+				featureKey := override.FeatureKey
 
-	for _, featureState := range featureStates {
-		if featureState.Feature.Name == featureName {
-			return featureState
-		}
-	}
-	return nil
-}
+				// Check if we should update the segment feature context
+				shouldUpdate := false
+				if existing, exists := segmentFeatureContexts[featureKey]; !exists {
+					shouldUpdate = true
+				} else {
+					existingPriority := getPriorityOrDefault(existing.featureContext.Priority)
+					overridePriority := getPriorityOrDefault(override.Priority)
+					if overridePriority < existingPriority {
+						shouldUpdate = true
+					}
+				}
 
-func GetIdentitySegments(
-	environment *environments.EnvironmentModel,
-	identity *identities.IdentityModel,
-	overrideTraits ...*traits.TraitModel,
-) []*segments.SegmentModel {
-	var list []*segments.SegmentModel
-
-	for _, s := range environment.Project.Segments {
-		if segments.EvaluateIdentityInSegment(identity, s, overrideTraits...) {
-			list = append(list, s)
-		}
-	}
-
-	return list
-}
-
-func getIdentityFeatureStatesMap(
-	environment *environments.EnvironmentModel,
-	identity *identities.IdentityModel,
-	overrideTraits ...*traits.TraitModel,
-) map[int]*features.FeatureStateModel {
-	featureStates := make(map[int]*features.FeatureStateModel)
-	for _, fs := range environment.FeatureStates {
-		featureStates[fs.Feature.ID] = fs
-	}
-
-	identitySegments := GetIdentitySegments(environment, identity, overrideTraits...)
-	for _, segment := range identitySegments {
-		for _, fs := range segment.FeatureStates {
-			existing_fs, exists := featureStates[fs.Feature.ID]
-			if exists && existing_fs.IsHigherSegmentPriority(fs) {
-				continue
+				if shouldUpdate {
+					segmentFeatureContexts[featureKey] = featureContextWithSegmentName{
+						featureContext: override,
+						segmentName:    segmentContext.Name,
+					}
+				}
 			}
-
-			featureStates[fs.Feature.ID] = fs
 		}
 	}
 
-	for _, fs := range identity.IdentityFeatures {
-		if _, ok := featureStates[fs.Feature.ID]; ok {
-			featureStates[fs.Feature.ID] = fs
+	return segments, segmentFeatureContexts
+}
+
+func getFlagResults(ec *engine_eval.EngineEvaluationContext, segmentFeatureContexts map[string]featureContextWithSegmentName) map[string]*engine_eval.FlagResult {
+	flags := make(map[string]*engine_eval.FlagResult)
+
+	// Get identity key if identity exists
+	var identityKey *string
+	if ec.Identity != nil {
+		identityKey = &ec.Identity.Key
+	}
+
+	if ec.Features != nil {
+		for _, featureContext := range ec.Features {
+			// Check if we have a segment override for this feature
+			if segmentFeatureCtx, exists := segmentFeatureContexts[featureContext.FeatureKey]; exists {
+				// Use segment override
+				fc := segmentFeatureCtx.featureContext
+				reason := fmt.Sprintf("TARGETING_MATCH; segment=%s", segmentFeatureCtx.segmentName)
+				flags[featureContext.Name] = &engine_eval.FlagResult{
+					Enabled:    fc.Enabled,
+					FeatureKey: fc.FeatureKey,
+					Name:       fc.Name,
+					Reason:     &reason,
+					Value:      fc.Value,
+					Metadata:   fc.Metadata,
+				}
+			} else {
+				// Use default feature context
+				flagResult := getFlagResultFromFeatureContext(&featureContext, identityKey)
+				flags[featureContext.Name] = &flagResult
+			}
 		}
 	}
 
-	return featureStates
+	return flags
+}
+
+// GetEvaluationResult computes flags and matched segments.
+func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.EvaluationResult {
+	// Process segments
+	segments, segmentFeatureContexts := getMatchingSegmentsAndOverrides(ec)
+
+	// Get flag results
+	flags := getFlagResults(ec, segmentFeatureContexts)
+
+	return engine_eval.EvaluationResult{
+		Flags:    flags,
+		Segments: segments,
+	}
+}
+
+// getFlagResultFromFeatureContext creates a FlagResult from a FeatureContext.
+func getFlagResultFromFeatureContext(featureContext *engine_eval.FeatureContext, identityKey *string) engine_eval.FlagResult {
+	reason := "DEFAULT"
+	value := featureContext.Value
+
+	// Handle multivariate features
+	if len(featureContext.Variants) > 0 && identityKey != nil && featureContext.Key != "" {
+		// Sort variants by priority (lower priority value = higher priority)
+		sortedVariants := getSortedVariantsByPriority(featureContext.Variants)
+
+		// Calculate hash percentage for the identity and feature combination
+		objectIds := []string{featureContext.Key, *identityKey}
+		hashPercentage := utils.GetHashedPercentageForObjectIds(objectIds, 1)
+
+		// Select variant based on weighted distribution
+		cumulativeWeight := 0.0
+		for _, variant := range sortedVariants {
+			cumulativeWeight += variant.Weight
+			if hashPercentage <= cumulativeWeight {
+				value = variant.Value
+				reason = fmt.Sprintf("SPLIT; weight=%.0f", variant.Weight)
+				break
+			}
+		}
+	}
+
+	flagResult := engine_eval.FlagResult{
+		Enabled:    featureContext.Enabled,
+		FeatureKey: featureContext.FeatureKey,
+		Name:       featureContext.Name,
+		Value:      value,
+		Reason:     &reason,
+		Metadata:   featureContext.Metadata,
+	}
+
+	return flagResult
+}
+
+// getSortedVariantsByPriority returns a copy of variants sorted by priority (lower priority number = higher priority).
+// Variants without priority are treated as having the weakest priority (placed at the end).
+func getSortedVariantsByPriority(variants []engine_eval.FeatureValue) []engine_eval.FeatureValue {
+	// Create a copy to avoid modifying the original slice
+	sortedVariants := make([]engine_eval.FeatureValue, len(variants))
+	copy(sortedVariants, variants)
+
+	// Sort by priority (lower number = higher priority)
+	sort.SliceStable(sortedVariants, func(i, j int) bool {
+		// Use big.Int Cmp: returns -1 if i < j (i has higher priority)
+		return sortedVariants[i].Priority.Cmp(&sortedVariants[j].Priority) < 0
+	})
+
+	return sortedVariants
 }

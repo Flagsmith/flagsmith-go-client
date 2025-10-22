@@ -1,60 +1,14 @@
 package segments
 
 import (
-	"math"
-	"regexp"
-	"strconv"
-	"strings"
-
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/features"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/utils"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/features"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/utils"
 )
 
 type SegmentConditionModel struct {
 	Operator ConditionOperator `json:"operator"`
 	Value    string            `json:"value"`
 	Property string            `json:"property_"`
-}
-
-func (m *SegmentConditionModel) MatchesTraitValue(traitValue string) bool {
-	switch m.Operator {
-	case Modulo:
-		return m.modulo(traitValue)
-	case Regex:
-		return m.regex(traitValue)
-	default:
-		return match(m.Operator, traitValue, m.Value)
-	}
-}
-
-func (m *SegmentConditionModel) regex(traitValue string) bool {
-	match, err := regexp.Match(m.Value, []byte(traitValue))
-	if err != nil {
-		return false
-	}
-	return match
-}
-
-func (m *SegmentConditionModel) modulo(traitValue string) bool {
-	values := strings.Split(m.Value, "|")
-	if len(values) != 2 {
-		return false
-	}
-
-	divisor, err := strconv.ParseFloat(values[0], 64)
-	if err != nil {
-		return false
-	}
-
-	remainder, err := strconv.ParseFloat(values[1], 64)
-	if err != nil {
-		return false
-	}
-	traitValueFloat, err := strconv.ParseFloat(traitValue, 64)
-	if err != nil {
-		return false
-	}
-	return math.Mod(traitValueFloat, divisor) == remainder
 }
 
 type SegmentRuleModel struct {

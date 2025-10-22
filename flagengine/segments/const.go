@@ -15,7 +15,7 @@ const (
 	Contains             ConditionOperator = "CONTAINS"
 	GreaterThanInclusive ConditionOperator = "GREATER_THAN_INCLUSIVE"
 	NotContains          ConditionOperator = "NOT_CONTAINS"
-	NotEqual             ConditionOperator = "NOT EQUAL"
+	NotEqual             ConditionOperator = "NOT_EQUAL"
 	Regex                ConditionOperator = "REGEX"
 	PercentageSplit      ConditionOperator = "PERCENTAGE_SPLIT"
 	IsSet                ConditionOperator = "IS_SET"

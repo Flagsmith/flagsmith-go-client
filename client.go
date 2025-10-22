@@ -11,13 +11,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/environments"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities"
-	"github.com/Flagsmith/flagsmith-go-client/v4/flagengine/segments"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/environments"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/segments"
 	"github.com/go-resty/resty/v2"
-
-	enginetraits "github.com/Flagsmith/flagsmith-go-client/v4/flagengine/identities/traits"
 )
 
 type contextKey string
@@ -30,7 +28,7 @@ type Client struct {
 	config config
 
 	environment             atomic.Value
-	identitiesWithOverrides atomic.Value
+	engineEvaluationContext atomic.Value
 
 	analyticsProcessor *AnalyticsProcessor
 	realtime           *realtime
@@ -141,7 +139,10 @@ func NewClient(apiKey string, options ...Option) *Client {
 		panic("local evaluation and offline handler cannot be used together.")
 	}
 	if c.offlineHandler != nil {
-		c.environment.Store(c.offlineHandler.GetEnvironment())
+		env := c.offlineHandler.GetEnvironment()
+		c.environment.Store(env)
+		engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(env)
+		c.engineEvaluationContext.Store(&engineEvalCtx)
 	}
 
 	if c.config.localEvaluation {
@@ -230,9 +231,10 @@ func (c *Client) GetIdentityFlags(ctx context.Context, identifier string, traits
 
 // Returns an array of segments that the given identity is part of.
 func (c *Client) GetIdentitySegments(identifier string, traits []*Trait) ([]*segments.SegmentModel, error) {
-	if env, ok := c.environment.Load().(*environments.EnvironmentModel); ok {
-		identity := c.getIdentityModel(identifier, env.APIKey, traits)
-		return flagengine.GetIdentitySegments(env, &identity), nil
+	if evalCtx, ok := c.engineEvaluationContext.Load().(*engine_eval.EngineEvaluationContext); ok {
+		engineEvalCtx := engine_eval.MapContextAndIdentityDataToContext(*evalCtx, identifier, traits)
+		result := flagengine.GetEvaluationResult(&engineEvalCtx)
+		return engine_eval.MapEvaluationResultSegmentsToSegmentModels(&result), nil
 	}
 	return nil, &FlagsmithClientError{msg: "flagsmith: Local evaluation required to obtain identity segments"}
 }
@@ -333,32 +335,22 @@ func (c *Client) GetIdentityFlagsFromAPI(ctx context.Context, identifier string,
 }
 
 func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits []*Trait) (Flags, error) {
-	env, ok := c.environment.Load().(*environments.EnvironmentModel)
+	evalCtx, ok := c.engineEvaluationContext.Load().(*engine_eval.EngineEvaluationContext)
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	identity := c.getIdentityModel(identifier, env.APIKey, traits)
-	featureStates := flagengine.GetIdentityFeatureStates(env, &identity)
-	flags := makeFlagsFromFeatureStates(
-		featureStates,
-		c.analyticsProcessor,
-		c.defaultFlagHandler,
-		identifier,
-	)
-	return flags, nil
+	engineEvalCtx := engine_eval.MapContextAndIdentityDataToContext(*evalCtx, identifier, traits)
+	result := flagengine.GetEvaluationResult(&engineEvalCtx)
+	return makeFlagsFromEngineEvaluationResult(&result, c.analyticsProcessor, c.defaultFlagHandler), nil
 }
 
 func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
-	env, ok := c.environment.Load().(*environments.EnvironmentModel)
+	evalCtx, ok := c.engineEvaluationContext.Load().(*engine_eval.EngineEvaluationContext)
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	return makeFlagsFromFeatureStates(
-		env.FeatureStates,
-		c.analyticsProcessor,
-		c.defaultFlagHandler,
-		"",
-	), nil
+	result := flagengine.GetEvaluationResult(evalCtx)
+	return makeFlagsFromEngineEvaluationResult(&result, c.analyticsProcessor, c.defaultFlagHandler), nil
 }
 
 func (c *Client) pollEnvironment(ctx context.Context, pollForever bool) {
@@ -461,35 +453,13 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		isNew = true
 	}
 	c.environment.Store(&env)
-	identitiesWithOverrides := make(map[string]identities.IdentityModel)
-	for _, id := range env.IdentityOverrides {
-		identitiesWithOverrides[id.Identifier] = *id
-	}
-	c.identitiesWithOverrides.Store(identitiesWithOverrides)
+
+	engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(&env)
+	c.engineEvaluationContext.Store(&engineEvalCtx)
 
 	if isNew {
 		c.log.Info("environment updated", "environment", env.APIKey, "updated_at", env.UpdatedAt)
 	}
 
 	return nil
-}
-
-func (c *Client) getIdentityModel(identifier string, apiKey string, traits []*Trait) identities.IdentityModel {
-	identityTraits := make([]*enginetraits.TraitModel, len(traits))
-	for i, trait := range traits {
-		identityTraits[i] = trait.ToTraitModel()
-	}
-
-	identitiesWithOverrides, _ := c.identitiesWithOverrides.Load().(map[string]identities.IdentityModel)
-	identity, ok := identitiesWithOverrides[identifier]
-	if ok {
-		identity.IdentityTraits = identityTraits
-		return identity
-	}
-
-	return identities.IdentityModel{
-		Identifier:        identifier,
-		IdentityTraits:    identityTraits,
-		EnvironmentAPIKey: apiKey,
-	}
 }

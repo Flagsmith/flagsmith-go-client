@@ -1,17 +1,18 @@
-module github.com/Flagsmith/flagsmith-go-client/v4
+module github.com/Flagsmith/flagsmith-go-client/v5
 
-go 1.22
+go 1.24
 
 require (
 	github.com/blang/semver/v4 v4.0.0
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.10.0
-	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1
 )
 
 require (
 	github.com/go-resty/resty/v2 v2.16.5
 	github.com/itlightning/dateparse v0.2.1
+	github.com/ohler55/ojg v1.26.10
+	github.com/tailscale/hujson v0.0.0-20250605163823-992244df8c5a
 )
 
 require (
