@@ -95,11 +95,10 @@ func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides ma
 		for featureName, featureContext := range ec.Features {
 			// Check if there's an override for this feature
 			if override, ok := featureOverrides[featureName]; ok {
-				reason := fmt.Sprintf("TARGETING_MATCH; segment=%s", override.segmentName)
 				flags[featureName] = &engine_eval.FlagResult{
 					Enabled:  override.featureContext.Enabled,
 					Name:     featureName,
-					Reason:   &reason,
+					Reason:   fmt.Sprintf("TARGETING_MATCH; segment=%s", override.segmentName),
 					Value:    override.featureContext.Value,
 					Metadata: override.featureContext.Metadata,
 				}
@@ -158,7 +157,7 @@ func getFlagResultFromFeatureContext(featureName string, featureContext *engine_
 		Enabled:  featureContext.Enabled,
 		Name:     featureName,
 		Value:    value,
-		Reason:   &reason,
+		Reason:   reason,
 		Metadata: featureContext.Metadata,
 	}
 

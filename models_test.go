@@ -92,7 +92,7 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 			input: &engine_eval.FlagResult{
 				Enabled: true,
 				Name:    "reason_feature",
-				Reason:  stringPtr("TARGETING_MATCH"),
+				Reason:  "TARGETING_MATCH",
 				Value:   "reason_value",
 			},
 			expected: Flag{
@@ -312,9 +312,4 @@ func TestMakeFlagsFromEngineEvaluationResultWithProcessorAndHandler(t *testing.T
 			t.Errorf("Expected handler to return default flag")
 		}
 	}
-}
-
-// Helper functions for creating pointers.
-func stringPtr(s string) *string {
-	return &s
 }

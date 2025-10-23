@@ -15,7 +15,7 @@ type FlagResult struct {
 	// Feature name.
 	Name string `json:"name"`
 	// Reason for the feature flag evaluation.
-	Reason *string `json:"reason,omitempty"`
+	Reason string `json:"reason,omitempty"`
 	// Feature flag value.
 	Value any `json:"value,omitempty"`
 	// Metadata about the feature.
