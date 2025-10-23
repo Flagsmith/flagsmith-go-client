@@ -9,6 +9,11 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/utils"
 )
 
+type featureContextWithSegmentName struct {
+	featureContext *engine_eval.FeatureContext
+	segmentName    string
+}
+
 func getPriorityOrDefault(priority *float64) float64 {
 	if priority != nil {
 		return *priority
@@ -16,9 +21,9 @@ func getPriorityOrDefault(priority *float64) float64 {
 	return math.Inf(1) // Weakest possible priority
 }
 
-func getMatchingSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.SegmentResult, []engine_eval.SegmentContext) {
+func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
 	segmentResults := []engine_eval.SegmentResult{}
-	matchedSegments := []engine_eval.SegmentContext{}
+	featureOverrides := make(map[string]featureContextWithSegmentName)
 
 	// Get sorted segment keys for deterministic ordering
 	segmentKeys := make([]string, 0, len(ec.Segments))
@@ -40,14 +45,33 @@ func getMatchingSegments(ec *engine_eval.EngineEvaluationContext) ([]engine_eval
 			Metadata: segmentContext.Metadata,
 		})
 
-		// Keep track of matched segments with their overrides
-		matchedSegments = append(matchedSegments, segmentContext)
+		// Process feature overrides for this segment
+		for i := range segmentContext.Overrides {
+			override := &segmentContext.Overrides[i]
+			priority := getPriorityOrDefault(override.Priority)
+
+			// Check if this override is better than what we have
+			if existing, ok := featureOverrides[override.Name]; ok {
+				existingPriority := getPriorityOrDefault(existing.featureContext.Priority)
+				if priority <= existingPriority {
+					featureOverrides[override.Name] = featureContextWithSegmentName{
+						featureContext: override,
+						segmentName:    segmentContext.Name,
+					}
+				}
+			} else {
+				featureOverrides[override.Name] = featureContextWithSegmentName{
+					featureContext: override,
+					segmentName:    segmentContext.Name,
+				}
+			}
+		}
 	}
 
-	return segmentResults, matchedSegments
+	return segmentResults, featureOverrides
 }
 
-func getFlagResults(ec *engine_eval.EngineEvaluationContext, matchedSegments []engine_eval.SegmentContext) map[string]*engine_eval.FlagResult {
+func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides map[string]featureContextWithSegmentName) map[string]*engine_eval.FlagResult {
 	flags := make(map[string]*engine_eval.FlagResult)
 
 	// Get identity key if identity exists
@@ -58,35 +82,15 @@ func getFlagResults(ec *engine_eval.EngineEvaluationContext, matchedSegments []e
 
 	if ec.Features != nil {
 		for featureName, featureContext := range ec.Features {
-			// Find the best override for this feature from matched segments
-			var bestOverride *engine_eval.FeatureContext
-			var bestPriority = math.Inf(1)
-			var segmentName string
-
-			for _, segment := range matchedSegments {
-				for i := range segment.Overrides {
-					override := &segment.Overrides[i]
-					// Match by feature name (use the map key, not featureContext.Name)
-					if override.Name == featureName {
-						priority := getPriorityOrDefault(override.Priority)
-						if priority <= bestPriority {
-							bestOverride = override
-							bestPriority = priority
-							segmentName = segment.Name
-						}
-					}
-				}
-			}
-
-			// Use override if found, otherwise use default
-			if bestOverride != nil {
-				reason := fmt.Sprintf("TARGETING_MATCH; segment=%s", segmentName)
+			// Check if there's an override for this feature (O(1) lookup)
+			if override, ok := featureOverrides[featureName]; ok {
+				reason := fmt.Sprintf("TARGETING_MATCH; segment=%s", override.segmentName)
 				flags[featureName] = &engine_eval.FlagResult{
-					Enabled:  bestOverride.Enabled,
+					Enabled:  override.featureContext.Enabled,
 					Name:     featureName,
 					Reason:   &reason,
-					Value:    bestOverride.Value,
-					Metadata: bestOverride.Metadata,
+					Value:    override.featureContext.Value,
+					Metadata: override.featureContext.Metadata,
 				}
 			} else {
 				// Use default feature context
@@ -101,11 +105,11 @@ func getFlagResults(ec *engine_eval.EngineEvaluationContext, matchedSegments []e
 
 // GetEvaluationResult computes flags and matched segments.
 func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.EvaluationResult {
-	// Process segments
-	segmentResults, matchedSegments := getMatchingSegments(ec)
+	// Process segments and get overrides
+	segmentResults, featureOverrides := getMatchingSegmentsAndOverrides(ec)
 
 	// Get flag results
-	flags := getFlagResults(ec, matchedSegments)
+	flags := getFlagResults(ec, featureOverrides)
 
 	return engine_eval.EvaluationResult{
 		Flags:    flags,
