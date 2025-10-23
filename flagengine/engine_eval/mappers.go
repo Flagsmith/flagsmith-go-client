@@ -86,10 +86,9 @@ func mapFeatureStateToFeatureContext(fs *features.FeatureStateModel) FeatureCont
 	}
 
 	fc := FeatureContext{
-		Enabled:    fs.Enabled,
-		FeatureKey: strconv.Itoa(fs.Feature.ID),
-		Key:        key,
-		Name:       fs.Feature.Name,
+		Enabled: fs.Enabled,
+		Key:     key,
+		Name:    fs.Feature.Name,
 		Metadata: &FeatureMetadata{
 			FeatureID: fs.Feature.ID,
 		},
@@ -264,12 +263,11 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 			priority := math.Inf(-1) // Strongest possible priority
 			featureID := featureNameToID[override.featureName]
 			featureOverride := FeatureContext{
-				Key:        "", // Identity overrides never carry multivariate options
-				FeatureKey: strconv.Itoa(featureID),
-				Name:       override.featureName,
-				Enabled:    override.enabled,
-				Priority:   &priority,
-				Value:      override.featureValue,
+				Key:      "", // Identity overrides never carry multivariate options
+				Name:     override.featureName,
+				Enabled:  override.enabled,
+				Priority: &priority,
+				Value:    override.featureValue,
 				Metadata: &FeatureMetadata{
 					FeatureID: featureID,
 				},

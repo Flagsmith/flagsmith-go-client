@@ -12,8 +12,6 @@ type EvaluationResult struct {
 type FlagResult struct {
 	// Indicates if the feature flag is enabled.
 	Enabled bool `json:"enabled"`
-	// Unique feature identifier.
-	FeatureKey string `json:"feature_key"`
 	// Feature name.
 	Name string `json:"name"`
 	// Reason for the feature flag evaluation.
@@ -25,8 +23,6 @@ type FlagResult struct {
 }
 
 type SegmentResult struct {
-	// Unique segment identifier.
-	Key string `json:"key"`
 	// Segment name.
 	Name string `json:"name"`
 	// Metadata about the segment.

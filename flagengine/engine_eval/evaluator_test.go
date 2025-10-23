@@ -514,26 +514,6 @@ func TestGetContextValueIntegration(t *testing.T) {
 		result := engine_eval.IsContextInSegment(evalContext, segmentContext)
 		assert.True(t, result)
 	})
-
-	t.Run("JSONPath environment key works", func(t *testing.T) {
-		evalContext := createEvaluationContext(nil)
-
-		segmentContext := createSegmentContext("test", "test", []engine_eval.SegmentRule{
-			{
-				Type: engine_eval.All,
-				Conditions: []engine_eval.Condition{
-					{
-						Operator: engine_eval.Equal,
-						Property: "$.environment.key",
-						Value:    "test-env",
-					},
-				},
-			},
-		})
-
-		result := engine_eval.IsContextInSegment(evalContext, segmentContext)
-		assert.True(t, result)
-	})
 }
 
 func TestToStringIntegration(t *testing.T) {

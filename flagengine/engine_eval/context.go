@@ -22,7 +22,7 @@ type EngineEvaluationContext struct {
 //
 // Represents an environment context for feature flag evaluation.
 type EnvironmentContext struct {
-	// An environment's unique identifier.
+	// Unique environment key. May be used for selecting a value for a multivariate feature, or for % split segmentation
 	Key string `json:"key"`
 	// An environment's human-readable name.
 	Name string `json:"name"`
@@ -32,8 +32,6 @@ type EnvironmentContext struct {
 type FeatureContext struct {
 	// Indicates whether the feature is enabled in the environment.
 	Enabled bool `json:"enabled"`
-	// Unique feature identifier.
-	FeatureKey string `json:"feature_key"`
 	// Key used when selecting a value for a multivariate feature. Set to an internal identifier
 	// or a UUID, depending on Flagsmith implementation.
 	Key string `json:"key"`
