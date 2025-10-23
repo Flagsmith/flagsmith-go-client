@@ -25,50 +25,61 @@ func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext) ([
 	segmentResults := []engine_eval.SegmentResult{}
 	featureOverrides := make(map[string]featureContextWithSegmentName)
 
-	// Get sorted segment keys for deterministic ordering
-	segmentKeys := make([]string, 0, len(ec.Segments))
-	for key := range ec.Segments {
-		segmentKeys = append(segmentKeys, key)
-	}
-	sort.Strings(segmentKeys)
-
-	// Process segments in sorted order
-	for _, key := range segmentKeys {
-		segmentContext := ec.Segments[key]
+	// Process segments in deterministic order (sorted by key)
+	for _, segmentContext := range getSortedSegments(ec.Segments) {
 		if !engine_eval.IsContextInSegment(ec, &segmentContext) {
 			continue
 		}
 
-		// Add segment to results
+		// Record matched segment
 		segmentResults = append(segmentResults, engine_eval.SegmentResult{
 			Name:     segmentContext.Name,
 			Metadata: segmentContext.Metadata,
 		})
 
-		// Process feature overrides for this segment
-		for i := range segmentContext.Overrides {
-			override := &segmentContext.Overrides[i]
-			priority := getPriorityOrDefault(override.Priority)
-
-			// Check if this override is better than what we have
-			if existing, ok := featureOverrides[override.Name]; ok {
-				existingPriority := getPriorityOrDefault(existing.featureContext.Priority)
-				if priority <= existingPriority {
-					featureOverrides[override.Name] = featureContextWithSegmentName{
-						featureContext: override,
-						segmentName:    segmentContext.Name,
-					}
-				}
-			} else {
-				featureOverrides[override.Name] = featureContextWithSegmentName{
-					featureContext: override,
-					segmentName:    segmentContext.Name,
-				}
-			}
-		}
+		// Apply segment's feature overrides (respecting priority)
+		applySegmentOverrides(&segmentContext, featureOverrides)
 	}
 
 	return segmentResults, featureOverrides
+}
+
+// getSortedSegments returns segments sorted by their keys for deterministic ordering.
+func getSortedSegments(segments map[string]engine_eval.SegmentContext) []engine_eval.SegmentContext {
+	keys := make([]string, 0, len(segments))
+	for key := range segments {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	sorted := make([]engine_eval.SegmentContext, 0, len(keys))
+	for _, key := range keys {
+		sorted = append(sorted, segments[key])
+	}
+	return sorted
+}
+
+// applySegmentOverrides updates the feature overrides map with this segment's overrides,
+// only replacing existing overrides if the new one has equal or higher priority.
+func applySegmentOverrides(segment *engine_eval.SegmentContext, featureOverrides map[string]featureContextWithSegmentName) {
+	for i := range segment.Overrides {
+		override := &segment.Overrides[i]
+		newPriority := getPriorityOrDefault(override.Priority)
+
+		// Check if we should use this override
+		if existing, exists := featureOverrides[override.Name]; exists {
+			existingPriority := getPriorityOrDefault(existing.featureContext.Priority)
+			if newPriority > existingPriority {
+				continue // Existing override has higher priority
+			}
+		}
+
+		// Use this override (either it's new or has equal/higher priority)
+		featureOverrides[override.Name] = featureContextWithSegmentName{
+			featureContext: override,
+			segmentName:    segment.Name,
+		}
+	}
 }
 
 func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides map[string]featureContextWithSegmentName) map[string]*engine_eval.FlagResult {
@@ -82,7 +93,7 @@ func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides ma
 
 	if ec.Features != nil {
 		for featureName, featureContext := range ec.Features {
-			// Check if there's an override for this feature (O(1) lookup)
+			// Check if there's an override for this feature
 			if override, ok := featureOverrides[featureName]; ok {
 				reason := fmt.Sprintf("TARGETING_MATCH; segment=%s", override.segmentName)
 				flags[featureName] = &engine_eval.FlagResult{
