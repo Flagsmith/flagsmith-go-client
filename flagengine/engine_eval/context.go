@@ -47,7 +47,7 @@ type FeatureContext struct {
 	// value for standard features, or multiple values for multivariate features.
 	Variants []FeatureValue `json:"variants,omitempty"`
 	// Metadata about the feature.
-	Metadata *FeatureMetadata `json:"metadata,omitempty"`
+	Metadata FeatureMetadata `json:"metadata,omitempty"`
 }
 
 // Represents a multivariate value for a feature flag.
@@ -131,7 +131,7 @@ type SegmentContext struct {
 	// The name of the segment.
 	Name string `json:"name"`
 	// Metadata about the segment.
-	Metadata *SegmentMetadata `json:"metadata,omitempty"`
+	Metadata SegmentMetadata `json:"metadata,omitempty"`
 	// Feature overrides for the segment.
 	Overrides []FeatureContext `json:"overrides,omitempty"`
 	// Rules that define the segment.

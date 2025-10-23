@@ -61,7 +61,7 @@ func createSegmentContext(key, name string, rules []engine_eval.SegmentRule) *en
 	return &engine_eval.SegmentContext{
 		Key:  key,
 		Name: name,
-		Metadata: &engine_eval.SegmentMetadata{
+		Metadata: engine_eval.SegmentMetadata{
 			SegmentID: segmentID,
 			Source:    engine_eval.SegmentSourceAPI,
 		},

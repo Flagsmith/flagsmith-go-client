@@ -89,7 +89,7 @@ func mapFeatureStateToFeatureContext(fs *features.FeatureStateModel) FeatureCont
 		Enabled: fs.Enabled,
 		Key:     key,
 		Name:    fs.Feature.Name,
-		Metadata: &FeatureMetadata{
+		Metadata: FeatureMetadata{
 			FeatureID: fs.Feature.ID,
 		},
 	}
@@ -115,7 +115,7 @@ func mapSegmentToSegmentContext(s *segments.SegmentModel) SegmentContext {
 	sc := SegmentContext{
 		Key:  strconv.Itoa(s.ID),
 		Name: s.Name,
-		Metadata: &SegmentMetadata{
+		Metadata: SegmentMetadata{
 			SegmentID: s.ID,
 			Source:    SegmentSourceAPI,
 		},
@@ -241,7 +241,7 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 		sc := SegmentContext{
 			Key:  "", // Identity override segments never use % Split operator
 			Name: "identity_overrides",
-			Metadata: &SegmentMetadata{
+			Metadata: SegmentMetadata{
 				Source: SegmentSourceIdentityOverride,
 			},
 			Rules: []SegmentRule{
@@ -268,7 +268,7 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 				Enabled:  override.enabled,
 				Priority: &priority,
 				Value:    override.featureValue,
-				Metadata: &FeatureMetadata{
+				Metadata: FeatureMetadata{
 					FeatureID: featureID,
 				},
 			}
@@ -334,7 +334,7 @@ func MapEvaluationResultSegmentsToSegmentModels(
 
 	for _, segmentResult := range result.Segments {
 		// Only include segments from API source (filter out identity overrides)
-		if segmentResult.Metadata == nil || segmentResult.Metadata.Source != SegmentSourceAPI {
+		if segmentResult.Metadata.Source != SegmentSourceAPI {
 			continue
 		}
 

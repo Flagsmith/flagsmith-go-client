@@ -19,12 +19,12 @@ type FlagResult struct {
 	// Feature flag value.
 	Value any `json:"value,omitempty"`
 	// Metadata about the feature.
-	Metadata *FeatureMetadata `json:"metadata,omitempty"`
+	Metadata FeatureMetadata `json:"metadata,omitempty"`
 }
 
 type SegmentResult struct {
 	// Segment name.
 	Name string `json:"name"`
 	// Metadata about the segment.
-	Metadata *SegmentMetadata `json:"metadata,omitempty"`
+	Metadata SegmentMetadata `json:"metadata,omitempty"`
 }

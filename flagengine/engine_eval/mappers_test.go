@@ -521,21 +521,21 @@ func TestMapEvaluationResultSegmentsToSegmentModels(t *testing.T) {
 		Segments: []SegmentResult{
 			{
 				Name: "test-segment",
-				Metadata: &SegmentMetadata{
+				Metadata: SegmentMetadata{
 					SegmentID: 1,
 					Source:    SegmentSourceAPI,
 				},
 			},
 			{
 				Name: "another-segment",
-				Metadata: &SegmentMetadata{
+				Metadata: SegmentMetadata{
 					SegmentID: 42,
 					Source:    SegmentSourceAPI,
 				},
 			},
 			{
 				Name: "identity-override-segment",
-				Metadata: &SegmentMetadata{
+				Metadata: SegmentMetadata{
 					SegmentID: 0,
 					Source:    SegmentSourceIdentityOverride,
 				},
