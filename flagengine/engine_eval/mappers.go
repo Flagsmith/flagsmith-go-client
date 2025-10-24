@@ -86,11 +86,10 @@ func mapFeatureStateToFeatureContext(fs *features.FeatureStateModel) FeatureCont
 	}
 
 	fc := FeatureContext{
-		Enabled:    fs.Enabled,
-		FeatureKey: strconv.Itoa(fs.Feature.ID),
-		Key:        key,
-		Name:       fs.Feature.Name,
-		Metadata: &FeatureMetadata{
+		Enabled: fs.Enabled,
+		Key:     key,
+		Name:    fs.Feature.Name,
+		Metadata: FeatureMetadata{
 			FeatureID: fs.Feature.ID,
 		},
 	}
@@ -116,7 +115,7 @@ func mapSegmentToSegmentContext(s *segments.SegmentModel) SegmentContext {
 	sc := SegmentContext{
 		Key:  strconv.Itoa(s.ID),
 		Name: s.Name,
-		Metadata: &SegmentMetadata{
+		Metadata: SegmentMetadata{
 			SegmentID: s.ID,
 			Source:    SegmentSourceAPI,
 		},
@@ -242,7 +241,7 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 		sc := SegmentContext{
 			Key:  "", // Identity override segments never use % Split operator
 			Name: "identity_overrides",
-			Metadata: &SegmentMetadata{
+			Metadata: SegmentMetadata{
 				Source: SegmentSourceIdentityOverride,
 			},
 			Rules: []SegmentRule{
@@ -264,13 +263,12 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 			priority := math.Inf(-1) // Strongest possible priority
 			featureID := featureNameToID[override.featureName]
 			featureOverride := FeatureContext{
-				Key:        "", // Identity overrides never carry multivariate options
-				FeatureKey: strconv.Itoa(featureID),
-				Name:       override.featureName,
-				Enabled:    override.enabled,
-				Priority:   &priority,
-				Value:      override.featureValue,
-				Metadata: &FeatureMetadata{
+				Key:      "", // Identity overrides never carry multivariate options
+				Name:     override.featureName,
+				Enabled:  override.enabled,
+				Priority: &priority,
+				Value:    override.featureValue,
+				Metadata: FeatureMetadata{
 					FeatureID: featureID,
 				},
 			}
@@ -336,7 +334,7 @@ func MapEvaluationResultSegmentsToSegmentModels(
 
 	for _, segmentResult := range result.Segments {
 		// Only include segments from API source (filter out identity overrides)
-		if segmentResult.Metadata == nil || segmentResult.Metadata.Source != SegmentSourceAPI {
+		if segmentResult.Metadata.Source != SegmentSourceAPI {
 			continue
 		}
 

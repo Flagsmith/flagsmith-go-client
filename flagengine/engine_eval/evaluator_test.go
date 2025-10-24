@@ -61,7 +61,7 @@ func createSegmentContext(key, name string, rules []engine_eval.SegmentRule) *en
 	return &engine_eval.SegmentContext{
 		Key:  key,
 		Name: name,
-		Metadata: &engine_eval.SegmentMetadata{
+		Metadata: engine_eval.SegmentMetadata{
 			SegmentID: segmentID,
 			Source:    engine_eval.SegmentSourceAPI,
 		},
@@ -506,26 +506,6 @@ func TestGetContextValueIntegration(t *testing.T) {
 						Operator: engine_eval.Equal,
 						Property: "$.identity.identifier",
 						Value:    "test-user",
-					},
-				},
-			},
-		})
-
-		result := engine_eval.IsContextInSegment(evalContext, segmentContext)
-		assert.True(t, result)
-	})
-
-	t.Run("JSONPath environment key works", func(t *testing.T) {
-		evalContext := createEvaluationContext(nil)
-
-		segmentContext := createSegmentContext("test", "test", []engine_eval.SegmentRule{
-			{
-				Type: engine_eval.All,
-				Conditions: []engine_eval.Condition{
-					{
-						Operator: engine_eval.Equal,
-						Property: "$.environment.key",
-						Value:    "test-env",
 					},
 				},
 			},

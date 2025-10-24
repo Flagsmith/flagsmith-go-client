@@ -28,10 +28,7 @@ func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) 
 	value := flagResult.Value
 
 	// Get FeatureID from metadata
-	featureID := 0
-	if flagResult.Metadata != nil {
-		featureID = flagResult.Metadata.FeatureID
-	}
+	featureID := flagResult.Metadata.FeatureID
 
 	return Flag{
 		Enabled:     flagResult.Enabled,

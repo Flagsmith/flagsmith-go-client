@@ -15,10 +15,9 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 		{
 			name: "flag with string value",
 			input: &engine_eval.FlagResult{
-				Enabled:    true,
-				FeatureKey: "test_feature_key",
-				Name:       "test_feature",
-				Value:      "test_value",
+				Enabled: true,
+				Name:    "test_feature",
+				Value:   "test_value",
 			},
 			expected: Flag{
 				Enabled:     true,
@@ -31,10 +30,9 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 		{
 			name: "flag with boolean value",
 			input: &engine_eval.FlagResult{
-				Enabled:    false,
-				FeatureKey: "bool_feature_key",
-				Name:       "bool_feature",
-				Value:      true,
+				Enabled: false,
+				Name:    "bool_feature",
+				Value:   true,
 			},
 			expected: Flag{
 				Enabled:     false,
@@ -47,10 +45,9 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 		{
 			name: "flag with double value",
 			input: &engine_eval.FlagResult{
-				Enabled:    true,
-				FeatureKey: "double_feature_key",
-				Name:       "double_feature",
-				Value:      42.5,
+				Enabled: true,
+				Name:    "double_feature",
+				Value:   42.5,
 			},
 			expected: Flag{
 				Enabled:     true,
@@ -63,10 +60,9 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 		{
 			name: "flag with nil value",
 			input: &engine_eval.FlagResult{
-				Enabled:    true,
-				FeatureKey: "nil_feature_key",
-				Name:       "nil_feature",
-				Value:      nil,
+				Enabled: true,
+				Name:    "nil_feature",
+				Value:   nil,
 			},
 			expected: Flag{
 				Enabled:     true,
@@ -79,10 +75,9 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 		{
 			name: "flag with zero values",
 			input: &engine_eval.FlagResult{
-				Enabled:    false,
-				FeatureKey: "",
-				Name:       "",
-				Value:      "",
+				Enabled: false,
+				Name:    "",
+				Value:   "",
 			},
 			expected: Flag{
 				Enabled:     false,
@@ -95,11 +90,10 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 		{
 			name: "flag with reason field (should be ignored in conversion)",
 			input: &engine_eval.FlagResult{
-				Enabled:    true,
-				FeatureKey: "reason_feature_key",
-				Name:       "reason_feature",
-				Reason:     stringPtr("TARGETING_MATCH"),
-				Value:      "reason_value",
+				Enabled: true,
+				Name:    "reason_feature",
+				Reason:  "TARGETING_MATCH",
+				Value:   "reason_value",
 			},
 			expected: Flag{
 				Enabled:     true,
@@ -145,22 +139,19 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 			input: &engine_eval.EvaluationResult{
 				Flags: map[string]*engine_eval.FlagResult{
 					"feature1": {
-						Enabled:    true,
-						FeatureKey: "feature1_key",
-						Name:       "feature1",
-						Value:      "value1",
+						Enabled: true,
+						Name:    "feature1",
+						Value:   "value1",
 					},
 					"feature2": {
-						Enabled:    false,
-						FeatureKey: "feature2_key",
-						Name:       "feature2",
-						Value:      true,
+						Enabled: false,
+						Name:    "feature2",
+						Value:   true,
 					},
 					"feature3": {
-						Enabled:    true,
-						FeatureKey: "feature3_key",
-						Name:       "feature3",
-						Value:      123.45,
+						Enabled: true,
+						Name:    "feature3",
+						Value:   123.45,
 					},
 				},
 				Segments: []engine_eval.SegmentResult{},
@@ -202,10 +193,9 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 			input: &engine_eval.EvaluationResult{
 				Flags: map[string]*engine_eval.FlagResult{
 					"single_feature": {
-						Enabled:    true,
-						FeatureKey: "single_feature_key",
-						Name:       "single_feature",
-						Value:      "single_value",
+						Enabled: true,
+						Name:    "single_feature",
+						Value:   "single_value",
 					},
 				},
 				Segments: []engine_eval.SegmentResult{},
@@ -291,10 +281,9 @@ func TestMakeFlagsFromEngineEvaluationResultWithProcessorAndHandler(t *testing.T
 	input := &engine_eval.EvaluationResult{
 		Flags: map[string]*engine_eval.FlagResult{
 			"test_feature": {
-				Enabled:    true,
-				FeatureKey: "test_feature_key",
-				Name:       "test_feature",
-				Value:      "test_value",
+				Enabled: true,
+				Name:    "test_feature",
+				Value:   "test_value",
 			},
 		},
 		Segments: []engine_eval.SegmentResult{},
@@ -323,9 +312,4 @@ func TestMakeFlagsFromEngineEvaluationResultWithProcessorAndHandler(t *testing.T
 			t.Errorf("Expected handler to return default flag")
 		}
 	}
-}
-
-// Helper functions for creating pointers.
-func stringPtr(s string) *string {
-	return &s
 }

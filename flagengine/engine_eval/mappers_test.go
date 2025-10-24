@@ -98,9 +98,6 @@ func TestMapEnvironmentDocumentToEvaluationContext(t *testing.T) {
 		if !testFeature.Enabled {
 			t.Error("Expected test-feature to be enabled")
 		}
-		if testFeature.FeatureKey != "1" {
-			t.Errorf("Expected FeatureKey to be '1' (feature ID), got %v", testFeature.FeatureKey)
-		}
 		if testFeature.Name != "test-feature" {
 			t.Errorf("Expected Name to be 'test-feature', got %v", testFeature.Name)
 		}
@@ -174,9 +171,6 @@ func TestMapEnvironmentDocumentToEvaluationContext(t *testing.T) {
 			t.Errorf("Expected 1 override in segment, got %d", len(testSegment.Overrides))
 		} else {
 			override := testSegment.Overrides[0]
-			if override.FeatureKey != "1" {
-				t.Errorf("Expected override feature key to be '1' (feature ID), got %v", override.FeatureKey)
-			}
 			if !override.Enabled {
 				t.Error("Expected segment override to be enabled")
 			}
@@ -386,9 +380,8 @@ func TestMapContextAndIdentityDataToContext(t *testing.T) {
 		},
 		Features: map[string]FeatureContext{
 			"test-feature": {
-				Enabled:    true,
-				FeatureKey: "1",
-				Name:       "test-feature",
+				Enabled: true,
+				Name:    "test-feature",
 			},
 		},
 	}
@@ -527,25 +520,22 @@ func TestMapEvaluationResultSegmentsToSegmentModels(t *testing.T) {
 	result := EvaluationResult{
 		Segments: []SegmentResult{
 			{
-				Key:  "1",
 				Name: "test-segment",
-				Metadata: &SegmentMetadata{
+				Metadata: SegmentMetadata{
 					SegmentID: 1,
 					Source:    SegmentSourceAPI,
 				},
 			},
 			{
-				Key:  "42",
 				Name: "another-segment",
-				Metadata: &SegmentMetadata{
+				Metadata: SegmentMetadata{
 					SegmentID: 42,
 					Source:    SegmentSourceAPI,
 				},
 			},
 			{
-				Key:  "",
 				Name: "identity-override-segment",
-				Metadata: &SegmentMetadata{
+				Metadata: SegmentMetadata{
 					SegmentID: 0,
 					Source:    SegmentSourceIdentityOverride,
 				},
@@ -609,7 +599,6 @@ func TestMapEvaluationResultSegmentsToSegmentModelsInvalidKey(t *testing.T) {
 	result := EvaluationResult{
 		Segments: []SegmentResult{
 			{
-				Key:  "invalid-key",
 				Name: "segment-without-metadata",
 			},
 		},
