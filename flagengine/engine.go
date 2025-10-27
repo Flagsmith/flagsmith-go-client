@@ -88,7 +88,13 @@ func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides ma
 	// Get identity key if identity exists
 	var identityKey *string
 	if ec.Identity != nil {
-		identityKey = &ec.Identity.Key
+		// If identity key is not provided, construct it from environment key and identifier
+		if ec.Identity.Key == "" {
+			constructedKey := ec.Environment.Key + "_" + ec.Identity.Identifier
+			identityKey = &constructedKey
+		} else {
+			identityKey = &ec.Identity.Key
+		}
 	}
 
 	if ec.Features != nil {
@@ -147,7 +153,7 @@ func getFlagResultFromFeatureContext(featureName string, featureContext *engine_
 			cumulativeWeight += variant.Weight
 			if hashPercentage <= cumulativeWeight {
 				value = variant.Value
-				reason = fmt.Sprintf("SPLIT; weight=%.0f", variant.Weight)
+				reason = fmt.Sprintf("SPLIT; weight=%g", variant.Weight)
 				break
 			}
 		}
