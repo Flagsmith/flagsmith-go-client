@@ -115,47 +115,91 @@ func contextMatchesCondition(ec *EngineEvaluationContext, segmentCondition *Cond
 	return false
 }
 
-// matchInOperator handles the IN operator for segment conditions, supporting both StringArray and comma-separated strings.
+// matchInOperator handles the IN operator for segment conditions, supporting arrays and comma-separated strings.
 func matchInOperator(segmentCondition *Condition, contextValue ContextValue) bool {
 	if contextValue == nil {
 		return false
 	}
 
-	traitValue := ToString(contextValue)
-
 	if segmentCondition.Value == nil {
 		return false
 	}
 
-	// First try to use []string if available
+	// Handle []string array
 	if strArray, ok := segmentCondition.Value.([]string); ok {
+		traitValue := ToString(contextValue)
 		return slices.Contains(strArray, traitValue)
 	}
 
-	// Convert []interface{} to []string (happens during JSON unmarshaling)
+	// Handle []interface{} array (from JSON unmarshaling) - supports mixed types
 	if ifaceArray, ok := segmentCondition.Value.([]interface{}); ok {
-		for _, v := range ifaceArray {
-			if str, ok := v.(string); ok && str == traitValue {
+		return matchInArrayInterface(ifaceArray, contextValue)
+	}
+
+	// Handle string value (JSON-encoded or comma-separated)
+	if strValue, ok := segmentCondition.Value.(string); ok {
+		// Try to parse as JSON array first
+		var jsonArray []interface{}
+		if err := json.Unmarshal([]byte(strValue), &jsonArray); err == nil {
+			return matchInArrayInterface(jsonArray, contextValue)
+		}
+
+		// Fall back to comma-separated string
+		values := strings.Split(strValue, ",")
+		// Try numeric comparison for each value
+		for _, v := range values {
+			if compareValues(contextValue, strings.TrimSpace(v)) {
 				return true
 			}
 		}
 		return false
 	}
 
-	// Fall back to string - try JSON parsing first, then comma-separated
-	if strValue, ok := segmentCondition.Value.(string); ok {
-		// Try to parse as JSON array first
-		var jsonArray []string
-		if err := json.Unmarshal([]byte(strValue), &jsonArray); err == nil {
-			return slices.Contains(jsonArray, traitValue)
-		}
+	return false
+}
 
-		// Fall back to comma-separated string
-		values := strings.Split(strValue, ",")
-		return slices.Contains(values, traitValue)
+// matchInArrayInterface checks if contextValue matches any element in the array.
+func matchInArrayInterface(array []interface{}, contextValue ContextValue) bool {
+	for _, v := range array {
+		if compareValues(contextValue, v) {
+			return true
+		}
+	}
+	return false
+}
+
+// compareValues compares two values with type-aware comparison.
+// Supports int, float and string comparisons.
+func compareValues(v1, v2 interface{}) bool {
+	// Direct equality check first
+	if v1 == v2 {
+		return true
 	}
 
-	return false
+	// Try numeric comparison - convert both to float64
+	f1, ok1 := toFloat64(v1)
+	f2, ok2 := toFloat64(v2)
+	if ok1 && ok2 {
+		return f1 == f2
+	}
+
+	// Fall back to string comparison
+	return ToString(v1) == ToString(v2)
+}
+
+// toFloat64 attempts to convert a value to float64.
+func toFloat64(v interface{}) (float64, bool) {
+	switch val := v.(type) {
+	case float64:
+		return val, true
+	case int64:
+		return float64(val), true
+	case string:
+		if f, err := strconv.ParseFloat(val, 64); err == nil {
+			return f, true
+		}
+	}
+	return 0, false
 }
 
 func getContextValue(ec *EngineEvaluationContext, property string) ContextValue {
