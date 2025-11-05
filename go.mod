@@ -11,7 +11,7 @@ require (
 require (
 	github.com/go-resty/resty/v2 v2.16.5
 	github.com/itlightning/dateparse v0.2.1
-	github.com/ohler55/ojg v1.26.10
+	github.com/ohler55/ojg v1.26.11
 	github.com/tailscale/hujson v0.0.0-20250605163823-992244df8c5a
 )
 
