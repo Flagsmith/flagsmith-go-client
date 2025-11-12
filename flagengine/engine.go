@@ -99,20 +99,14 @@ func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides ma
 
 	if ec.Features != nil {
 		for featureName, featureContext := range ec.Features {
+			reason := "DEFAULT"
 			// Check if there's an override for this feature
 			if override, ok := featureOverrides[featureName]; ok {
-				flags[featureName] = &engine_eval.FlagResult{
-					Enabled:  override.featureContext.Enabled,
-					Name:     featureName,
-					Reason:   fmt.Sprintf("TARGETING_MATCH; segment=%s", override.segmentName),
-					Value:    override.featureContext.Value,
-					Metadata: override.featureContext.Metadata,
-				}
-			} else {
-				// Use default feature context
-				flagResult := getFlagResultFromFeatureContext(featureName, &featureContext, identityKey)
-				flags[featureName] = &flagResult
+				featureContext = *override.featureContext
+				reason = fmt.Sprintf("TARGETING_MATCH; segment=%s", override.segmentName)
 			}
+			flagResult := getFlagResultFromFeatureContext(featureName, &featureContext, identityKey, reason)
+			flags[featureName] = &flagResult
 		}
 	}
 
@@ -134,8 +128,7 @@ func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.Ev
 }
 
 // getFlagResultFromFeatureContext creates a FlagResult from a FeatureContext.
-func getFlagResultFromFeatureContext(featureName string, featureContext *engine_eval.FeatureContext, identityKey *string) engine_eval.FlagResult {
-	reason := "DEFAULT"
+func getFlagResultFromFeatureContext(featureName string, featureContext *engine_eval.FeatureContext, identityKey *string, reason string) engine_eval.FlagResult {
 	value := featureContext.Value
 
 	// Handle multivariate features
