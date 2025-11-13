@@ -349,7 +349,15 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	result := flagengine.GetEvaluationResult(evalCtx)
+	// Clear segments and identity for environment evaluation
+	environmentEvalCtx := engine_eval.EngineEvaluationContext{
+		Environment: evalCtx.Environment,
+		Features:    evalCtx.Features,
+		Identity:    nil,
+		Segments:    nil,
+	}
+
+	result := flagengine.GetEvaluationResult(&environmentEvalCtx)
 	return makeFlagsFromEngineEvaluationResult(&result, c.analyticsProcessor, c.defaultFlagHandler), nil
 }
 
