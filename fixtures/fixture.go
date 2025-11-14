@@ -17,6 +17,7 @@ const ClientAPIKey = "B62qaMZNwfiqT76p38ggrQ"
 const EnvironmentJson = `
 {
 	"api_key": "B62qaMZNwfiqT76p38ggrQ",
+	"name": "Test Environment",
 	"updated_at": "2023-12-06T10:21:54.079725Z",
 	"project": {
 		"name": "Test project",
@@ -90,6 +91,72 @@ const EnvironmentJson = `
     ]
 }
 `
+
+const EnvironmentJsonWithSegmentOverride = `
+  {
+  	"api_key": "B62qaMZNwfiqT76p38ggrQ",
+  	"updated_at": "2023-12-06T10:21:54.079725Z",
+	"name": "Test Environment",
+  	"project": {
+  		"name": "Test project",
+  		"organisation": {
+  			"feature_analytics": false,
+  			"name": "Test Org",
+  			"id": 1,
+  			"persist_trait_data": true,
+  			"stop_serving_flags": false
+  		},
+  		"id": 1,
+  		"hide_disabled_flags": false,
+  		"segments": [{
+  			"id": 1,
+  			"name": "Test Segment",
+  			"feature_states": [{
+  				"multivariate_feature_state_values": [],
+  				"feature_state_value": "segment_override",
+  				"id": 2,
+  				"featurestate_uuid": "segment-override-uuid",
+  				"feature": {
+  					"name": "feature_1",
+  					"type": "STANDARD",
+  					"id": 1
+  				},
+  				"segment_id": 1,
+  				"enabled": true
+  			}],
+  			"rules": [{
+  				"type": "ALL",
+  				"conditions": [],
+  				"rules": [{
+  					"type": "ALL",
+  					"rules": [],
+  					"conditions": [{
+  						"operator": "EQUAL",
+  						"property_": "$.environment.name",
+  						"value": "Test Environment"
+  					}]
+  				}]
+  			}]
+  		}]
+  	},
+  	"segment_overrides": [],
+  	"id": 1,
+  	"feature_states": [{
+  		"multivariate_feature_state_values": [],
+  		"feature_state_value": "some_value",
+  		"id": 1,
+  		"featurestate_uuid": "40eb539d-3713-4720-bbd4-829dbef10d51",
+  		"feature": {
+  			"name": "feature_1",
+  			"type": "STANDARD",
+  			"id": 1
+  		},
+  		"segment_id": null,
+  		"enabled": true
+  	}],
+  	"identity_overrides": []
+  }
+  `
 
 const FlagsJson = `
 [{

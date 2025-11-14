@@ -422,6 +422,33 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 	assert.Equal(t, fixtures.Feature1Value, value)
 }
 
+func TestGetEnvironmentFlagsIgnoresSegmentOverrides(t *testing.T) {
+	// Given: a document with a truthy segment override
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(rw, fixtures.EnvironmentJsonWithSegmentOverride)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	err := client.UpdateEnvironment(ctx)
+	assert.NoError(t, err)
+
+	flags, err := client.GetEnvironmentFlags(ctx)
+
+	// Then: should return default value
+	assert.NoError(t, err)
+	flag, err := flags.GetFlag("feature_1")
+	assert.NoError(t, err)
+	assert.Equal(t, fixtures.Feature1Value, flag.Value)
+	assert.Equal(t, "some_value", flag.Value)
+}
+
 func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	// Given
 	ctx := context.Background()
