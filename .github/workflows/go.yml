@@ -30,7 +30,7 @@ jobs:
         submodules: recursive
         
     - name: Lint
-      uses: golangci/golangci-lint-action@v6
+      uses: golangci/golangci-lint-action@v9
 
     - name: Build
       run: go build -v ./...
