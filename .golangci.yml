@@ -1,25 +1,42 @@
-linters-settings:
-  misspell:
-    locale: UK
-    ignore-words:
-      - standardize  # hujson library uses US spelling
+version: "2"
 linters:
+  default: none
   enable:
     - contextcheck
     - errcheck
     - godot
-    - gofmt
-    - goimports
-    - gosimple
     - govet
     - ineffassign
     - misspell
     - staticcheck
     - unused
     - whitespace
-  disable-all: true
+  settings:
+    misspell:
+      locale: UK
+      ignore-rules:
+        - standardize  # hujson library uses US spelling
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
-run:
-  timeout: 5m
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

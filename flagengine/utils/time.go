@@ -17,5 +17,5 @@ func (i *ISOTime) UnmarshalJSON(bytes []byte) (err error) {
 }
 
 func (i *ISOTime) MarshalJSON() ([]byte, error) {
-	return []byte(`"` + i.Time.Format(time.RFC3339) + `"`), nil
+	return []byte(`"` + i.Format(time.RFC3339) + `"`), nil
 }
