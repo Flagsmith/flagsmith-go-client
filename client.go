@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"reflect"
 	"runtime"
 	"strings"
@@ -432,29 +433,54 @@ func (c *Client) pollThenStartRealtime(ctx context.Context) {
 }
 
 func (c *Client) UpdateEnvironment(ctx context.Context) error {
-	var env environments.EnvironmentModel
-	resp, err := c.client.NewRequest().
-		SetContext(ctx).
-		SetResult(&env).
-		ForceContentType("application/json").
-		Get(c.config.baseURL + "environment-document/")
+	start := time.Now()
 
-	if err != nil {
-		msg := fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)
-		f := &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
-		if c.errorHandler != nil {
-			c.errorHandler(f)
+	var env environments.EnvironmentModel
+	nextPage := ""
+	pageCount := 0
+
+	for {
+		var page environments.EnvironmentModel
+		req := c.client.NewRequest().
+			SetContext(ctx).
+			SetResult(&page).
+			ForceContentType("application/json")
+		if nextPage != "" {
+			req = req.SetQueryParam("page_id", nextPage)
 		}
-		return f
-	}
-	if resp.StatusCode() != 200 {
-		msg := fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())
-		f := &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
-		if c.errorHandler != nil {
-			c.errorHandler(f)
+
+		resp, err := req.Get(c.config.baseURL + "environment-document/")
+		if err != nil {
+			msg := fmt.Sprintf("flagsmith: error performing request to Flagsmith API: %s", err)
+			f := &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+			if c.errorHandler != nil {
+				c.errorHandler(f)
+			}
+			return f
 		}
-		return f
+		if resp.StatusCode() != 200 {
+			msg := fmt.Sprintf("flagsmith: unexpected response from Flagsmith API: %s", resp.Status())
+			f := &FlagsmithAPIError{Msg: msg, Err: err, ResponseStatusCode: resp.StatusCode(), ResponseStatus: resp.Status()}
+			if c.errorHandler != nil {
+				c.errorHandler(f)
+			}
+			return f
+		}
+
+		pageCount++
+		nextPage = c.ExtractNextPage(resp.Header().Get("link"))
+
+		if pageCount == 1 {
+			env = page
+		} else {
+			env.IdentityOverrides = append(env.IdentityOverrides, page.IdentityOverrides...)
+		}
+
+		if nextPage == "" {
+			break
+		}
 	}
+
 	isNew := false
 	previousEnv := c.environment.Load()
 	if previousEnv == nil || env.UpdatedAt.After(previousEnv.(*environments.EnvironmentModel).UpdatedAt) {
@@ -469,5 +495,35 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 		c.log.Info("environment updated", "environment", env.APIKey, "updated_at", env.UpdatedAt)
 	}
 
+	c.log.Debug("IdentityOverrides", "len", len(env.IdentityOverrides))
+
+	if elapsed := time.Since(start); c.config.envRefreshInterval > 0 && elapsed > c.config.envRefreshInterval {
+		c.log.Warn(
+			"fetching environment took longer than the configured refresh interval; raise WithEnvironmentRefreshInterval or trim the environment",
+			"elapsed", elapsed,
+			"refresh_interval", c.config.envRefreshInterval,
+		)
+	}
+
 	return nil
+}
+
+// ExtractNextPage parses the Link header from the environment-document API and
+// returns the decoded page_id value when a next page exists, or empty string otherwise.
+// Expected format: </api/v1/environment-document/?page_id=xxx>; rel="next".
+func (c *Client) ExtractNextPage(linkHeader string) string {
+	parts := strings.SplitN(linkHeader, ">", 2)
+	if len(parts) == 0 {
+		return ""
+	}
+
+	u, err := url.Parse(strings.TrimPrefix(parts[0], "<"))
+	if err != nil {
+		return ""
+	}
+
+	pageID := u.Query().Get("page_id")
+	c.log.Debug("environment-document next page", "link", linkHeader, "page_id", pageID)
+
+	return pageID
 }

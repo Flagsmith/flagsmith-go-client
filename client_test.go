@@ -1236,3 +1236,158 @@ func TestCustomClientOptionsShoudPanic(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractNextPage(t *testing.T) {
+	client := flagsmith.NewClient("test-key")
+
+	testCases := []struct {
+		name     string
+		header   string
+		expected string
+	}{
+		{
+			name:     "valid link header with encoded page_id",
+			header:   "</api/v1/environment-document/?page_id=" + fixtures.PageIDEncoded + ">; rel=\"next\"",
+			expected: fixtures.PageID,
+		},
+		{
+			name:     "empty header returns empty string",
+			header:   "",
+			expected: "",
+		},
+		{
+			name:     "header without page_id returns empty string",
+			header:   "</api/v1/environment-document/>; rel=\"next\"",
+			expected: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := client.ExtractNextPage(tc.header)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestUpdateEnvironmentPaginatesIdentityOverrides(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(fixtures.PaginatedEnvironmentDocumentHandler))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	// When
+	err := client.UpdateEnvironment(ctx)
+
+	// Then
+	assert.NoError(t, err)
+
+	// Identity from page 1 should be found
+	flags, err := client.GetIdentityFlags(ctx, fixtures.OverriddenIdentifier, nil)
+	assert.NoError(t, err)
+	enabled, err := flags.IsFeatureEnabled(fixtures.Feature1Name)
+	assert.NoError(t, err)
+	assert.False(t, enabled, "identity from page 1 should have overridden feature disabled")
+
+	// Identity from page 2 should also be found
+	flags2, err := client.GetIdentityFlags(ctx, fixtures.OverriddenIdentifierPage2, nil)
+	assert.NoError(t, err)
+	enabled2, err := flags2.IsFeatureEnabled(fixtures.Feature1Name)
+	assert.NoError(t, err)
+	assert.False(t, enabled2, "identity from page 2 should have overridden feature disabled")
+}
+
+func TestUpdateEnvironmentSinglePageNoLinkHeader(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+
+	// When
+	err := client.UpdateEnvironment(ctx)
+
+	// Then — no pagination, identity from page 1 should still work
+	assert.NoError(t, err)
+
+	flags, err := client.GetIdentityFlags(ctx, fixtures.OverriddenIdentifier, nil)
+	assert.NoError(t, err)
+	enabled, err := flags.IsFeatureEnabled(fixtures.Feature1Name)
+	assert.NoError(t, err)
+	assert.False(t, enabled, "identity override should have feature disabled")
+}
+
+func TestUpdateEnvironmentLogsWarningWhenSlowerThanRefreshInterval(t *testing.T) {
+	// Given: handler delays the response so the fetch takes longer than the
+	// refresh interval; we capture logs to assert the warning is emitted.
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		time.Sleep(20 * time.Millisecond)
+		fixtures.EnvironmentDocumentHandler(rw, req)
+	}))
+	defer server.Close()
+
+	var logOutput strings.Builder
+	var logMu sync.Mutex
+	slogLogger := slog.New(slog.NewTextHandler(writerFunc(func(p []byte) (n int, err error) {
+		logMu.Lock()
+		defer logMu.Unlock()
+		return logOutput.Write(p)
+	}), &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithSlogLogger(slogLogger),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithEnvironmentRefreshInterval(1*time.Millisecond))
+
+	// When
+	err := client.UpdateEnvironment(ctx)
+
+	// Then
+	assert.NoError(t, err)
+
+	logMu.Lock()
+	logStr := logOutput.String()
+	logMu.Unlock()
+
+	assert.Contains(t, logStr, "fetching environment took longer than the configured refresh interval")
+	assert.Contains(t, logStr, "refresh_interval=1ms")
+	assert.Contains(t, logStr, "elapsed=")
+}
+
+func TestUpdateEnvironmentDoesNotLogWarningWhenWithinRefreshInterval(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(fixtures.EnvironmentDocumentHandler))
+	defer server.Close()
+
+	var logOutput strings.Builder
+	var logMu sync.Mutex
+	slogLogger := slog.New(slog.NewTextHandler(writerFunc(func(p []byte) (n int, err error) {
+		logMu.Lock()
+		defer logMu.Unlock()
+		return logOutput.Write(p)
+	}), &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithSlogLogger(slogLogger),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithEnvironmentRefreshInterval(10*time.Second))
+
+	// When
+	err := client.UpdateEnvironment(ctx)
+
+	// Then
+	assert.NoError(t, err)
+
+	logMu.Lock()
+	logStr := logOutput.String()
+	logMu.Unlock()
+
+	assert.NotContains(t, logStr, "fetching environment took longer")
+}

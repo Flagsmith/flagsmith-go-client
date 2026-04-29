@@ -14,6 +14,11 @@ const Feature1ID = 1
 const Feature1OverriddenValue = "some-overridden-value"
 const ClientAPIKey = "B62qaMZNwfiqT76p38ggrQ"
 
+const OverriddenIdentifier = "overridden-id"
+const OverriddenIdentifierPage2 = "overridden-id-page2"
+const PageID = "identity_override:1:00000000-0000-0000-0000-000000000001"
+const PageIDEncoded = "identity_override%3A1%3A00000000-0000-0000-0000-000000000001"
+
 const EnvironmentJson = `
 {
 	"api_key": "B62qaMZNwfiqT76p38ggrQ",
@@ -206,6 +211,40 @@ const IdentityResponseJson = `
 
 `
 
+// EnvironmentJsonPage2 contains only identity_overrides — the base environment fields
+// are irrelevant for subsequent pages since only IdentityOverrides are merged.
+const EnvironmentJsonPage2 = `
+{
+	"api_key": "B62qaMZNwfiqT76p38ggrQ",
+	"updated_at": "2023-12-06T10:21:54.079725Z",
+	"project": {"name": "Test project", "organisation": {"feature_analytics": false, "name": "Test Org", "id": 1, "persist_trait_data": true, "stop_serving_flags": false}, "id": 1, "hide_disabled_flags": false, "segments": []},
+	"segment_overrides": [],
+	"id": 1,
+	"feature_states": [],
+	"identity_overrides": [
+		{
+			"identifier": "overridden-id-page2",
+			"identity_uuid": "1a2b3c4d-5e6f-7890-abcd-ef1234567890",
+			"created_date": "2019-08-27T14:53:45.698555Z",
+			"updated_at": "2023-07-14 16:12:00.000000",
+			"environment_api_key": "B62qaMZNwfiqT76p38ggrQ",
+			"identity_features": [
+				{
+					"id": 1,
+					"feature": {"id": 1, "name": "feature_1", "type": "STANDARD"},
+					"featurestate_uuid": "00000000-0000-0000-0000-000000000002",
+					"feature_state_value": "some-overridden-value",
+					"enabled": false,
+					"environment": 1,
+					"identity": null,
+					"feature_segment": null
+				}
+			]
+		}
+	]
+}
+`
+
 func EnvironmentDocumentHandler(rw http.ResponseWriter, req *http.Request) {
 	if req.URL.Path != "/api/v1/environment-document/" {
 		panic("Wrong path")
@@ -218,6 +257,35 @@ func EnvironmentDocumentHandler(rw http.ResponseWriter, req *http.Request) {
 
 	rw.WriteHeader(http.StatusOK)
 	_, err := io.WriteString(rw, EnvironmentJson)
+	if err != nil {
+		panic(err)
+	}
+}
+
+// PaginatedEnvironmentDocumentHandler serves two pages of environment document.
+// Page 1 includes a Link header pointing to page 2. Page 2 has no Link header.
+func PaginatedEnvironmentDocumentHandler(rw http.ResponseWriter, req *http.Request) {
+	if req.URL.Path != "/api/v1/environment-document/" {
+		panic("Wrong path")
+	}
+	if req.Header.Get("X-Environment-Key") != EnvironmentAPIKey {
+		panic("Wrong API key")
+	}
+
+	rw.Header().Set("Content-Type", "application/json")
+
+	if req.URL.Query().Get("page_id") == "" {
+		rw.Header().Set("link", "</api/v1/environment-document/?page_id="+PageIDEncoded+">; rel=\"next\"")
+		rw.WriteHeader(http.StatusOK)
+		_, err := io.WriteString(rw, EnvironmentJson)
+		if err != nil {
+			panic(err)
+		}
+		return
+	}
+
+	rw.WriteHeader(http.StatusOK)
+	_, err := io.WriteString(rw, EnvironmentJsonPage2)
 	if err != nil {
 		panic(err)
 	}
