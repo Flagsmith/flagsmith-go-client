@@ -58,12 +58,34 @@ func contextMatchesSegmentRule(ec *EngineEvaluationContext, segmentRule *Segment
 		}
 	}
 
-	for i := range segmentRule.Rules {
-		if !contextMatchesSegmentRule(ec, &segmentRule.Rules[i], segmentKey) {
+	return matchesSubRulesByRuleType(ec, segmentRule.Rules, segmentRule.Type, segmentKey)
+}
+
+// matchesSubRulesByRuleType evaluates sub-rules using the parent rule's type (ALL/ANY/NONE).
+func matchesSubRulesByRuleType(ec *EngineEvaluationContext, subRules []SegmentRule, ruleType Type, segmentKey string) bool {
+	if len(subRules) == 0 {
+		return true
+	}
+	for i := range subRules {
+		subRuleMatches := contextMatchesSegmentRule(ec, &subRules[i], segmentKey)
+		switch ruleType {
+		case All:
+			if !subRuleMatches {
+				return false
+			}
+		case None:
+			if subRuleMatches {
+				return false
+			}
+		case Any:
+			if subRuleMatches {
+				return true
+			}
+		default:
 			return false
 		}
 	}
-	return true
+	return ruleType != Any
 }
 
 func matchPercentageSplit(ec *EngineEvaluationContext, segmentCondition *Condition, segmentKey string, contextValue ContextValue) bool {
