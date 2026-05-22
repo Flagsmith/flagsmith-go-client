@@ -167,7 +167,7 @@ func mapRuleType(t segments.RuleType) Type {
 type overridesKey struct {
 	featureName  string
 	enabled      bool
-	featureValue string
+	featureValue any
 }
 
 // overridesKeyList is a sortable slice of overridesKey.
@@ -185,7 +185,7 @@ func generateHash(overrides overridesKeyList) string {
 	// Create a string representation of the overrides
 	var hashInput string
 	for _, override := range overrides {
-		hashInput += fmt.Sprintf("%s:%t:%s;", override.featureName, override.enabled, override.featureValue)
+		hashInput += fmt.Sprintf("%s:%t:%v;", override.featureName, override.enabled, override.featureValue)
 	}
 
 	// Generate SHA256 hash
@@ -208,18 +208,13 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 		// Create overrides key from sorted features
 		var overrides overridesKeyList
 		for _, featureState := range identityOverride.IdentityFeatures {
-			featureValue := ""
-			if featureState.RawValue != nil {
-				featureValue = fmt.Sprint(featureState.RawValue)
-			}
-
 			// Store feature name to ID mapping for later lookup
 			featureNameToID[featureState.Feature.Name] = featureState.Feature.ID
 
 			overrides = append(overrides, overridesKey{
 				featureName:  featureState.Feature.Name,
 				enabled:      featureState.Enabled,
-				featureValue: featureValue,
+				featureValue: featureState.RawValue,
 			})
 		}
 
