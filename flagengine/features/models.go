@@ -58,6 +58,7 @@ func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
 type MultivariateFeatureOptionModel struct {
 	ID    int         `json:"id"`
 	Value interface{} `json:"value"`
+	Key   string      `json:"key"`
 }
 
 type MultivariateFeatureStateValueModel struct {

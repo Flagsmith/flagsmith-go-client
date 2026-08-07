@@ -3,8 +3,68 @@ package flagsmith
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
 )
+
+func TestMakeFlagsFromAPIFlagsSetsReasonAndVariant(t *testing.T) {
+	// Given
+	flagsJson := []byte(`[{
+		"enabled": true,
+		"feature_state_value": "test-value",
+		"feature": {"id": 123, "name": "test_feature"},
+		"reason": "TARGETING_MATCH; segment=premium",
+		"variant": "treatment"
+	}]`)
+
+	// When
+	flags, err := makeFlagsFromAPIFlags(flagsJson, nil, nil)
+
+	// Then
+	require.NoError(t, err)
+	require.Len(t, flags.flags, 1)
+	assert.Equal(t, "TARGETING_MATCH; segment=premium", flags.flags[0].Reason)
+	assert.Equal(t, "treatment", flags.flags[0].Variant)
+}
+
+func TestMakeFlagsFromAPIFlagsNoReasonOrVariantIsEmpty(t *testing.T) {
+	// Given: a response from an API that predates the reason and variant fields
+	flagsJson := []byte(`[{
+		"enabled": true,
+		"feature_state_value": "test-value",
+		"feature": {"id": 123, "name": "test_feature"}
+	}]`)
+
+	// When
+	flags, err := makeFlagsFromAPIFlags(flagsJson, nil, nil)
+
+	// Then
+	require.NoError(t, err)
+	require.Len(t, flags.flags, 1)
+	assert.Empty(t, flags.flags[0].Reason)
+	assert.Empty(t, flags.flags[0].Variant)
+}
+
+func TestMakeFlagsFromAPIFlagsNullVariantIsEmpty(t *testing.T) {
+	// Given: a standard feature, for which the API reports a null variant
+	flagsJson := []byte(`[{
+		"enabled": true,
+		"feature_state_value": "test-value",
+		"feature": {"id": 123, "name": "test_feature"},
+		"reason": "DEFAULT",
+		"variant": null
+	}]`)
+
+	// When
+	flags, err := makeFlagsFromAPIFlags(flagsJson, nil, nil)
+
+	// Then
+	require.NoError(t, err)
+	require.Len(t, flags.flags, 1)
+	assert.Empty(t, flags.flags[0].Variant)
+}
 
 func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 	tests := []struct {
@@ -88,11 +148,11 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 			},
 		},
 		{
-			name: "flag with reason field (should be ignored in conversion)",
+			name: "flag with reason field",
 			input: &engine_eval.FlagResult{
 				Enabled: true,
 				Name:    "reason_feature",
-				Reason:  "TARGETING_MATCH",
+				Reason:  "TARGETING_MATCH; segment=premium_segment",
 				Value:   "reason_value",
 			},
 			expected: Flag{
@@ -101,6 +161,45 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 				IsDefault:   false,
 				FeatureID:   0,
 				FeatureName: "reason_feature",
+				Reason:      "TARGETING_MATCH; segment=premium_segment",
+			},
+		},
+		{
+			name: "multivariate flag with selected variant",
+			input: &engine_eval.FlagResult{
+				Enabled: true,
+				Name:    "mv_feature",
+				Reason:  "SPLIT; weight=30",
+				Value:   "variant_value",
+				Variant: "treatment",
+			},
+			expected: Flag{
+				Enabled:     true,
+				Value:       "variant_value",
+				IsDefault:   false,
+				FeatureID:   0,
+				FeatureName: "mv_feature",
+				Reason:      "SPLIT; weight=30",
+				Variant:     "treatment",
+			},
+		},
+		{
+			name: "multivariate flag in the control bucket",
+			input: &engine_eval.FlagResult{
+				Enabled: true,
+				Name:    "mv_feature",
+				Reason:  "DEFAULT",
+				Value:   "control_value",
+				Variant: "control",
+			},
+			expected: Flag{
+				Enabled:     true,
+				Value:       "control_value",
+				IsDefault:   false,
+				FeatureID:   0,
+				FeatureName: "mv_feature",
+				Reason:      "DEFAULT",
+				Variant:     "control",
 			},
 		},
 	}
@@ -124,6 +223,12 @@ func TestMakeFlagFromEngineEvaluationFlagResult(t *testing.T) {
 			if result.FeatureName != tt.expected.FeatureName {
 				t.Errorf("Expected FeatureName %v, got %v", tt.expected.FeatureName, result.FeatureName)
 			}
+			if result.Reason != tt.expected.Reason {
+				t.Errorf("Expected Reason %v, got %v", tt.expected.Reason, result.Reason)
+			}
+			if result.Variant != tt.expected.Variant {
+				t.Errorf("Expected Variant %v, got %v", tt.expected.Variant, result.Variant)
+			}
 		})
 	}
 }
@@ -142,6 +247,7 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 						Enabled: true,
 						Name:    "feature1",
 						Value:   "value1",
+						Reason:  "DEFAULT",
 					},
 					"feature2": {
 						Enabled: false,
@@ -163,6 +269,7 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 					IsDefault:   false,
 					FeatureID:   0,
 					FeatureName: "feature1",
+					Reason:      "DEFAULT",
 				},
 				{
 					Enabled:     false,
@@ -249,6 +356,9 @@ func TestMakeFlagsFromEngineEvaluationResult(t *testing.T) {
 				}
 				if actualFlag.FeatureName != expectedFlag.FeatureName {
 					t.Errorf("Flag %s: Expected FeatureName %v, got %v", expectedFlag.FeatureName, expectedFlag.FeatureName, actualFlag.FeatureName)
+				}
+				if actualFlag.Reason != expectedFlag.Reason {
+					t.Errorf("Flag %s: Expected Reason %v, got %v", expectedFlag.FeatureName, expectedFlag.Reason, actualFlag.Reason)
 				}
 			}
 

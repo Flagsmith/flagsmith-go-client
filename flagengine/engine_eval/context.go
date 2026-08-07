@@ -52,6 +52,9 @@ type FeatureContext struct {
 
 // Represents a multivariate value for a feature flag.
 type FeatureValue struct {
+	// A stable identifier for the variant, reported as the flag result's variant
+	// when this value is selected. Empty if the variant is not keyed.
+	Key string `json:"key,omitempty"`
 	// The value of the feature.
 	Value any `json:"value"`
 	// The weight of the feature value variant, as a percentage number (i.e. 100.0).

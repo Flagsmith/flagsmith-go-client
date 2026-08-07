@@ -18,6 +18,10 @@ type FlagResult struct {
 	Reason string `json:"reason,omitempty"`
 	// Feature flag value.
 	Value any `json:"value,omitempty"`
+	// Key of the multivariate variant the value was selected from: "control" when
+	// the identity falls in the control bucket, or the selected variant's key.
+	// Empty for standard features, unkeyed variants, and evaluation without an identity.
+	Variant string `json:"variant,omitempty"`
 	// Metadata about the feature.
 	Metadata FeatureMetadata `json:"metadata,omitempty"`
 }
