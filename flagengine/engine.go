@@ -9,6 +9,8 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/utils"
 )
 
+const controlVariantKey = "control"
+
 type featureContextWithSegmentName struct {
 	featureContext *engine_eval.FeatureContext
 	segmentName    string
@@ -130,9 +132,13 @@ func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.Ev
 // getFlagResultFromFeatureContext creates a FlagResult from a FeatureContext.
 func getFlagResultFromFeatureContext(featureName string, featureContext *engine_eval.FeatureContext, identityKey *string, reason string) engine_eval.FlagResult {
 	value := featureContext.Value
+	variantKey := ""
 
 	// Handle multivariate features
 	if len(featureContext.Variants) > 0 && identityKey != nil && featureContext.Key != "" {
+		// Default to the control bucket; a selected variant overrides this
+		variantKey = controlVariantKey
+
 		// Sort variants by priority (lower priority value = higher priority)
 		sortedVariants := getSortedVariantsByPriority(featureContext.Variants)
 
@@ -146,6 +152,7 @@ func getFlagResultFromFeatureContext(featureName string, featureContext *engine_
 			cumulativeWeight += variant.Weight
 			if hashPercentage <= cumulativeWeight {
 				value = variant.Value
+				variantKey = variant.Key
 				reason = fmt.Sprintf("SPLIT; weight=%g", variant.Weight)
 				break
 			}
@@ -156,6 +163,7 @@ func getFlagResultFromFeatureContext(featureName string, featureContext *engine_
 		Enabled:  featureContext.Enabled,
 		Name:     featureName,
 		Value:    value,
+		Variant:  variantKey,
 		Reason:   reason,
 		Metadata: featureContext.Metadata,
 	}

@@ -14,6 +14,8 @@ type Flag struct {
 	IsDefault   bool
 	FeatureID   int
 	FeatureName string
+	Reason      string
+	Variant     string
 }
 
 type Trait = trait.Trait
@@ -36,6 +38,8 @@ func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) 
 		IsDefault:   false,
 		FeatureID:   featureID,
 		FeatureName: flagResult.Name,
+		Reason:      flagResult.Reason,
+		Variant:     flagResult.Variant,
 	}
 }
 
@@ -67,6 +71,8 @@ type jsonFlag struct {
 	Enabled bool        `json:"enabled"`
 	Value   interface{} `json:"feature_state_value"`
 	Feature jsonFeature `json:"feature"`
+	Reason  string      `json:"reason"`
+	Variant string      `json:"variant"`
 }
 
 func (jf *jsonFlag) toFlag() Flag {
@@ -76,6 +82,8 @@ func (jf *jsonFlag) toFlag() Flag {
 		IsDefault:   false,
 		FeatureID:   jf.Feature.ID,
 		FeatureName: jf.Feature.Name,
+		Reason:      jf.Reason,
+		Variant:     jf.Variant,
 	}
 }
 func makeFlagsFromAPIFlags(flagsJson []byte, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) (Flag, error)) (Flags, error) {

@@ -10,6 +10,13 @@ const EnvironmentAPIKey = "ser.test_key"
 const Feature1Value = "some_value"
 const Feature1Name = "feature_1"
 const Feature1ID = 1
+const Feature1Reason = "DEFAULT"
+const Feature1IdentityReason = "SPLIT; weight=50.0"
+const Feature1IdentityVariant = "treatment"
+
+const MVFeatureName = "mv_feature"
+const MVFeatureVariantKey = "treatment"
+const MVFeatureVariantValue = "variant_value"
 
 const Feature1OverriddenValue = "some-overridden-value"
 const ClientAPIKey = "B62qaMZNwfiqT76p38ggrQ"
@@ -163,6 +170,54 @@ const EnvironmentJsonWithSegmentOverride = `
   }
   `
 
+// EnvironmentJsonWithMultivariateFeature contains a single multivariate feature whose
+// only variant is keyed and allocated 100%, so every identity is bucketed into it.
+const EnvironmentJsonWithMultivariateFeature = `
+{
+	"api_key": "B62qaMZNwfiqT76p38ggrQ",
+	"name": "Test Environment",
+	"updated_at": "2023-12-06T10:21:54.079725Z",
+	"project": {
+		"name": "Test project",
+		"organisation": {
+			"feature_analytics": false,
+			"name": "Test Org",
+			"id": 1,
+			"persist_trait_data": true,
+			"stop_serving_flags": false
+		},
+		"id": 1,
+		"hide_disabled_flags": false,
+		"segments": []
+	},
+	"segment_overrides": [],
+	"id": 1,
+	"feature_states": [{
+		"multivariate_feature_state_values": [{
+			"id": 1,
+			"multivariate_feature_option": {
+				"id": 1,
+				"value": "variant_value",
+				"key": "treatment"
+			},
+			"percentage_allocation": 100,
+			"mv_fs_value_uuid": "1e1e1e1e-1e1e-1e1e-1e1e-1e1e1e1e1e1e"
+		}],
+		"feature_state_value": "control_value",
+		"id": 2,
+		"featurestate_uuid": "f0c8f0c8-f0c8-f0c8-f0c8-f0c8f0c8f0c8",
+		"feature": {
+			"name": "mv_feature",
+			"type": "MULTIVARIATE",
+			"id": 2
+		},
+		"segment_id": null,
+		"enabled": true
+	}],
+	"identity_overrides": []
+}
+`
+
 const FlagsJson = `
 [{
 	"id": 1,
@@ -177,6 +232,7 @@ const FlagsJson = `
 		"project": 1
 	},
 	"feature_state_value": "some_value",
+	"reason": "DEFAULT",
 	"enabled": true,
 	"environment": 1,
 	"identity": null,
@@ -198,6 +254,8 @@ const IdentityResponseJson = `
 			"project": 1
 		},
 		"feature_state_value": "some_value",
+		"reason": "SPLIT; weight=50.0",
+		"variant": "treatment",
 		"enabled": true,
 		"environment": 1,
 		"identity": null,

@@ -72,6 +72,7 @@ func mapMultivariateFeatureStateValuesToVariants(multivariateValues []*features.
 			Value:    mv.MultivariateFeatureOption.Value,
 			Weight:   mv.PercentageAllocation,
 			Priority: mv.Priority(),
+			Key:      mv.MultivariateFeatureOption.Key,
 		})
 	}
 	return variants

@@ -235,6 +235,8 @@ func TestGetFlags(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+	assert.Equal(t, fixtures.Feature1Reason, allFlags[0].Reason)
+	assert.Empty(t, allFlags[0].Variant)
 }
 
 func TestGetFlagsTransientIdentity(t *testing.T) {
@@ -261,6 +263,8 @@ func TestGetFlagsTransientIdentity(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+	assert.Equal(t, fixtures.Feature1IdentityReason, allFlags[0].Reason)
+	assert.Equal(t, fixtures.Feature1IdentityVariant, allFlags[0].Variant)
 }
 
 func TestGetFlagsTransientTraits(t *testing.T) {
@@ -372,6 +376,7 @@ func TestGetEnvironmentFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
+	assert.Equal(t, "DEFAULT", allFlags[0].Reason)
 }
 
 func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.T) {
@@ -447,6 +452,91 @@ func TestGetEnvironmentFlagsIgnoresSegmentOverrides(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, fixtures.Feature1Value, flag.Value)
 	assert.Equal(t, "some_value", flag.Value)
+	assert.Equal(t, "DEFAULT", flag.Reason)
+}
+
+func TestGetIdentityFlagsAppliesSegmentOverridesWithReason(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(rw, fixtures.EnvironmentJsonWithSegmentOverride)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	err := client.UpdateEnvironment(ctx)
+	assert.NoError(t, err)
+
+	flags, err := client.GetIdentityFlags(ctx, "test_identity", nil)
+
+	// Then
+	assert.NoError(t, err)
+	flag, err := flags.GetFlag(fixtures.Feature1Name)
+	assert.NoError(t, err)
+	assert.Equal(t, "segment_override", flag.Value)
+	assert.Equal(t, "TARGETING_MATCH; segment=Test Segment", flag.Reason)
+}
+
+func TestGetIdentityFlagsSetsVariantForMultivariateFeature(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(rw, fixtures.EnvironmentJsonWithMultivariateFeature)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	err := client.UpdateEnvironment(ctx)
+	assert.NoError(t, err)
+
+	flags, err := client.GetIdentityFlags(ctx, "test_identity", nil)
+
+	// Then
+	assert.NoError(t, err)
+	flag, err := flags.GetFlag(fixtures.MVFeatureName)
+	assert.NoError(t, err)
+	assert.Equal(t, fixtures.MVFeatureVariantValue, flag.Value)
+	assert.Equal(t, fixtures.MVFeatureVariantKey, flag.Variant)
+	assert.Equal(t, "SPLIT; weight=100", flag.Reason)
+}
+
+func TestGetEnvironmentFlagsHasNoVariantForMultivariateFeature(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(rw, fixtures.EnvironmentJsonWithMultivariateFeature)
+	}))
+	defer server.Close()
+
+	// When
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	err := client.UpdateEnvironment(ctx)
+	assert.NoError(t, err)
+
+	flags, err := client.GetEnvironmentFlags(ctx)
+
+	// Then: without an identity there is nothing to bucket, so the control value is
+	// served without a variant
+	assert.NoError(t, err)
+	flag, err := flags.GetFlag(fixtures.MVFeatureName)
+	assert.NoError(t, err)
+	assert.Equal(t, "control_value", flag.Value)
+	assert.Empty(t, flag.Variant)
+	assert.Equal(t, "DEFAULT", flag.Reason)
 }
 
 func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
@@ -499,6 +589,7 @@ func TestGetIdentityFlagsUseslocalOverridesWhenAvailable(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1OverriddenValue, allFlags[0].Value)
+	assert.Equal(t, "TARGETING_MATCH; segment=identity_overrides", allFlags[0].Reason)
 }
 
 func TestGetIdentityFlagsCallsAPIWhenLocalEnvironmentNotAvailableWithTraits(t *testing.T) {
