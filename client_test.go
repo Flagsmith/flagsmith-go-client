@@ -1858,8 +1858,8 @@ func TestGetExperimentFlagRequestError(t *testing.T) {
 }
 
 func TestEventsIgnoreClientRetries(t *testing.T) {
-	// Given: an events API that always fails
-	events := &fixtures.EventsAPIHandler{Statuses: []int{500, 500, 500, 500, 500}}
+	// Given: an events API that is always unavailable
+	events := &fixtures.EventsAPIHandler{Statuses: []int{503, 503, 503, 503, 503, 503, 503, 503, 503, 503}}
 	client := newExperimentClient(t, newExperimentServer(t, events),
 		flagsmith.WithRetries(3, time.Millisecond),
 		flagsmith.WithEventsRetryBackoff(time.Millisecond),
@@ -1869,9 +1869,9 @@ func TestEventsIgnoreClientRetries(t *testing.T) {
 	// When
 	err := client.FlushEvents(t.Context())
 
-	// Then: one attempt and one retry, not multiplied by the client's retry count
+	// Then: three attempts in total, not multiplied by the client's retry count
 	assert.Error(t, err)
-	assert.Len(t, events.Requests(), 2)
+	assert.Len(t, events.Requests(), 3)
 }
 
 func TestEventsRetryBackoff(t *testing.T) {
@@ -1886,9 +1886,9 @@ func TestEventsRetryBackoff(t *testing.T) {
 	start := time.Now()
 	err := client.FlushEvents(t.Context())
 
-	// Then
+	// Then: the first wait is jittered between half and all of the backoff
 	assert.NoError(t, err)
-	assert.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond)
+	assert.GreaterOrEqual(t, time.Since(start), 50*time.Millisecond)
 	assert.Len(t, events.Requests(), 2)
 	assert.Len(t, events.Events(), 2)
 }
@@ -1951,4 +1951,40 @@ func TestEventsFlushedWhenContextCancelled(t *testing.T) {
 
 	// Then
 	assert.Eventually(t, func() bool { return len(events.Events()) == 1 }, time.Second, 5*time.Millisecond)
+}
+
+func TestDroppedEventsExposedToHost(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{Statuses: []int{http.StatusBadRequest}}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+	require.NoError(t, client.TrackEvent("a", nil))
+	require.NoError(t, client.TrackEvent("b", nil))
+
+	// When
+	err := client.FlushEvents(t.Context())
+
+	// Then
+	assert.Error(t, err)
+	assert.Equal(t, int64(2), client.DroppedEvents())
+}
+
+func TestDroppedEventsWithoutEventsEnabled(t *testing.T) {
+	assert.Zero(t, flagsmith.NewClient(fixtures.EnvironmentAPIKey).DroppedEvents())
+}
+
+func TestEventsDisabledAfterUnauthorised(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{Statuses: []int{http.StatusUnauthorized}}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+	require.NoError(t, client.TrackEvent("a", nil))
+	require.Error(t, client.FlushEvents(t.Context()))
+
+	// When
+	_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, flagsmith.NewEvaluationContext("user-123", nil))
+	require.NoError(t, err)
+	require.NoError(t, client.TrackEvent("b", nil))
+
+	// Then: flags still work, but nothing more is sent
+	require.NoError(t, client.FlushEvents(t.Context()))
+	assert.Len(t, events.Requests(), 1)
 }

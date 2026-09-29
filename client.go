@@ -211,11 +211,14 @@ func (c *Client) newEventProcessor() *EventProcessor {
 	if c.config.eventsRetryBackoff != nil {
 		retryBackoff = *c.config.eventsRetryBackoff
 	}
-	return newEventProcessor(
-		c.ctxEvents, eventsClient, c.config.eventsBaseURL,
-		c.config.eventsMaxBufferSize, c.config.eventsFlushInterval, timeout, retryBackoff,
-		log,
-	)
+	return newEventProcessor(c.ctxEvents, eventsClient, eventProcessorConfig{
+		baseURL:       c.config.eventsBaseURL,
+		maxBufferSize: c.config.eventsMaxBufferSize,
+		flushInterval: c.config.eventsFlushInterval,
+		timeout:       timeout,
+		retryBackoff:  retryBackoff,
+		log:           log,
+	})
 }
 
 // GetExperimentFlag evaluates one flag for the identity in ec and records a $flag_exposure
@@ -314,6 +317,17 @@ func (c *Client) FlushEvents(ctx context.Context) error {
 		return nil
 	}
 	return c.eventProcessor.Flush(ctx)
+}
+
+// DroppedEvents returns how many experimentation events have been lost so far: dropped
+// from a full buffer while the events API was unreachable, rejected by the events API,
+// discarded after a 401 or 403, or left unsent by the final flush on shutdown. Returns 0
+// when events are not enabled.
+func (c *Client) DroppedEvents() int64 {
+	if c.eventProcessor == nil {
+		return 0
+	}
+	return c.eventProcessor.DroppedEvents()
 }
 
 // traitValues flattens the identity's traits to their values, or nil when there are none.

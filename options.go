@@ -243,17 +243,20 @@ func WithEventsFlushInterval(interval time.Duration) Option {
 	}
 }
 
-// WithEventsMaxBufferSize sets the number of buffered events that triggers a flush.
-// Defaults to DefaultEventsMaxBufferSize.
+// WithEventsMaxBufferSize sets the number of buffered events that triggers a flush. It is
+// also the most events kept while the events API is unreachable: beyond it the oldest are
+// dropped and counted by Client.DroppedEvents. Defaults to DefaultEventsMaxBufferSize.
 func WithEventsMaxBufferSize(size int) Option {
 	return func(c *Client) {
 		c.config.eventsMaxBufferSize = size
 	}
 }
 
-// WithEventsRetryBackoff sets how long to wait before retrying a batch of events that
-// failed with a network error or a 5xx response. A batch is retried once, then dropped.
-// Defaults to the request timeout, capped at one second.
+// WithEventsRetryBackoff sets how long to wait before the first retry of a batch of events
+// that failed with a network error or a 503. A batch is posted up to three times; the wait
+// doubles before the second retry, and each wait is jittered between half and all of it.
+// A batch that still fails is kept for the next flush. Defaults to the request timeout,
+// capped at one second.
 func WithEventsRetryBackoff(backoff time.Duration) Option {
 	return func(c *Client) {
 		c.config.eventsRetryBackoff = &backoff
