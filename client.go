@@ -207,7 +207,7 @@ func (c *Client) newEventProcessor() *EventProcessor {
 	if timeout <= 0 {
 		timeout = c.config.timeout
 	}
-	retryBackoff := defaultEventsRetryBackoff(timeout)
+	retryBackoff := DefaultEventsRetryBackoff
 	if c.config.eventsRetryBackoff != nil {
 		retryBackoff = *c.config.eventsRetryBackoff
 	}
@@ -228,6 +228,10 @@ func (c *Client) newEventProcessor() *EventProcessor {
 // present with remote evaluation; with local evaluation the flag is returned and no exposure
 // is recorded. No exposure is recorded either when the flag is disabled, served by the
 // default handler, or evaluated for another environment through ec.Environment.
+//
+// The exposure is buffered and sent in the background like any other event; see WithEvents
+// for how failures are handled. Once a 401 or 403 has stopped event tracking, the flag is
+// still returned but no exposure is recorded.
 //
 // Returns a FlagsmithClientError when events are not enabled or ec carries no identity.
 func (c *Client) GetExperimentFlag(ctx context.Context, featureName string, ec EvaluationContext) (Flag, error) {
@@ -273,6 +277,10 @@ func (c *Client) GetExperimentFlag(ctx context.Context, featureName string, ec E
 // TrackEvent records a custom event, e.g. a conversion to reconcile with experiment
 // exposures. opts may be nil. Names starting with "$" are reserved and rejected.
 //
+// The event is buffered and sent in the background; it never blocks on the network, and
+// sending failures are handled as described on WithEvents, not returned here. It is a
+// no-op once a 401 or 403 has stopped event tracking.
+//
 // Returns a FlagsmithClientError when events are not enabled.
 func (c *Client) TrackEvent(name string, opts *EventOptions) error {
 	if c.eventProcessor == nil {
@@ -289,6 +297,10 @@ func (c *Client) TrackEvent(name string, opts *EventOptions) error {
 // elsewhere; GetExperimentFlag records exposures on its own. Nothing is sent when
 // identifier is empty. Only Traits and Metadata are read from opts, which may be nil:
 // the identifier and value are the positional arguments.
+//
+// Equal exposures are sent once until the events API returns a 2xx response. Like
+// TrackEvent, it never blocks on the network, and it is a no-op once a 401 or 403 has
+// stopped event tracking.
 //
 // Returns a FlagsmithClientError when events are not enabled.
 func (c *Client) TrackExposureEvent(featureName string, identifier string, value interface{}, opts *EventOptions) error {
@@ -307,9 +319,14 @@ func (c *Client) TrackExposureEvent(featureName string, identifier string, value
 	return nil
 }
 
-// FlushEvents sends buffered events now. It returns once every event tracked before the
-// call has been sent or dropped, or when ctx is done. Batches started after the call are
-// not waited for.
+// FlushEvents sends buffered events now, with the usual retries. It returns once every
+// event tracked before the call has been sent, put back in the buffer after a retryable
+// failure, or dropped, or when ctx is done. Batches started after the call are not waited
+// for. A retry whose wait would pass ctx's deadline is not attempted.
+//
+// It returns the error of the batch it sent, if any; a batch put back in the buffer is
+// sent again on the next flush. Call it with a deadline before a short-lived process
+// exits. It never panics.
 //
 // Returns nil immediately when events are not enabled.
 func (c *Client) FlushEvents(ctx context.Context) error {
@@ -319,9 +336,10 @@ func (c *Client) FlushEvents(ctx context.Context) error {
 	return c.eventProcessor.Flush(ctx)
 }
 
-// DroppedEvents returns how many experimentation events have been lost so far: dropped
-// from a full buffer while the events API was unreachable, rejected by the events API,
-// discarded after a 401 or 403, or left unsent by the final flush on shutdown. Returns 0
+// DroppedEvents returns how many experimentation events have been lost so far. The count
+// only ever increases. It includes events dropped from a full buffer, batches dropped on a
+// non-retryable status, the buffer and batches discarded on a 401 or 403, batches that
+// fail the shutdown flush, and events listed as rejected in a 202 response. Returns 0
 // when events are not enabled.
 func (c *Client) DroppedEvents() int64 {
 	if c.eventProcessor == nil {

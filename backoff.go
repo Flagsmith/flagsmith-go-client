@@ -63,11 +63,10 @@ func subSecondJitter(d time.Duration) time.Duration {
 	return d + time.Duration(time.Now().UnixNano()%1e9)
 }
 
-// equalJitter returns a random duration between d/2 and d.
-func equalJitter(d time.Duration) time.Duration {
+// fullJitter returns a random duration between 0 and d.
+func fullJitter(d time.Duration) time.Duration {
 	if d <= 0 {
 		return 0
 	}
-	half := d / 2
-	return half + rand.N(d-half+1)
+	return rand.N(d + 1)
 }

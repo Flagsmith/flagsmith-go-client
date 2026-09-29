@@ -1875,10 +1875,10 @@ func TestEventsIgnoreClientRetries(t *testing.T) {
 }
 
 func TestEventsRetryBackoff(t *testing.T) {
-	// Given
-	events := &fixtures.EventsAPIHandler{Statuses: []int{503}}
+	// Given: a zero backoff, where the 1s default would make the retries slow
+	events := &fixtures.EventsAPIHandler{Statuses: []int{503, 429}}
 	client := newExperimentClient(t, newExperimentServer(t, events),
-		flagsmith.WithEventsRetryBackoff(100*time.Millisecond),
+		flagsmith.WithEventsRetryBackoff(0),
 	)
 	require.NoError(t, client.TrackEvent("purchase", nil))
 
@@ -1886,11 +1886,11 @@ func TestEventsRetryBackoff(t *testing.T) {
 	start := time.Now()
 	err := client.FlushEvents(t.Context())
 
-	// Then: the first wait is jittered between half and all of the backoff
+	// Then: retried straight away, and delivered on the third attempt
 	assert.NoError(t, err)
-	assert.GreaterOrEqual(t, time.Since(start), 50*time.Millisecond)
-	assert.Len(t, events.Requests(), 2)
-	assert.Len(t, events.Events(), 2)
+	assert.Less(t, time.Since(start), 500*time.Millisecond)
+	assert.Len(t, events.Requests(), 3)
+	assert.Zero(t, client.DroppedEvents())
 }
 
 func TestEventsSendCustomHeaders(t *testing.T) {

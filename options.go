@@ -211,10 +211,18 @@ func WithRestyClient(restyClient *resty.Client) Option {
 
 // WithEvents enables experimentation event tracking (exposures and custom events).
 //
-// The goroutine responsible for asynchronously flushing buffered events uses the
-// context provided here. When it is done the processor performs one final flush,
-// bounded by the request timeout, and exits, so cancel it on shutdown to avoid
-// losing the last batch. Call FlushEvents first if the last events matter.
+// Events are buffered and sent in batches by a background goroutine that uses the
+// context provided here. Cancelling it is the shutdown flush: the processor sends what is
+// still buffered, retrying with backoff as long as the retries fit within the request
+// timeout, drops and counts what still fails, and exits. Cancel it on shutdown. When the
+// last events must be delivered, for example in a short-lived process, call FlushEvents
+// with a deadline first.
+//
+// Sending failures never reach the code that tracks events. Network errors, timeouts and
+// 408, 429, 502, 503 and 504 responses are retried, three attempts in total, and a batch
+// that still fails waits in the buffer for the next flush. Other error statuses drop the
+// batch. A 401 or 403 stops event tracking until the client is re-created. Lost events
+// are counted by Client.DroppedEvents.
 //
 // Events cannot be used together with WithOfflineMode.
 func WithEvents(ctx context.Context) Option {
@@ -235,8 +243,9 @@ func WithEventsBaseURL(url string) Option {
 	}
 }
 
-// WithEventsFlushInterval sets how often buffered events are sent. 0 disables the timer,
-// leaving the buffer-full trigger and FlushEvents. Defaults to DefaultEventsFlushInterval.
+// WithEventsFlushInterval sets how often buffered events are sent. A batch that failed with
+// a retryable error is sent again on the next tick. 0 disables the timer, leaving the
+// buffer-full trigger and FlushEvents. Defaults to DefaultEventsFlushInterval.
 func WithEventsFlushInterval(interval time.Duration) Option {
 	return func(c *Client) {
 		c.config.eventsFlushInterval = interval
@@ -244,19 +253,21 @@ func WithEventsFlushInterval(interval time.Duration) Option {
 }
 
 // WithEventsMaxBufferSize sets the number of buffered events that triggers a flush. It is
-// also the most events kept while the events API is unreachable: beyond it the oldest are
-// dropped and counted by Client.DroppedEvents. Defaults to DefaultEventsMaxBufferSize.
+// also the most events kept while the events API is unreachable, including batches put
+// back after a failure: beyond it the oldest are dropped and counted by
+// Client.DroppedEvents. Defaults to DefaultEventsMaxBufferSize.
 func WithEventsMaxBufferSize(size int) Option {
 	return func(c *Client) {
 		c.config.eventsMaxBufferSize = size
 	}
 }
 
-// WithEventsRetryBackoff sets how long to wait before the first retry of a batch of events
-// that failed with a network error or a 503. A batch is posted up to three times; the wait
-// doubles before the second retry, and each wait is jittered between half and all of it.
-// A batch that still fails is kept for the next flush. Defaults to the request timeout,
-// capped at one second.
+// WithEventsRetryBackoff sets the backoff before the first retry of a batch of events that
+// failed with a retryable error: a network error, a timeout, or a 408, 429, 502, 503 or 504
+// response. A batch is posted up to three times in total. The backoff doubles before each
+// further retry, up to 10 seconds, and each wait is a random duration between zero and
+// the backoff. A batch that still fails is kept for the next flush. Defaults to
+// DefaultEventsRetryBackoff.
 func WithEventsRetryBackoff(backoff time.Duration) Option {
 	return func(c *Client) {
 		c.config.eventsRetryBackoff = &backoff

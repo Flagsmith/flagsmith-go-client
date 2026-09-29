@@ -613,13 +613,36 @@ func TestEventProcessorRetries(t *testing.T) {
 	})
 
 	for _, status := range []int{
+		http.StatusRequestTimeout,
+		http.StatusTooManyRequests,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+	} {
+		t.Run(fmt.Sprintf("%d is retried then kept", status), func(t *testing.T) {
+			server := newEventsServer(t, statusSequence(status))
+			p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
+			p.TrackEvent("purchase", nil)
+
+			err := p.Flush(t.Context())
+
+			var apiErr *FlagsmithAPIError
+			require.ErrorAs(t, err, &apiErr)
+			assert.Equal(t, status, apiErr.ResponseStatusCode)
+			assert.Equal(t, 3, server.requestCount())
+			assert.Len(t, bufferedEvents(p), 1)
+			assert.Zero(t, p.DroppedEvents())
+		})
+	}
+
+	for _, status := range []int{
 		http.StatusBadRequest,
 		http.StatusNotFound,
+		http.StatusConflict,
 		http.StatusUnsupportedMediaType,
 		http.StatusUnprocessableEntity,
-		http.StatusTooManyRequests,
 		http.StatusInternalServerError,
-		http.StatusBadGateway,
+		http.StatusNotImplemented,
 	} {
 		t.Run(fmt.Sprintf("%d is dropped after one attempt", status), func(t *testing.T) {
 			server := newEventsServer(t, statusSequence(status))
@@ -691,13 +714,13 @@ func TestEventProcessorDefaultJitterStaysWithinBackoff(t *testing.T) {
 	// When
 	require.Error(t, p.Flush(t.Context()))
 
-	// Then
+	// Then: full jitter, between zero and the backoff
 	mu.Lock()
 	defer mu.Unlock()
 	require.Len(t, waits, 2)
-	assert.GreaterOrEqual(t, waits[0], 50*time.Millisecond)
+	assert.GreaterOrEqual(t, waits[0], time.Duration(0))
 	assert.LessOrEqual(t, waits[0], 100*time.Millisecond)
-	assert.GreaterOrEqual(t, waits[1], 100*time.Millisecond)
+	assert.GreaterOrEqual(t, waits[1], time.Duration(0))
 	assert.LessOrEqual(t, waits[1], 200*time.Millisecond)
 }
 
@@ -808,7 +831,8 @@ func TestEventProcessorUnauthorisedStops(t *testing.T) {
 			assert.Equal(t, int64(2), p.DroppedEvents())
 
 			// Then: logged exactly once
-			assert.Len(t, logs.matching(slog.LevelError, "events API rejected the environment key; event tracking is disabled"), 1)
+			assert.Len(t, logs.matching(slog.LevelWarn, "events API rejected the environment key; event tracking is disabled"), 1)
+			assert.Empty(t, logs.matching(slog.LevelError, "events API rejected the environment key; event tracking is disabled"))
 		})
 	}
 }
@@ -929,6 +953,7 @@ func TestEventProcessorFinalFlushDoesNotSleepPastTimeout(t *testing.T) {
 	cfg := testEventsConfig(server.URL, 100, 0)
 	cfg.timeout = 100 * time.Millisecond
 	cfg.retryBackoff = time.Second
+	cfg.jitter = func(d time.Duration) time.Duration { return d }
 	p := newTestEventProcessorWith(ctx, cfg)
 	p.TrackEvent("a", nil)
 
@@ -946,6 +971,47 @@ func TestEventProcessorFinalFlushDoesNotSleepPastTimeout(t *testing.T) {
 	assert.Equal(t, 1, server.requestCount())
 	assert.Empty(t, bufferedEvents(p))
 	assert.Equal(t, int64(1), p.DroppedEvents())
+}
+
+func TestEventProcessorFinalFlushRetriesWithinTimeout(t *testing.T) {
+	t.Run("retries that fit are made, then the batch is dropped", func(t *testing.T) {
+		// Given
+		server := newEventsServer(t, statusSequence(http.StatusServiceUnavailable))
+		ctx, cancel := context.WithCancel(t.Context())
+		cfg := testEventsConfig(server.URL, 100, 0)
+		cfg.timeout = 500 * time.Millisecond
+		cfg.retryBackoff = time.Millisecond
+		p := newTestEventProcessorWith(ctx, cfg)
+		p.TrackEvent("a", nil)
+
+		// When
+		cancel()
+
+		// Then: the full ladder of three attempts, then dropped and counted
+		<-p.stopped
+		assert.Equal(t, 3, server.requestCount())
+		assert.Empty(t, bufferedEvents(p))
+		assert.Equal(t, int64(1), p.DroppedEvents())
+	})
+
+	t.Run("a retry that succeeds delivers the batch", func(t *testing.T) {
+		// Given
+		server := newEventsServer(t, statusSequence(http.StatusServiceUnavailable, http.StatusAccepted))
+		ctx, cancel := context.WithCancel(t.Context())
+		cfg := testEventsConfig(server.URL, 100, 0)
+		cfg.timeout = 500 * time.Millisecond
+		cfg.retryBackoff = time.Millisecond
+		p := newTestEventProcessorWith(ctx, cfg)
+		p.TrackEvent("a", nil)
+
+		// When
+		cancel()
+
+		// Then
+		<-p.stopped
+		assert.Equal(t, 2, server.requestCount())
+		assert.Zero(t, p.DroppedEvents())
+	})
 }
 
 func TestSleepContextFailsWhenDeadlineTooClose(t *testing.T) {
@@ -1078,9 +1144,35 @@ func TestEventProcessorWorkerSurvivesPanickingLogger(t *testing.T) {
 }
 
 func TestNewEventProcessorRetryBackoffDefault(t *testing.T) {
-	assert.Equal(t, 50*time.Millisecond, defaultEventsRetryBackoff(50*time.Millisecond))
-	assert.Equal(t, time.Second, defaultEventsRetryBackoff(10*time.Second))
-	assert.Equal(t, time.Second, defaultEventsRetryBackoff(0))
+	p := NewEventProcessor(t.Context(), resty.New(), "http://localhost:1/", 100, 0, 50*time.Millisecond, createLogger())
+	assert.Equal(t, time.Second, p.cfg.retryBackoff)
+	assert.Equal(t, time.Second, DefaultEventsRetryBackoff)
+}
+
+func TestEventProcessorRetryBackoffIsCapped(t *testing.T) {
+	// Given: a backoff that doubles past the 10 second cap
+	server := newEventsServer(t, statusSequence(http.StatusServiceUnavailable))
+	var mu sync.Mutex
+	var bases []time.Duration
+	cfg := testEventsConfig(server.URL, 100, 0)
+	cfg.retryBackoff = 8 * time.Second
+	cfg.jitter = func(d time.Duration) time.Duration {
+		mu.Lock()
+		defer mu.Unlock()
+		bases = append(bases, d)
+		return d
+	}
+	cfg.sleep = func(context.Context, time.Duration) error { return nil }
+	p := newTestEventProcessorWith(t.Context(), cfg)
+	p.TrackEvent("purchase", nil)
+
+	// When
+	require.Error(t, p.Flush(t.Context()))
+
+	// Then
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []time.Duration{8 * time.Second, 10 * time.Second}, bases)
 }
 
 func TestEventProcessorAttemptTimeout(t *testing.T) {

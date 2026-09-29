@@ -43,11 +43,15 @@ func TestBackoffWithJitterDoublesFromInitial(t *testing.T) {
 	assert.Equal(t, 10*time.Millisecond, b.next())
 }
 
-func TestEqualJitterBounds(t *testing.T) {
+func TestFullJitterBounds(t *testing.T) {
+	var sawLow, sawHigh bool
 	for i := 0; i < 1000; i++ {
-		d := equalJitter(100 * time.Millisecond)
-		assert.GreaterOrEqual(t, d, 50*time.Millisecond)
+		d := fullJitter(100 * time.Millisecond)
+		assert.GreaterOrEqual(t, d, time.Duration(0))
 		assert.LessOrEqual(t, d, 100*time.Millisecond)
+		sawLow = sawLow || d < 50*time.Millisecond
+		sawHigh = sawHigh || d >= 50*time.Millisecond
 	}
-	assert.Equal(t, time.Duration(0), equalJitter(0))
+	assert.True(t, sawLow && sawHigh, "full jitter should span the whole range")
+	assert.Equal(t, time.Duration(0), fullJitter(0))
 }

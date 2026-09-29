@@ -27,9 +27,14 @@ const (
 	// variant. It is the only "$"-prefixed event name an SDK may send.
 	FlagExposureEvent = "$flag_exposure"
 
+	// DefaultEventsRetryBackoff is the backoff before the first retry of a failed batch. It
+	// doubles before each further retry, up to 10 seconds, and every wait is a random
+	// duration between zero and the backoff.
+	DefaultEventsRetryBackoff = time.Second
+
 	eventsEndpoint = "v1/events"
-	// maxEventsRetryBackoff caps the default initial wait before retrying a failed batch.
-	maxEventsRetryBackoff = time.Second
+	// maxEventsRetryBackoff caps the backoff between two attempts.
+	maxEventsRetryBackoff = 10 * time.Second
 	// maxEventsAttempts is how many times a batch is posted before it is given up on:
 	// one attempt and two retries.
 	maxEventsAttempts = 3
@@ -83,7 +88,7 @@ type sendOutcome int
 
 const (
 	outcomeDelivered    sendOutcome = iota // 2xx
-	outcomeRetryable                       // transport error or 503
+	outcomeRetryable                       // transport error, timeout, 408, 429, 502, 503 or 504
 	outcomeRejected                        // any other status: dropped without a retry
 	outcomeUnauthorised                    // 401 or 403: the processor stops
 )
@@ -95,10 +100,11 @@ type eventProcessorConfig struct {
 	flushInterval time.Duration
 	// timeout bounds each POST attempt and the final flush.
 	timeout time.Duration
-	// retryBackoff is the wait before the first retry; it doubles for the next one.
+	// retryBackoff is the backoff before the first retry; it doubles for the next one,
+	// up to maxEventsRetryBackoff.
 	retryBackoff time.Duration
 	log          *slog.Logger
-	// jitter turns a backoff into the duration to wait. Defaults to equalJitter.
+	// jitter turns a backoff into the duration to wait. Defaults to fullJitter.
 	jitter func(time.Duration) time.Duration
 	// sleep waits for d, or fails when ctx cannot wait that long. Defaults to sleepContext.
 	sleep func(ctx context.Context, d time.Duration) error
@@ -107,14 +113,22 @@ type eventProcessorConfig struct {
 // EventProcessor buffers experimentation events and ships them in batches.
 //
 // Events are sent every flush interval, as soon as the buffer holds maxBufferSize events,
-// or when Flush is called. A batch that fails with a transport error or a 503 is posted
-// up to three times with exponential backoff, then put back at the head of the buffer
-// for the next flush. Any other error status drops the batch. A 401 or 403 stops the
-// processor: nothing more is buffered or sent. The buffer never holds more than
-// maxBufferSize events; the oldest are dropped first. Failures are logged and counted
-// by DroppedEvents, never returned to the code that tracked the event.
+// or when Flush is called. Failures are logged and never returned to the code that
+// tracked the event:
 //
-// Exposure events are deduplicated until they have been delivered.
+//   - A network error, a timeout, or a 408, 429, 502, 503 or 504 response is retried. A
+//     batch is posted up to three times in total. The backoff starts at the configured
+//     retry backoff and doubles, up to 10 seconds, and each wait is a random duration
+//     between zero and the backoff. A batch that still fails is put back at the head of
+//     the buffer and waits for the next flush.
+//   - Any other error status, including 500, drops the batch without a retry.
+//   - A 401 or 403 stops the processor for good: the timer stops, the buffer is dropped,
+//     tracking becomes a no-op, and one warning is logged.
+//   - When a 202 lists rejected events, each is logged at warn and never sent again.
+//   - The buffer never holds more than maxBufferSize events; the oldest are dropped first.
+//
+// Every lost event is counted by DroppedEvents. Exposure events are deduplicated until
+// a 2xx response, including a partial 202, clears the dedupe set.
 type EventProcessor struct {
 	client   *resty.Client
 	endpoint string
@@ -139,25 +153,20 @@ type EventProcessor struct {
 // NewEventProcessor creates an EventProcessor that posts to eventsBaseURL and starts its
 // worker goroutine.
 //
-// The worker exits when ctx is done, after one final flush bounded by timeout. timeout also
-// bounds each POST attempt, and the wait before the first retry is min(timeout, 1s). A
-// flushInterval of 0 disables the timer; buffer-full and manual flushes still work.
+// The worker exits when ctx is done, after one final flush. That flush may retry with
+// backoff, but all of it must fit within timeout; a batch that still fails is dropped and
+// counted. timeout also bounds each POST attempt, and the retry backoff starts at
+// DefaultEventsRetryBackoff. A flushInterval of 0 disables the timer; buffer-full and
+// manual flushes still work.
 func NewEventProcessor(ctx context.Context, client *resty.Client, eventsBaseURL string, maxBufferSize int, flushInterval time.Duration, timeout time.Duration, log *slog.Logger) *EventProcessor {
 	return newEventProcessor(ctx, client, eventProcessorConfig{
 		baseURL:       eventsBaseURL,
 		maxBufferSize: maxBufferSize,
 		flushInterval: flushInterval,
 		timeout:       timeout,
-		retryBackoff:  defaultEventsRetryBackoff(timeout),
+		retryBackoff:  DefaultEventsRetryBackoff,
 		log:           log,
 	})
-}
-
-func defaultEventsRetryBackoff(timeout time.Duration) time.Duration {
-	if timeout <= 0 {
-		return maxEventsRetryBackoff
-	}
-	return min(timeout, maxEventsRetryBackoff)
 }
 
 func newEventProcessor(ctx context.Context, client *resty.Client, cfg eventProcessorConfig) *EventProcessor {
@@ -175,7 +184,7 @@ func newEventProcessor(ctx context.Context, client *resty.Client, cfg eventProce
 		cfg.log = createLogger()
 	}
 	if cfg.jitter == nil {
-		cfg.jitter = equalJitter
+		cfg.jitter = fullJitter
 	}
 	if cfg.sleep == nil {
 		cfg.sleep = sleepContext
@@ -196,7 +205,8 @@ func newEventProcessor(ctx context.Context, client *resty.Client, cfg eventProce
 	return p
 }
 
-// TrackEvent buffers a custom event. opts may be nil.
+// TrackEvent buffers a custom event. opts may be nil. It is a no-op once a 401 or 403
+// has stopped the processor. It never blocks on the network and never panics.
 func (p *EventProcessor) TrackEvent(name string, opts *EventOptions) {
 	if opts == nil {
 		opts = &EventOptions{}
@@ -205,7 +215,9 @@ func (p *EventProcessor) TrackEvent(name string, opts *EventOptions) {
 }
 
 // TrackExposureEvent buffers a $flag_exposure event. Exposures without an identifier, and
-// exposures equal to one buffered or sent since the last successful delivery, are discarded.
+// exposures equal to one buffered or sent since the last 2xx response, are discarded. It
+// is a no-op once a 401 or 403 has stopped the processor. It never blocks on the network
+// and never panics.
 func (p *EventProcessor) TrackExposureEvent(featureName string, identifier string, value interface{}, traits map[string]interface{}, metadata map[string]interface{}) {
 	if identifier == "" {
 		p.debug("not buffering exposure: an exposure requires an identifier", "feature", featureName)
@@ -217,18 +229,22 @@ func (p *EventProcessor) TrackExposureEvent(featureName string, identifier strin
 // Flush sends the buffered events now. It returns once that batch, and every batch that
 // was already in flight when Flush was called, has been delivered, re-queued or dropped.
 // Batches started after the call are not waited for, so sustained traffic cannot hold it
-// up. A batch that fails with a retryable error is put back in the buffer, and Flush
-// returns the error rather than trying again.
+// up. The batch goes through the same retries as any other; one that still fails with a
+// retryable error is put back in the buffer for the next flush, and Flush returns the
+// error rather than trying again. A retry whose wait would pass ctx's deadline is not
+// attempted.
 //
 // The returned error is the outcome of the batch sent by this call, or ctx's error if ctx
-// ends while waiting. Failures of other batches are logged, not returned.
+// ends while waiting. Failures of other batches are logged, not returned. Flush never
+// panics.
 func (p *EventProcessor) Flush(ctx context.Context) error {
 	return p.flush(ctx, false)
 }
 
-// DroppedEvents returns how many events have been lost so far: dropped from a full
-// buffer, rejected with a non-retryable status or by the events API's per-event
-// validation, discarded on a 401 or 403, or left unsent by the final flush.
+// DroppedEvents returns how many events have been lost so far. It only ever increases.
+// It counts events dropped from a full buffer, batches dropped on a non-retryable status,
+// the buffer and batches discarded on a 401 or 403, batches that fail the final flush,
+// and events listed as rejected in a 202 response.
 func (p *EventProcessor) DroppedEvents() int64 {
 	return p.dropped.Load()
 }
@@ -399,12 +415,14 @@ func (p *EventProcessor) finish(batch *eventBatch) {
 }
 
 // send posts events up to maxEventsAttempts times while the failure is retryable, waiting
-// with exponential backoff and jitter in between. A batch that still fails is put back at
+// with capped exponential backoff and full jitter in between. A batch that still fails is put back at
 // the head of the buffer, or dropped when final. Non-retryable failures drop the batch
 // straight away; a 401 or 403 also disables the processor.
 func (p *EventProcessor) send(ctx context.Context, events []event, final bool) error {
 	body := eventsRequest{Events: events}
-	b := newBackoffWithJitter(p.cfg.retryBackoff, maxBackoff, p.cfg.jitter)
+	b := newBackoffWithJitter(p.cfg.retryBackoff, maxEventsRetryBackoff, func(d time.Duration) time.Duration {
+		return p.cfg.jitter(min(d, maxEventsRetryBackoff))
+	})
 	var err error
 	for attempt := 1; ; attempt++ {
 		var outcome sendOutcome
@@ -463,7 +481,8 @@ func (p *EventProcessor) attempt(ctx context.Context, body eventsRequest) (sendO
 		ResponseStatus:     resp.Status(),
 	}
 	switch resp.StatusCode() {
-	case http.StatusServiceUnavailable:
+	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusBadGateway,
+		http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return outcomeRetryable, apiErr
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return outcomeUnauthorised, apiErr
@@ -530,7 +549,8 @@ func (p *EventProcessor) clearSeen() {
 }
 
 // disable stops the processor after a 401 or 403: the key will not be accepted, so
-// nothing more is buffered or sent. It logs once, however many batches hit it.
+// nothing more is buffered or sent until the client is re-created. It logs one warning,
+// however many batches hit it.
 func (p *EventProcessor) disable(batchSize int, err error) {
 	p.mu.Lock()
 	p.disabled = true
@@ -542,7 +562,7 @@ func (p *EventProcessor) disable(batchSize int, err error) {
 
 	p.disableOnce.Do(func() {
 		close(p.disabledCh)
-		p.logError("events API rejected the environment key; event tracking is disabled", "error", err)
+		p.warn("events API rejected the environment key; event tracking is disabled", "error", err)
 	})
 }
 
@@ -569,12 +589,6 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 func (p *EventProcessor) warn(msg string, args ...any) {
 	defer func() { _ = recover() }()
 	p.log.Warn(msg, args...)
-}
-
-// logError logs at error level. A misbehaving log handler must not break event delivery.
-func (p *EventProcessor) logError(msg string, args ...any) {
-	defer func() { _ = recover() }()
-	p.log.Error(msg, args...)
 }
 
 // debug logs at debug level. A misbehaving log handler must not break event delivery.

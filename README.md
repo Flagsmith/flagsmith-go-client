@@ -54,13 +54,14 @@ err = client.TrackExposureEvent("checkout_cta", "user-123", flag.Variant, nil)
 
 Events are sent in batches every 10 seconds, or as soon as 1000 are buffered. Failures never reach the code that tracks events. They are handled like this:
 
-- A network error or a 503 is retried, up to three attempts in total, with exponential backoff and jitter. If every attempt fails, the batch goes back to the front of the buffer for the next send.
-- Any other error status, such as 400 or 500, drops the batch without a retry.
-- A 401 or 403 means the environment key was rejected. Event tracking stops, and the error is logged once. Flags are still evaluated as normal.
+- A network error, a timeout, or a 408, 429, 502, 503 or 504 response is retried, up to three attempts in total. The backoff starts at 1 second and doubles, up to 10 seconds. Each wait is a random duration between zero and the backoff. If every attempt fails, the batch goes back to the front of the buffer and waits for the next scheduled send.
+- Any other error status, including 500, drops the batch without a retry.
+- A 401 or 403 means the environment key was rejected. Event tracking stops, the buffer is dropped, and one warning is logged. Later tracking calls do nothing until you create a new client. Flags are still evaluated as normal.
 - The buffer never holds more than the maximum buffer size. While the events API is unreachable, the oldest events are dropped first.
 - When the events API accepts a batch but rejects some of its events, each rejection is logged as a warning. Rejected events are not sent again.
+- Equal exposures are sent once. They can be sent again after the events API returns a success response, including a partial one.
 
-`DroppedEvents` returns how many events have been lost this way, so you can monitor it.
+`DroppedEvents` returns how many events have been lost this way, so you can monitor it. The count only ever goes up.
 
 ```go
 dropped := client.DroppedEvents()
@@ -70,14 +71,14 @@ These options tune the behaviour:
 
 - `WithEventsFlushInterval` sets the interval between sends. 0 disables the timer.
 - `WithEventsMaxBufferSize` sets the number of buffered events that triggers a send. It is also the most events the buffer holds.
-- `WithEventsRetryBackoff` sets the wait before the first retry, which doubles before the second. It defaults to the request timeout, capped at one second.
+- `WithEventsRetryBackoff` sets the backoff before the first retry, which then doubles up to 10 seconds. It defaults to 1 second.
 - `WithEventsBaseURL` sets the events API URL, which defaults to `https://events.api.flagsmith.com/`.
 
 Events cannot be used with `WithOfflineMode`.
 
 ### Shutdown
 
-The client has no `Close` method. Cancelling the context passed to `WithEvents` is the shutdown flush. It sends whatever is still buffered once, then stops the background goroutine. That final send is best-effort. It is bounded by the request timeout, and it does not wait out long retries.
+The client has no `Close` method. Cancelling the context passed to `WithEvents` is the shutdown flush. It sends whatever is still buffered, then stops the background goroutine. That final send retries with backoff, but only while the retries fit within the request timeout. Anything that still fails is dropped and counted by `DroppedEvents`.
 
 When you need a guarantee, call `FlushEvents` with a deadline before the process exits. This matters most for short-lived processes such as CLI tools, jobs and serverless functions, which can exit before the next scheduled send.
 
@@ -90,7 +91,7 @@ if err := client.FlushEvents(flushCtx); err != nil {
 stopEvents()
 ```
 
-`FlushEvents` returns once every event tracked before the call has been sent, put back in the buffer after a failure, or dropped. It returns the error when its batch could not be sent.
+`FlushEvents` returns once every event tracked before the call has been sent, put back in the buffer after a failure, or dropped. It uses the same retries, and skips any retry whose wait would pass the deadline. It returns the error when its batch could not be sent.
 
 ## Contributing
 
