@@ -52,6 +52,9 @@ type EventOptions struct {
 	Traits map[string]interface{}
 	// Metadata is merged with the SDK version, which takes precedence.
 	Metadata map[string]interface{}
+	// Traits and Metadata, nested values included, are captured when the event is tracked:
+	// later changes are not sent. An event whose values cannot be encoded as JSON is
+	// dropped and counted when it is tracked.
 }
 
 type event struct {
@@ -64,8 +67,13 @@ type event struct {
 	Timestamp   int64                  `json:"timestamp"`
 }
 
-type eventsRequest struct {
-	Events []event `json:"events"`
+// bufferedEvent is an event frozen at track time: its JSON encoding, taken before the call
+// returns, so later changes to the caller's traits or metadata, nested values included,
+// can neither race with sending nor change what is sent.
+type bufferedEvent struct {
+	raw json.RawMessage
+	// key is the exposure dedupe key, or "" for a custom event.
+	key string
 }
 
 // eventsResponse is the body of a 202 from the events API.
@@ -80,7 +88,7 @@ type eventsResponse struct {
 // eventBatch is a set of events taken from the buffer and being posted. done is closed
 // once the batch has been delivered, re-queued or dropped.
 type eventBatch struct {
-	events []event
+	events []bufferedEvent
 	done   chan struct{}
 	// auto marks a batch started by the timer or a full buffer; at most one is in flight.
 	auto bool
@@ -146,7 +154,7 @@ type EventProcessor struct {
 	cancelSend context.CancelFunc
 
 	mu       sync.Mutex
-	buffer   []event
+	buffer   []bufferedEvent
 	seen     map[string]struct{}      // exposure dedupe keys, cleared after a 2xx
 	inFlight map[*eventBatch]struct{} // batches being posted
 	disabled bool                     // set on a 401 or 403
@@ -456,6 +464,9 @@ const (
 	appendDisabled
 )
 
+// bufferEvent builds the event and freezes it as JSON before buffering it. An event that
+// cannot be encoded, e.g. because a trait or metadata value is a channel or an infinite
+// float, would fail every send, so it is dropped and counted here and never buffered.
 func (p *EventProcessor) bufferEvent(name string, featureName *string, identifier string, value interface{}, traits, metadata map[string]interface{}) {
 	defer func() {
 		// Tracking an event must never panic into the calling application.
@@ -472,8 +483,19 @@ func (p *EventProcessor) bufferEvent(name string, featureName *string, identifie
 	if identifier != "" {
 		e.Identifier = &identifier
 	}
+	raw, err := json.Marshal(e)
+	if err != nil {
+		p.dropped.Add(1)
+		// The error's text may quote the value, so only its type is logged.
+		p.warn("event could not be encoded as JSON; dropping it", "error_type", fmt.Sprintf("%T", err))
+		return
+	}
+	be := bufferedEvent{raw: raw}
+	if e.Event == FlagExposureEvent {
+		be.key = exposureKey(e)
+	}
 
-	result, batch, logOverflow := p.append(e)
+	result, batch, logOverflow := p.append(be)
 	if logOverflow {
 		p.warn("events buffer full while a send is in flight; dropping the oldest events")
 	}
@@ -491,7 +513,7 @@ func (p *EventProcessor) bufferEvent(name string, featureName *string, identifie
 // event. If such a send is already in flight, or a failed batch is held for the next
 // tick, the oldest event is dropped instead. logOverflow reports the first drop since
 // the last timer or buffer-full send finished.
-func (p *EventProcessor) append(e event) (result appendResult, batch *eventBatch, logOverflow bool) {
+func (p *EventProcessor) append(e bufferedEvent) (result appendResult, batch *eventBatch, logOverflow bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.disabled || p.stopping {
@@ -499,12 +521,11 @@ func (p *EventProcessor) append(e event) (result appendResult, batch *eventBatch
 		p.dropped.Add(1)
 		return appendDisabled, nil, false
 	}
-	if e.Event == FlagExposureEvent {
-		key := exposureKey(e)
-		if _, dup := p.seen[key]; dup {
+	if e.key != "" {
+		if _, dup := p.seen[e.key]; dup {
 			return appendDuplicate, nil, false
 		}
-		p.seen[key] = struct{}{}
+		p.seen[e.key] = struct{}{}
 	}
 	if len(p.buffer) >= p.cfg.maxBufferSize {
 		// Only reachable after a failed batch was put back, or while a send is pending.
@@ -584,13 +605,10 @@ func (p *EventProcessor) finish(batch *eventBatch) {
 // send posts events up to maxEventsAttempts times while the failure is retryable, waiting
 // with capped exponential backoff and full jitter in between. A batch that still fails is
 // put back at the head of the buffer, or dropped when final. Non-retryable failures drop
-// the batch straight away; a 401 or 403 also disables the processor. Events that cannot
-// be encoded as JSON are dropped before sending.
-func (p *EventProcessor) send(ctx context.Context, events []event, final bool) error {
-	events, payload, err := p.encode(events)
-	if err != nil {
-		return err
-	}
+// the batch straight away; a 401 or 403 also disables the processor.
+func (p *EventProcessor) send(ctx context.Context, events []bufferedEvent, final bool) error {
+	payload := encodeBatch(events)
+	var err error
 	b := newBackoffWithJitter(p.cfg.retryBackoff, maxEventsRetryBackoff, func(d time.Duration) time.Duration {
 		return p.cfg.jitter(min(d, maxEventsRetryBackoff))
 	})
@@ -638,56 +656,43 @@ func (p *EventProcessor) send(ctx context.Context, events []event, final bool) e
 	return err
 }
 
-// encode marshals events into a request body. Events that cannot be encoded, e.g.
-// because a trait or metadata value is a channel or an infinite float, would fail every
-// retry, so they are dropped and counted, and the rest are sent. It fails only when no
-// event is left.
-func (p *EventProcessor) encode(events []event) ([]event, []byte, error) {
-	payload, err := json.Marshal(eventsRequest{Events: events})
-	if err == nil {
-		return events, payload, nil
-	}
-	valid := make([]event, 0, len(events))
-	var invalid []event
+// encodeBatch writes the request body {"events": [...]} from events already encoded at
+// track time.
+func encodeBatch(events []bufferedEvent) []byte {
+	size := len(`{"events":[]}`) + len(events)
 	for _, e := range events {
-		if _, eErr := json.Marshal(e); eErr != nil {
-			invalid = append(invalid, e)
-			continue
+		size += len(e.raw)
+	}
+	body := make([]byte, 0, size)
+	body = append(body, `{"events":[`...)
+	for i, e := range events {
+		if i > 0 {
+			body = append(body, ',')
 		}
-		valid = append(valid, e)
+		body = append(body, e.raw...)
 	}
-	p.drop(invalid)
-	p.warn("events could not be encoded as JSON; dropping them", "count", len(invalid), "error", err)
-	if len(valid) == 0 {
-		return nil, nil, fmt.Errorf("flagsmith: encoding events: %w", err)
-	}
-	payload, err = json.Marshal(eventsRequest{Events: valid})
-	if err != nil {
-		p.drop(valid)
-		return nil, nil, fmt.Errorf("flagsmith: encoding events: %w", err)
-	}
-	return valid, payload, nil
+	return append(body, "]}"...)
 }
 
 // drop counts events as dropped and releases their exposure dedupe keys, since no copy
 // of them is left to send.
-func (p *EventProcessor) drop(events []event) {
+func (p *EventProcessor) drop(events []bufferedEvent) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.releaseKeysLocked(events)
 	p.dropped.Add(int64(len(events)))
 }
 
-func (p *EventProcessor) releaseKeysLocked(events []event) {
+func (p *EventProcessor) releaseKeysLocked(events []bufferedEvent) {
 	for _, e := range events {
-		if e.Event == FlagExposureEvent {
-			delete(p.seen, exposureKey(e))
+		if e.key != "" {
+			delete(p.seen, e.key)
 		}
 	}
 }
 
 // attempt posts payload, the encoding of events, once and classifies the result.
-func (p *EventProcessor) attempt(ctx context.Context, payload []byte, events []event) (sendOutcome, error) {
+func (p *EventProcessor) attempt(ctx context.Context, payload []byte, events []bufferedEvent) (sendOutcome, error) {
 	if p.cfg.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, p.cfg.timeout)
@@ -729,7 +734,7 @@ func (p *EventProcessor) attempt(ctx context.Context, payload []byte, events []e
 
 // logRejected logs every event the events API accepted the request for but rejected on
 // its own. Those events are never sent again.
-func (p *EventProcessor) logRejected(respBody []byte, events []event) {
+func (p *EventProcessor) logRejected(respBody []byte, events []bufferedEvent) {
 	var parsed eventsResponse
 	if len(respBody) == 0 || json.Unmarshal(respBody, &parsed) != nil {
 		return
@@ -760,7 +765,7 @@ func (p *EventProcessor) logRejected(respBody []byte, events []event) {
 //
 // It reports false when the processor is disabled or shutting down: nothing would flush
 // the buffer again, so the events are dropped and counted instead.
-func (p *EventProcessor) requeue(events []event) bool {
+func (p *EventProcessor) requeue(events []bufferedEvent) bool {
 	kept, overflow := p.requeueLocked(events)
 	if overflow > 0 {
 		p.warn("events buffer full; dropped the oldest events", "count", overflow)
@@ -770,14 +775,14 @@ func (p *EventProcessor) requeue(events []event) bool {
 
 // requeueLocked does the work of requeue under the lock, and returns whether the events
 // were kept and how many were dropped to make room.
-func (p *EventProcessor) requeueLocked(events []event) (kept bool, overflow int) {
+func (p *EventProcessor) requeueLocked(events []bufferedEvent) (kept bool, overflow int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.disabled || p.stopping {
 		p.dropped.Add(int64(len(events)))
 		return false, 0
 	}
-	merged := make([]event, 0, len(events)+len(p.buffer))
+	merged := make([]bufferedEvent, 0, len(events)+len(p.buffer))
 	merged = append(merged, events...)
 	merged = append(merged, p.buffer...)
 	p.buffer = merged

@@ -218,10 +218,32 @@ func bodyHas(body []byte, name string) bool {
 	return strings.Contains(string(body), `"event":"`+name+`"`)
 }
 
+// bufferedEvents decodes the buffered events from the JSON they were frozen to.
 func bufferedEvents(p *EventProcessor) []event {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return append([]event(nil), p.buffer...)
+	events := make([]event, len(p.buffer))
+	for i, be := range p.buffer {
+		if err := json.Unmarshal(be.raw, &events[i]); err != nil {
+			panic(err)
+		}
+	}
+	return events
+}
+
+// frozen encodes events the way bufferEvent does, for tests that call send directly.
+func frozen(t *testing.T, events ...event) []bufferedEvent {
+	t.Helper()
+	out := make([]bufferedEvent, len(events))
+	for i, e := range events {
+		raw, err := json.Marshal(e)
+		require.NoError(t, err)
+		out[i] = bufferedEvent{raw: raw}
+		if e.Event == FlagExposureEvent {
+			out[i].key = exposureKey(e)
+		}
+	}
+	return out
 }
 
 func TestEventProcessorBuffersCustomEvent(t *testing.T) {
@@ -1438,7 +1460,7 @@ func TestEventProcessorSendSkipsWhenDisabled(t *testing.T) {
 	p.mu.Lock()
 	p.disabled = true
 	p.mu.Unlock()
-	events := []event{{Event: "a"}, {Event: FlagExposureEvent, FeatureName: strPtr("f"), Identifier: strPtr("u")}}
+	events := frozen(t, event{Event: "a"}, event{Event: FlagExposureEvent, FeatureName: strPtr("f"), Identifier: strPtr("u")})
 
 	// When
 	err := p.send(context.Background(), events, false)
@@ -1464,7 +1486,7 @@ func TestEventProcessorSendStopsBeforeRetryWhenDisabled(t *testing.T) {
 	p = newTestEventProcessorWith(t.Context(), cfg)
 
 	// When
-	err := p.send(context.Background(), []event{{Event: "a"}}, false)
+	err := p.send(context.Background(), frozen(t, event{Event: "a"}), false)
 
 	// Then: no retry, and the batch is counted
 	assert.ErrorIs(t, err, errEventsDisabled)
@@ -1579,23 +1601,95 @@ func TestEventProcessorDropsEventsThatCannotBeEncoded(t *testing.T) {
 		assert.Empty(t, bufferedEvents(p))
 	})
 
-	t.Run("a batch of only invalid events is never sent or kept", func(t *testing.T) {
+	t.Run("an invalid event is dropped when tracked and never buffered", func(t *testing.T) {
 		// Given
 		server := newEventsServer(t, nil)
-		p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-		p.TrackEvent("bad", &EventOptions{Metadata: map[string]interface{}{"ratio": math.NaN()}})
+		logs := &recordingHandler{}
+		cfg := testEventsConfig(server.URL, 100, 0)
+		cfg.log = slog.New(logs)
+		p := newTestEventProcessorWith(t.Context(), cfg)
 
 		// When
-		err := p.Flush(t.Context())
+		p.TrackEvent("bad", &EventOptions{Metadata: map[string]interface{}{"ratio": math.NaN()}})
 
-		// Then
-		assert.Error(t, err)
-		assert.Zero(t, server.requestCount())
+		// Then: counted straight away, with only the error's type logged
 		assert.Equal(t, int64(1), p.DroppedEvents())
 		assert.Empty(t, bufferedEvents(p))
+		dropped := logs.matching(slog.LevelWarn, "event could not be encoded as JSON; dropping it")
+		require.Len(t, dropped, 1)
+		assert.NotContains(t, dropped[0], "error")
+		assert.NotContains(t, logs.text(), "NaN")
 		require.NoError(t, p.Flush(t.Context()))
 		assert.Zero(t, server.requestCount())
 	})
+
+	t.Run("an invalid exposure does not take a dedupe slot", func(t *testing.T) {
+		// Given
+		p := newTestEventProcessor(t.Context(), "http://localhost:1/", 100, 0)
+		p.TrackExposureEvent("f", "u", "v", map[string]interface{}{"ch": make(chan int)}, nil)
+
+		// When: the same exposure, now encodable
+		p.TrackExposureEvent("f", "u", "v", nil, nil)
+
+		// Then
+		assert.Len(t, bufferedEvents(p), 1)
+		assert.Equal(t, int64(1), p.DroppedEvents())
+	})
+}
+
+func TestEventProcessorSnapshotsNestedData(t *testing.T) {
+	// Given: traits and metadata holding nested maps and slices the caller keeps changing
+	server := newEventsServer(t, nil)
+	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
+	nestedTrait := map[string]interface{}{"tier": "gold"}
+	traitList := []interface{}{"a", "b"}
+	nestedMeta := map[string]interface{}{"source": "checkout"}
+	metaList := []interface{}{1.0, 2.0}
+	p.TrackEvent("purchase", &EventOptions{
+		Identifier: "user-1",
+		Traits:     map[string]interface{}{"profile": nestedTrait, "tags": traitList},
+		Metadata:   map[string]interface{}{"context": nestedMeta, "items": metaList},
+	})
+
+	stop := make(chan struct{})
+	mutated := make(chan struct{})
+	go func() {
+		defer close(mutated)
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			nestedTrait["tier"] = fmt.Sprint("changed-", i)
+			nestedTrait[fmt.Sprint("k", i%10)] = i
+			traitList[0] = i
+			nestedMeta["source"] = fmt.Sprint("changed-", i)
+			nestedMeta[fmt.Sprint("k", i%10)] = i
+			metaList[1] = float64(i)
+		}
+	}()
+
+	// When: the batch is flushed while the caller mutates
+	for i := 0; i < 20; i++ {
+		require.NoError(t, p.Flush(t.Context()))
+		p.TrackEvent(fmt.Sprint("next-", i), nil)
+	}
+	close(stop)
+	<-mutated
+	require.NoError(t, p.Flush(t.Context()))
+
+	// Then: the event sent is the call-time snapshot
+	events := server.events(t)
+	require.NotEmpty(t, events)
+	assert.Equal(t, "purchase", events[0]["event"])
+	assert.Equal(t, map[string]interface{}{
+		"profile": map[string]interface{}{"tier": "gold"},
+		"tags":    []interface{}{"a", "b"},
+	}, events[0]["traits"])
+	metadata := events[0]["metadata"].(map[string]interface{})
+	assert.Equal(t, map[string]interface{}{"source": "checkout"}, metadata["context"])
+	assert.Equal(t, []interface{}{1.0, 2.0}, metadata["items"])
 }
 
 func TestEventProcessorIgnoresUnparseableAcceptedBody(t *testing.T) {
