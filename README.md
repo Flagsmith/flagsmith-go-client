@@ -57,8 +57,9 @@ Events are sent in batches every 10 seconds, or as soon as 1000 are buffered. Fa
 - A network error, a timeout, or a 408, 429, 502, 503 or 504 response is retried, up to three attempts in total. The backoff starts at 1 second and doubles, up to 10 seconds. Each wait is a random duration between zero and the backoff. If every attempt fails, the batch goes back to the front of the buffer and waits for the next scheduled send.
 - Any other error status, including 500, drops the batch without a retry.
 - A 401 or 403 means the environment key was rejected. Event tracking stops, the buffer is dropped, and one warning is logged. Later tracking calls do nothing until you create a new client. Flags are still evaluated as normal.
-- The buffer never holds more than the maximum buffer size. While the events API is unreachable, the oldest events are dropped first.
+- Only one scheduled or buffer-full send is in flight at a time. The buffer never holds more than the maximum buffer size. While a send is pending, or the events API is unreachable, the oldest events are dropped first.
 - When the events API accepts a batch but rejects some of its events, each rejection is logged as a warning. Rejected events are not sent again.
+- Logs never include identifiers or trait values.
 - Equal exposures are sent once. They can be sent again after the events API returns a success response, including a partial one.
 
 `DroppedEvents` returns how many events have been lost this way, so you can monitor it. The count only ever goes up.

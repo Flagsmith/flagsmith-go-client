@@ -81,6 +81,8 @@ type eventsResponse struct {
 type eventBatch struct {
 	events []event
 	done   chan struct{}
+	// auto marks a batch started by the timer or a full buffer; at most one is in flight.
+	auto bool
 }
 
 // sendOutcome classifies the result of one POST attempt.
@@ -125,7 +127,9 @@ type eventProcessorConfig struct {
 //   - A 401 or 403 stops the processor for good: the timer stops, the buffer is dropped,
 //     tracking becomes a no-op, and one warning is logged.
 //   - When a 202 lists rejected events, each is logged at warn and never sent again.
-//   - The buffer never holds more than maxBufferSize events; the oldest are dropped first.
+//   - The buffer never holds more than maxBufferSize events. At most one timer or
+//     buffer-full send is in flight at a time; while it is pending, a full buffer drops
+//     its oldest events. Batches put back after a failure also drop the oldest to fit.
 //
 // Every lost event is counted by DroppedEvents. Exposure events are deduplicated until
 // a 2xx response, including a partial 202, clears the dedupe set.
@@ -143,6 +147,11 @@ type EventProcessor struct {
 	seen     map[string]struct{}      // exposure dedupe keys, cleared after a 2xx
 	inFlight map[*eventBatch]struct{} // batches being posted
 	disabled bool                     // set on a 401 or 403
+	// autoPending is set while a timer or buffer-full batch is in flight. Until it
+	// clears, a full buffer drops its oldest events instead of starting another send.
+	autoPending bool
+	// overflowLogged limits the buffer-full warning to one per pending send.
+	overflowLogged bool
 
 	dropped     atomic.Int64
 	disableOnce sync.Once
@@ -242,7 +251,8 @@ func (p *EventProcessor) Flush(ctx context.Context) error {
 }
 
 // DroppedEvents returns how many events have been lost so far. It only ever increases.
-// It counts events dropped from a full buffer, batches dropped on a non-retryable status,
+// It counts events dropped from a full buffer, whether because a send was already in
+// flight or because failed batches were put back, batches dropped on a non-retryable status,
 // the buffer and batches discarded on a 401 or 403, batches that fail the final flush,
 // and events listed as rejected in a 202 response.
 func (p *EventProcessor) DroppedEvents() int64 {
@@ -303,23 +313,54 @@ func (p *EventProcessor) start(ctx context.Context) {
 	}
 }
 
-// dispatch takes the buffered events and posts them in the background. The POST outlives
-// the worker context's cancellation; the final flush waits for it.
+// dispatch takes the buffered events and posts them in the background, unless a timer or
+// buffer-full send is already in flight: that caps the goroutines and batches a stalled
+// events API can accumulate. The POST outlives the worker context's cancellation; the
+// final flush waits for it. When the batch is delivered and the buffer has filled again
+// meanwhile, the next batch is sent straight away. A failed batch waits for the timer.
 func (p *EventProcessor) dispatch() {
-	batch, _ := p.takeBatch(false)
-	if batch == nil {
-		return
+	if batch := p.takeAutoBatch(); batch != nil {
+		p.launch(batch)
 	}
+}
+
+// launch posts a timer or buffer-full batch in the background.
+func (p *EventProcessor) launch(batch *eventBatch) {
 	go func() {
-		_ = p.post(p.sendCtx, batch, false)
+		if p.post(p.sendCtx, batch, false) == nil && p.bufferFull() {
+			p.dispatch()
+		}
 	}()
+}
+
+// takeAutoBatch takes the buffer as a timer or buffer-full batch, or returns nil when the
+// buffer is empty or such a batch is already in flight.
+func (p *EventProcessor) takeAutoBatch() *eventBatch {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.autoPending || len(p.buffer) == 0 {
+		return nil
+	}
+	return p.takeAutoLocked()
+}
+
+func (p *EventProcessor) takeAutoLocked() *eventBatch {
+	batch := p.takeLocked()
+	batch.auto = true
+	p.autoPending = true
+	return batch
+}
+
+func (p *EventProcessor) bufferFull() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return len(p.buffer) >= p.cfg.maxBufferSize
 }
 
 type appendResult int
 
 const (
 	appendBuffered appendResult = iota
-	appendFull                  // buffered, and the buffer is now full
 	appendDuplicate
 	appendDisabled
 )
@@ -341,36 +382,63 @@ func (p *EventProcessor) bufferEvent(name string, featureName *string, identifie
 		e.Identifier = &identifier
 	}
 
-	switch p.append(e) {
-	case appendDuplicate:
-		p.debug("skipping duplicate exposure", "feature", deref(featureName), "identifier", identifier)
-	case appendFull:
-		// Sent straight away rather than by the worker, so the buffer never has to drop
-		// events while a healthy API is reachable.
-		p.dispatch()
+	result, batch, logOverflow := p.append(e)
+	if logOverflow {
+		p.warn("events buffer full while a send is in flight; dropping the oldest events")
+	}
+	if result == appendDuplicate {
+		p.debug("skipping duplicate exposure", "feature", deref(featureName))
+	}
+	if batch != nil {
+		p.launch(batch)
 	}
 }
 
 // append adds e to the buffer unless it is a duplicate exposure or the processor is
-// disabled.
-func (p *EventProcessor) append(e event) appendResult {
+// disabled. When the buffer is full it is taken as a buffer-full batch for the caller
+// to launch, in the same critical section, so a reachable events API never costs an
+// event. If such a send is already in flight, the oldest event is dropped instead.
+// logOverflow reports the first drop since the last timer or buffer-full send finished.
+func (p *EventProcessor) append(e event) (result appendResult, batch *eventBatch, logOverflow bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.disabled {
-		return appendDisabled
+		return appendDisabled, nil, false
 	}
 	if e.Event == FlagExposureEvent {
 		key := exposureKey(e)
 		if _, dup := p.seen[key]; dup {
-			return appendDuplicate
+			return appendDuplicate, nil, false
 		}
 		p.seen[key] = struct{}{}
 	}
-	p.buffer = append(p.buffer, e)
 	if len(p.buffer) >= p.cfg.maxBufferSize {
-		return appendFull
+		// Only reachable after a failed batch was put back, or while a send is pending.
+		if !p.autoPending {
+			batch = p.takeAutoLocked()
+		} else {
+			p.dropOldestLocked(len(p.buffer) + 1 - p.cfg.maxBufferSize)
+			logOverflow = !p.overflowLogged
+			p.overflowLogged = true
+		}
 	}
-	return appendBuffered
+	p.buffer = append(p.buffer, e)
+	if batch == nil && !p.autoPending && len(p.buffer) >= p.cfg.maxBufferSize {
+		batch = p.takeAutoLocked()
+	}
+	return appendBuffered, batch, logOverflow
+}
+
+// dropOldestLocked drops the n oldest buffered events and counts them. Their exposure
+// dedupe keys are released, since no copy of them is left to send.
+func (p *EventProcessor) dropOldestLocked(n int) {
+	for _, e := range p.buffer[:n] {
+		if e.Event == FlagExposureEvent {
+			delete(p.seen, exposureKey(e))
+		}
+	}
+	p.buffer = p.buffer[n:]
+	p.dropped.Add(int64(n))
 }
 
 // takeBatch swaps the buffer for a fresh one and registers the taken events as an
@@ -390,10 +458,15 @@ func (p *EventProcessor) takeBatch(snapshot bool) (*eventBatch, []*eventBatch) {
 	if len(p.buffer) == 0 {
 		return nil, waiting
 	}
+	return p.takeLocked(), waiting
+}
+
+// takeLocked swaps the non-empty buffer for a fresh one and registers it as in flight.
+func (p *EventProcessor) takeLocked() *eventBatch {
 	batch := &eventBatch{events: p.buffer, done: make(chan struct{})}
 	p.buffer = nil
 	p.inFlight[batch] = struct{}{}
-	return batch, waiting
+	return batch
 }
 
 // post sends a batch and marks it done whatever the outcome, including a panic.
@@ -410,6 +483,10 @@ func (p *EventProcessor) post(ctx context.Context, batch *eventBatch, final bool
 func (p *EventProcessor) finish(batch *eventBatch) {
 	p.mu.Lock()
 	delete(p.inFlight, batch)
+	if batch.auto {
+		p.autoPending = false
+		p.overflowLogged = false
+	}
 	p.mu.Unlock()
 	close(batch.done)
 }
@@ -506,7 +583,8 @@ func (p *EventProcessor) logRejected(respBody []byte, events []event) {
 		args := []any{"index", r.Index, "error", r.Error}
 		if r.Index >= 0 && r.Index < len(events) {
 			e := events[r.Index]
-			args = append(args, "event", e.Event, "feature", deref(e.FeatureName), "identifier", deref(e.Identifier))
+			// Identifiers and traits are personal data and are never logged.
+			args = append(args, "event", e.Event, "feature", deref(e.FeatureName))
 		}
 		p.warn("events API rejected event", args...)
 	}
@@ -533,13 +611,13 @@ func (p *EventProcessor) requeueLocked(events []event) int {
 	merged := make([]event, 0, len(events)+len(p.buffer))
 	merged = append(merged, events...)
 	merged = append(merged, p.buffer...)
-	overflow := len(merged) - p.cfg.maxBufferSize
-	if overflow > 0 {
-		p.dropped.Add(int64(overflow))
-		merged = merged[overflow:]
-	}
 	p.buffer = merged
-	return max(overflow, 0)
+	overflow := len(merged) - p.cfg.maxBufferSize
+	if overflow <= 0 {
+		return 0
+	}
+	p.dropOldestLocked(overflow)
+	return overflow
 }
 
 func (p *EventProcessor) clearSeen() {

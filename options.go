@@ -253,9 +253,10 @@ func WithEventsFlushInterval(interval time.Duration) Option {
 }
 
 // WithEventsMaxBufferSize sets the number of buffered events that triggers a flush. It is
-// also the most events kept while the events API is unreachable, including batches put
-// back after a failure: beyond it the oldest are dropped and counted by
-// Client.DroppedEvents. Defaults to DefaultEventsMaxBufferSize.
+// also the most events the buffer holds. Only one timer or buffer-full send is in flight
+// at a time, so while it is pending, or while failed batches are put back, the oldest
+// events are dropped and counted by Client.DroppedEvents. Defaults to
+// DefaultEventsMaxBufferSize.
 func WithEventsMaxBufferSize(size int) Option {
 	return func(c *Client) {
 		c.config.eventsMaxBufferSize = size
