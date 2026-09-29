@@ -41,7 +41,7 @@ Events are sent every 10 seconds (`WithEventsFlushInterval`) or when 1000 are bu
 - A 401 or 403 stops event tracking, drops the buffer and logs one warning, until the client is re-created. Flags keep working.
 - One scheduled send is in flight at a time. When the buffer is full meanwhile, the oldest events are dropped.
 - Events a 202 lists as rejected are logged by index and not resent.
-- Equal exposures are sent once until a success response.
+- Equal exposures are sent once until the batch carrying them succeeds.
 - Traits and metadata are captured when tracked. Values that cannot be encoded as JSON drop the event.
 - Logs never include identifiers, trait values or response content.
 

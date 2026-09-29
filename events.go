@@ -429,7 +429,7 @@ func (p *EventProcessor) send(ctx context.Context, events []bufferedEvent, final
 		switch outcome {
 		case outcomeDelivered:
 			p.mu.Lock()
-			p.seen = make(map[string]struct{})
+			p.releaseLocked(events)
 			p.mu.Unlock()
 			return nil
 		case outcomeUnauthorised:
@@ -482,12 +482,17 @@ func (p *EventProcessor) drop(events []bufferedEvent) {
 
 // dropLocked counts events as dropped and releases their dedupe keys.
 func (p *EventProcessor) dropLocked(events []bufferedEvent) {
+	p.releaseLocked(events)
+	p.dropped.Add(int64(len(events)))
+}
+
+// releaseLocked releases the dedupe keys of events that are no longer pending.
+func (p *EventProcessor) releaseLocked(events []bufferedEvent) {
 	for _, e := range events {
 		if e.key != "" {
 			delete(p.seen, e.key)
 		}
 	}
-	p.dropped.Add(int64(len(events)))
 }
 
 // attempt posts payload once and classifies the result.
