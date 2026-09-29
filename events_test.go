@@ -1050,6 +1050,190 @@ func TestEventProcessorFlushDuringStalledSend(t *testing.T) {
 	assert.Zero(t, p.DroppedEvents())
 }
 
+func TestEventProcessorShutdownBoundsInFlightBatch(t *testing.T) {
+	// Given: an events API that stalls every request until the client gives up on it
+	const batchSize = 5
+	const timeout = 100 * time.Millisecond
+	var mu sync.Mutex
+	requests, active := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		_, _ = io.ReadAll(req.Body)
+		mu.Lock()
+		requests++
+		active++
+		mu.Unlock()
+		<-req.Context().Done()
+		mu.Lock()
+		active--
+		mu.Unlock()
+	}))
+	t.Cleanup(server.Close)
+	requestCount := func() int {
+		mu.Lock()
+		defer mu.Unlock()
+		return requests
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cfg := testEventsConfig(server.URL, batchSize, 0)
+	cfg.timeout = timeout
+	cfg.retryBackoff = time.Millisecond
+	p := newTestEventProcessorWith(ctx, cfg)
+	for i := 0; i < batchSize; i++ {
+		p.TrackEvent(fmt.Sprintf("e%d", i), nil)
+	}
+	require.Eventually(t, func() bool { return requestCount() == 1 }, time.Second, time.Millisecond)
+
+	// When: shutdown starts while the buffer-full batch is stalled
+	start := time.Now()
+	cancel()
+
+	// Then: the worker exits at the shutdown deadline, not after the batch's retries
+	select {
+	case <-p.stopped:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not exit")
+	}
+	assert.Less(t, time.Since(start), timeout+150*time.Millisecond)
+
+	// Then: the batch was dropped and counted, nothing is in flight or re-queued
+	assert.Equal(t, int64(batchSize), p.DroppedEvents())
+	assert.Zero(t, inFlightCount(p))
+	assert.Empty(t, bufferedEvents(p))
+
+	// Then: no attempt starts after the worker exits. One aborted at the deadline may
+	// still reach the server just after, so let those land first.
+	time.Sleep(50 * time.Millisecond)
+	sent := requestCount()
+	time.Sleep(3 * timeout)
+	assert.Equal(t, sent, requestCount())
+
+	// Then: tracking after shutdown is a counted no-op
+	p.TrackEvent("late", nil)
+	assert.Empty(t, bufferedEvents(p))
+	assert.Equal(t, int64(batchSize+1), p.DroppedEvents())
+
+	// Then: every goroutine the processor started has exited, and no request is open
+	// Processors from earlier tests may still be inside their own bounded shutdown.
+	assert.Eventually(t, func() bool { return len(processorGoroutines()) == 0 }, 3*time.Second, 10*time.Millisecond)
+	assert.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return active == 0
+	}, time.Second, 10*time.Millisecond)
+}
+
+// processorGoroutines returns the stacks of live goroutines running EventProcessor code,
+// other than the calling one.
+func processorGoroutines() []string {
+	buf := make([]byte, 1<<22)
+	stacks := strings.Split(string(buf[:runtime.Stack(buf, true)]), "\n\n")
+	var found []string
+	for _, stack := range stacks[1:] {
+		if strings.Contains(stack, "(*EventProcessor)") {
+			found = append(found, stack)
+		}
+	}
+	return found
+}
+
+func TestEventProcessorShutdownDropsFinalBatchCutAtDeadline(t *testing.T) {
+	// Given: a stalled buffer-full batch, and more events buffered behind it
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		_, _ = io.ReadAll(req.Body)
+		<-req.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+	ctx, cancel := context.WithCancel(t.Context())
+	cfg := testEventsConfig(server.URL, 3, 0)
+	cfg.timeout = 100 * time.Millisecond
+	cfg.retryBackoff = time.Millisecond
+	p := newTestEventProcessorWith(ctx, cfg)
+	for _, name := range []string{"a", "b", "c", "d", "e"} {
+		p.TrackEvent(name, nil)
+	}
+	require.Eventually(t, func() bool { return inFlightCount(p) == 1 }, time.Second, time.Millisecond)
+
+	// When
+	cancel()
+	<-p.stopped
+
+	// Then: both the stalled batch and the final one are counted
+	assert.Equal(t, int64(5), p.DroppedEvents())
+	assert.Zero(t, inFlightCount(p))
+	assert.Empty(t, bufferedEvents(p))
+}
+
+func TestEventProcessorDoesNotLogResponseBody(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		wantDetail interface{}
+	}{
+		{
+			name:       "JSON body echoing the batch",
+			body:       `{"detail": "Invalid batch.", "events": [{"identifier": "user@example.com", "traits": {"email": "trait@example.com"}}]}`,
+			wantDetail: "Invalid batch.",
+		},
+		{
+			name: "plain text body echoing the batch",
+			body: `bad request for user@example.com with trait trait@example.com`,
+		},
+		{
+			name: "JSON body without a message",
+			body: `{"identifier": "user@example.com", "traits": {"email": "trait@example.com"}}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Given
+			server := newEventsServerWithBody(t, func([]byte) (int, string) { return http.StatusBadRequest, tt.body })
+			logs := &recordingHandler{}
+			cfg := testEventsConfig(server.URL, 100, 0)
+			cfg.log = slog.New(logs)
+			p := newTestEventProcessorWith(t.Context(), cfg)
+			p.TrackEvent("purchase", nil)
+
+			// When
+			require.Error(t, p.Flush(t.Context()))
+
+			// Then: a content-free diagnostic, and none of the body
+			records := logs.matching(slog.LevelWarn, "events API rejected batch; dropping it")
+			require.Len(t, records, 1)
+			assert.Equal(t, int64(http.StatusBadRequest), records[0]["status"])
+			assert.Equal(t, int64(len(tt.body)), records[0]["body_bytes"])
+			assert.NotContains(t, records[0], "body")
+			assert.Equal(t, tt.wantDetail, records[0]["detail"])
+			assert.NotContains(t, logs.text(), "user@example.com")
+			assert.NotContains(t, logs.text(), "trait@example.com")
+		})
+	}
+}
+
+func TestResponseDetail(t *testing.T) {
+	long := strings.Repeat("é", 500)
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"detail", `{"detail": "a", "error": "b"}`, "a"},
+		{"error", `{"error": "b", "message": "c"}`, "b"},
+		{"message", `{"message": "c"}`, "c"},
+		{"truncated", `{"detail": "` + long + `"}`, strings.Repeat("é", maxLoggedDetail)},
+		{"not a string", `{"detail": {"identifier": "user@example.com"}}`, ""},
+		{"empty string falls through", `{"detail": "", "message": "c"}`, "c"},
+		{"not an object", `["user@example.com"]`, ""},
+		{"not JSON", `user@example.com`, ""},
+		{"empty", ``, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, responseDetail([]byte(tt.body)))
+		})
+	}
+}
+
 func TestEventProcessorIgnoresUnparseableAcceptedBody(t *testing.T) {
 	// Given
 	server := newEventsServerWithBody(t, func([]byte) (int, string) { return http.StatusAccepted, "not json" })

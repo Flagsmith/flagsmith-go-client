@@ -138,15 +138,18 @@ type EventProcessor struct {
 	endpoint string
 	cfg      eventProcessorConfig
 	log      *slog.Logger
-	// sendCtx is the worker's context without its cancellation, for batches that must
-	// outlive it.
-	sendCtx context.Context
+	// sendCtx is the context of timer and buffer-full batches. It is the worker's context
+	// without its cancellation, so a batch is not aborted the moment shutdown starts, but
+	// cancelSend cuts it at the shutdown deadline.
+	sendCtx    context.Context
+	cancelSend context.CancelFunc
 
 	mu       sync.Mutex
 	buffer   []event
 	seen     map[string]struct{}      // exposure dedupe keys, cleared after a 2xx
 	inFlight map[*eventBatch]struct{} // batches being posted
 	disabled bool                     // set on a 401 or 403
+	stopping bool                     // set once shutdown starts; nothing is re-queued after
 	// autoPending is set while a timer or buffer-full batch is in flight. Until it
 	// clears, a full buffer drops its oldest events instead of starting another send.
 	autoPending bool
@@ -163,8 +166,9 @@ type EventProcessor struct {
 // worker goroutine.
 //
 // The worker exits when ctx is done, after one final flush. That flush may retry with
-// backoff, but all of it must fit within timeout; a batch that still fails is dropped and
-// counted. timeout also bounds each POST attempt, and the retry backoff starts at
+// backoff, but all of it, including batches already in flight, must fit within timeout; a
+// batch that still fails is dropped and counted, and so is anything left in the buffer.
+// Tracking after that is a no-op, counted as dropped. timeout also bounds each POST attempt, and the retry backoff starts at
 // DefaultEventsRetryBackoff. A flushInterval of 0 disables the timer; buffer-full and
 // manual flushes still work.
 func NewEventProcessor(ctx context.Context, client *resty.Client, eventsBaseURL string, maxBufferSize int, flushInterval time.Duration, timeout time.Duration, log *slog.Logger) *EventProcessor {
@@ -198,12 +202,14 @@ func newEventProcessor(ctx context.Context, client *resty.Client, cfg eventProce
 	if cfg.sleep == nil {
 		cfg.sleep = sleepContext
 	}
+	sendCtx, cancelSend := context.WithCancel(context.WithoutCancel(ctx))
 	p := &EventProcessor{
 		client:     client,
 		endpoint:   cfg.baseURL + eventsEndpoint,
 		cfg:        cfg,
 		log:        cfg.log,
-		sendCtx:    context.WithoutCancel(ctx),
+		sendCtx:    sendCtx,
+		cancelSend: cancelSend,
 		seen:       make(map[string]struct{}),
 		inFlight:   make(map[*eventBatch]struct{}),
 		disabledCh: make(chan struct{}),
@@ -252,9 +258,10 @@ func (p *EventProcessor) Flush(ctx context.Context) error {
 
 // DroppedEvents returns how many events have been lost so far. It only ever increases.
 // It counts events dropped from a full buffer, whether because a send was already in
-// flight or because failed batches were put back, batches dropped on a non-retryable status,
-// the buffer and batches discarded on a 401 or 403, batches that fail the final flush,
-// and events listed as rejected in a 202 response.
+// flight or because failed batches were put back; batches dropped on a non-retryable
+// status; the buffer and batches discarded on a 401 or 403; events listed as rejected in
+// a 202 response; and, at shutdown, batches that fail or are cut at the deadline, events
+// left in the buffer, and events tracked afterwards.
 func (p *EventProcessor) DroppedEvents() int64 {
 	return p.dropped.Load()
 }
@@ -283,6 +290,7 @@ func (p *EventProcessor) flush(ctx context.Context, final bool) (err error) {
 
 func (p *EventProcessor) start(ctx context.Context) {
 	defer close(p.stopped)
+	defer p.cancelSend()
 	var tick <-chan time.Time
 	if p.cfg.flushInterval > 0 {
 		ticker := time.NewTicker(p.cfg.flushInterval)
@@ -297,20 +305,69 @@ func (p *EventProcessor) start(ctx context.Context) {
 			p.debug("event processor stopped: the environment key was rejected")
 			return
 		case <-ctx.Done():
-			// The final flush must not be aborted by the cancellation that triggered it.
-			timeout := p.cfg.timeout
-			if timeout <= 0 {
-				timeout = DefaultTimeout
-			}
-			final, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
-			defer cancel()
-			if err := p.flush(final, true); err != nil {
-				p.warn("final events flush failed", "error", err)
-			}
+			p.shutdown(ctx)
 			p.debug("event processor stopped")
 			return
 		}
 	}
+}
+
+// shutdown performs the final flush when the worker's context is done. One deadline, the
+// request timeout, bounds all of it: the final batch, and the timer and buffer-full batches
+// already in flight, whose retries are cut when it passes. From the start of shutdown a
+// batch that fails is dropped and counted, never re-queued, and tracking is a no-op. Once
+// the in-flight batches have finished, anything left in the buffer is dropped and counted.
+func (p *EventProcessor) shutdown(ctx context.Context) {
+	p.mu.Lock()
+	p.stopping = true
+	p.mu.Unlock()
+
+	timeout := p.cfg.timeout
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
+	// The final flush must not be aborted by the cancellation that triggered it.
+	final, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+	defer cancel()
+	stopAfter := context.AfterFunc(final, p.cancelSend)
+	defer stopAfter()
+
+	if err := p.flush(final, true); err != nil {
+		p.warn("final events flush failed", "error", err)
+	}
+
+	// Cut whatever automatic batch is still retrying, and wait for it to give up. A batch
+	// started by an explicit Flush runs on its caller's context; it gets one more timeout.
+	p.cancelSend()
+	grace := time.NewTimer(timeout)
+	defer grace.Stop()
+	for _, b := range p.inFlightBatches() {
+		select {
+		case <-b.done:
+		case <-grace.C:
+			p.warn("events batch still in flight after shutdown")
+		}
+	}
+
+	p.mu.Lock()
+	left := len(p.buffer)
+	p.buffer = nil
+	p.seen = make(map[string]struct{})
+	p.mu.Unlock()
+	if left > 0 {
+		p.dropped.Add(int64(left))
+		p.warn("events left unsent at shutdown; dropping them", "count", left)
+	}
+}
+
+func (p *EventProcessor) inFlightBatches() []*eventBatch {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	batches := make([]*eventBatch, 0, len(p.inFlight))
+	for b := range p.inFlight {
+		batches = append(batches, b)
+	}
+	return batches
 }
 
 // dispatch takes the buffered events and posts them in the background, unless a timer or
@@ -338,7 +395,7 @@ func (p *EventProcessor) launch(batch *eventBatch) {
 func (p *EventProcessor) takeAutoBatch() *eventBatch {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.autoPending || len(p.buffer) == 0 {
+	if p.autoPending || p.stopping || len(p.buffer) == 0 {
 		return nil
 	}
 	return p.takeAutoLocked()
@@ -403,6 +460,11 @@ func (p *EventProcessor) append(e event) (result appendResult, batch *eventBatch
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.disabled {
+		return appendDisabled, nil, false
+	}
+	if p.stopping {
+		// Nothing would ever send it.
+		p.dropped.Add(1)
 		return appendDisabled, nil, false
 	}
 	if e.Event == FlagExposureEvent {
@@ -527,8 +589,11 @@ func (p *EventProcessor) send(ctx context.Context, events []event, final bool) e
 		p.warn("failed to send events; dropping them", "count", len(events), "error", err)
 		return err
 	}
-	p.requeue(events)
-	p.warn("failed to send events; kept them for the next flush", "count", len(events), "error", err)
+	if p.requeue(events) {
+		p.warn("failed to send events; kept them for the next flush", "count", len(events), "error", err)
+	} else {
+		p.warn("failed to send events; dropping them", "count", len(events), "error", err)
+	}
 	return err
 }
 
@@ -564,12 +629,37 @@ func (p *EventProcessor) attempt(ctx context.Context, body eventsRequest) (sendO
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return outcomeUnauthorised, apiErr
 	}
-	p.warn("events API rejected batch; dropping it",
-		"count", len(body.Events),
-		"status", resp.StatusCode(),
-		"body", resp.String(),
-	)
+	// The body is untrusted and may echo the events sent, so it is never logged: only its
+	// size and, when it has one, the API's short error message.
+	respBody := resp.Body()
+	args := []any{"count", len(body.Events), "status", resp.StatusCode(), "body_bytes", len(respBody)}
+	if detail := responseDetail(respBody); detail != "" {
+		args = append(args, "detail", detail)
+	}
+	p.warn("events API rejected batch; dropping it", args...)
 	return outcomeRejected, apiErr
+}
+
+// maxLoggedDetail is the most characters of an error message from the events API that
+// are logged.
+const maxLoggedDetail = 200
+
+// responseDetail returns the top-level "detail", "error" or "message" string of a JSON
+// error body, truncated to maxLoggedDetail characters, or "" when there is none.
+func responseDetail(body []byte) string {
+	var parsed map[string]interface{}
+	if json.Unmarshal(body, &parsed) != nil {
+		return ""
+	}
+	for _, key := range []string{"detail", "error", "message"} {
+		if s, ok := parsed[key].(string); ok && s != "" {
+			if r := []rune(s); len(r) > maxLoggedDetail {
+				return string(r[:maxLoggedDetail])
+			}
+			return s
+		}
+	}
+	return ""
 }
 
 // logRejected logs every event the events API accepted the request for but rejected on
@@ -593,31 +683,36 @@ func (p *EventProcessor) logRejected(respBody []byte, events []event) {
 
 // requeue puts events that could not be sent back at the head of the buffer, ahead of
 // anything tracked since. The buffer stays within maxBufferSize by dropping the oldest.
-func (p *EventProcessor) requeue(events []event) {
-	if overflow := p.requeueLocked(events); overflow > 0 {
+//
+// It reports false when the processor is disabled or shutting down: nothing would flush
+// the buffer again, so the events are dropped and counted instead.
+func (p *EventProcessor) requeue(events []event) bool {
+	kept, overflow := p.requeueLocked(events)
+	if overflow > 0 {
 		p.warn("events buffer full; dropped the oldest events", "count", overflow)
 	}
+	return kept
 }
 
-// requeueLocked does the work of requeue under the lock, and returns how many events
-// were dropped to make room.
-func (p *EventProcessor) requeueLocked(events []event) int {
+// requeueLocked does the work of requeue under the lock, and returns whether the events
+// were kept and how many were dropped to make room.
+func (p *EventProcessor) requeueLocked(events []event) (kept bool, overflow int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.disabled {
+	if p.disabled || p.stopping {
 		p.dropped.Add(int64(len(events)))
-		return 0
+		return false, 0
 	}
 	merged := make([]event, 0, len(events)+len(p.buffer))
 	merged = append(merged, events...)
 	merged = append(merged, p.buffer...)
 	p.buffer = merged
-	overflow := len(merged) - p.cfg.maxBufferSize
+	overflow = len(merged) - p.cfg.maxBufferSize
 	if overflow <= 0 {
-		return 0
+		return true, 0
 	}
 	p.dropOldestLocked(overflow)
-	return overflow
+	return true, overflow
 }
 
 func (p *EventProcessor) clearSeen() {

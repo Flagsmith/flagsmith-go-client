@@ -214,7 +214,9 @@ func WithRestyClient(restyClient *resty.Client) Option {
 // Events are buffered and sent in batches by a background goroutine that uses the
 // context provided here. Cancelling it is the shutdown flush: the processor sends what is
 // still buffered, retrying with backoff as long as the retries fit within the request
-// timeout, drops and counts what still fails, and exits. Cancel it on shutdown. When the
+// timeout. The same deadline cuts batches that were already in flight. What still fails,
+// and anything left in the buffer, is dropped and counted, nothing stays in flight, and
+// the goroutine exits. Tracking after that is a no-op. Cancel it on shutdown. When the
 // last events must be delivered, for example in a short-lived process, call FlushEvents
 // with a deadline first.
 //
