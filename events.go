@@ -55,7 +55,13 @@ type event struct {
 // bufferedEvent is an event encoded at track time, with its exposure dedupe key.
 type bufferedEvent struct {
 	raw json.RawMessage
-	key string
+	key dedupeKey
+}
+
+// dedupeKey identifies an exposure; the zero value marks a custom event.
+type dedupeKey struct {
+	feature, identifier, value, experimentID string
+	hasValue                                 bool
 }
 
 type eventBatch struct {
@@ -97,7 +103,7 @@ type EventProcessor struct {
 
 	mu          sync.Mutex
 	buffer      []bufferedEvent
-	seen        map[string]struct{}
+	seen        map[dedupeKey]struct{}
 	inFlight    map[*eventBatch]struct{}
 	stopping    bool // shutdown has started
 	autoPending bool // a timer or buffer-full batch is in flight
@@ -149,7 +155,7 @@ func newEventProcessor(ctx context.Context, client *resty.Client, cfg eventProce
 		cfg:        cfg,
 		sendCtx:    sendCtx,
 		cancelSend: cancelSend,
-		seen:       make(map[string]struct{}),
+		seen:       make(map[dedupeKey]struct{}),
 		inFlight:   make(map[*eventBatch]struct{}),
 		disabledCh: make(chan struct{}),
 		stopped:    make(chan struct{}),
@@ -168,7 +174,7 @@ func (p *EventProcessor) TrackEvent(name string, opts *EventOptions) {
 
 // TrackExposureEvent buffers a $flag_exposure event; it is ignored without an identifier.
 func (p *EventProcessor) TrackExposureEvent(featureName string, identifier string, value interface{}, traits map[string]interface{}, metadata map[string]interface{}) {
-	if identifier == "" {
+	if strings.TrimSpace(identifier) == "" {
 		p.logf(slog.LevelDebug, "not buffering exposure: an exposure requires an identifier", "feature", featureName)
 		return
 	}
@@ -343,7 +349,7 @@ func (p *EventProcessor) bufferEvent(name string, featureName *string, identifie
 	}
 	maps.Copy(e.Metadata, metadata)
 	e.Metadata["sdk_version"] = getSDKVersion()
-	if identifier != "" {
+	if strings.TrimSpace(identifier) != "" {
 		e.Identifier = &identifier
 	}
 	raw, err := json.Marshal(e)
@@ -370,7 +376,7 @@ func (p *EventProcessor) append(e bufferedEvent, feature string) *eventBatch {
 		p.dropped.Add(1)
 		return nil
 	}
-	if e.key != "" {
+	if e.key != (dedupeKey{}) {
 		if _, dup := p.seen[e.key]; dup {
 			p.logf(slog.LevelDebug, "skipping duplicate exposure", "feature", feature)
 			return nil
@@ -489,7 +495,7 @@ func (p *EventProcessor) dropLocked(events []bufferedEvent) {
 // releaseLocked releases the dedupe keys of events that are no longer pending.
 func (p *EventProcessor) releaseLocked(events []bufferedEvent) {
 	for _, e := range events {
-		if e.key != "" {
+		if e.key != (dedupeKey{}) {
 			delete(p.seen, e.key)
 		}
 	}
@@ -584,7 +590,7 @@ func (p *EventProcessor) disable(batchSize int, err error) {
 	p.disabled.Store(true)
 	discarded := batchSize + len(p.buffer)
 	p.buffer = nil
-	p.seen = make(map[string]struct{})
+	p.seen = make(map[dedupeKey]struct{})
 	p.mu.Unlock()
 	p.dropped.Add(int64(discarded))
 	p.disableOnce.Do(func() {
@@ -639,12 +645,12 @@ func stringifyValue(v interface{}) *string {
 	return &s
 }
 
-func exposureKey(e event) string {
-	experimentID := ""
+func exposureKey(e event) dedupeKey {
+	k := dedupeKey{feature: deref(e.FeatureName), identifier: deref(e.Identifier), value: deref(e.Value), hasValue: e.Value != nil}
 	if id, ok := e.Metadata["experiment_id"]; ok && id != nil {
-		experimentID = fmt.Sprint(id)
+		k.experimentID = fmt.Sprint(id)
 	}
-	return strings.Join([]string{e.Event, deref(e.FeatureName), deref(e.Identifier), deref(e.Value), experimentID}, "\x00")
+	return k
 }
 
 func deref(s *string) string {

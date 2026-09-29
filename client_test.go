@@ -1678,6 +1678,36 @@ func TestGetExperimentFlagRecordsExposureWhenEnrolled(t *testing.T) {
 	assert.NotContains(t, metadata, "experiment_name")
 }
 
+func TestGetExperimentFlagDropsTransientTraits(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+	identifier := "user-123"
+	persistent, transient := flagsmith.NewTraitEvaluationContext("premium", false), flagsmith.NewTraitEvaluationContext("secret", true)
+	ec := flagsmith.EvaluationContext{Identity: &flagsmith.IdentityEvaluationContext{
+		Identifier: &identifier,
+		Traits:     map[string]*flagsmith.TraitEvaluationContext{"plan": &persistent, "session": &transient},
+	}}
+	onlyTransient := flagsmith.EvaluationContext{Identity: &flagsmith.IdentityEvaluationContext{
+		Identifier: &identifier,
+		Traits:     map[string]*flagsmith.TraitEvaluationContext{"session": &transient},
+	}}
+
+	// When
+	_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, ec)
+	require.NoError(t, err)
+	require.NoError(t, client.FlushEvents(t.Context()))
+	_, err = client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, onlyTransient)
+	require.NoError(t, err)
+	require.NoError(t, client.FlushEvents(t.Context()))
+
+	// Then
+	sent := events.Events()
+	require.Len(t, sent, 2)
+	assert.Equal(t, map[string]interface{}{"plan": "premium"}, sent[0]["traits"])
+	assert.Nil(t, sent[1]["traits"])
+}
+
 func TestGetExperimentFlagWithoutTraitsSendsNullTraits(t *testing.T) {
 	// Given
 	events := &fixtures.EventsAPIHandler{}
@@ -1893,11 +1923,13 @@ func TestEventsRetryBackoff(t *testing.T) {
 	assert.Zero(t, client.DroppedEvents())
 }
 
-func TestEventsSendCustomHeaders(t *testing.T) {
+func TestEventsDoNotSendCustomHeaders(t *testing.T) {
 	// Given
 	events := &fixtures.EventsAPIHandler{}
 	client := newExperimentClient(t, newExperimentServer(t, events),
-		flagsmith.WithCustomHeaders(map[string]string{"X-Custom": "custom-value"}),
+		flagsmith.WithCustomHeaders(map[string]string{
+			"X-Custom": "custom-value", "X-Environment-Key": "other-key", "User-Agent": "custom-agent",
+		}),
 	)
 	require.NoError(t, client.TrackEvent("purchase", nil))
 
@@ -1906,7 +1938,12 @@ func TestEventsSendCustomHeaders(t *testing.T) {
 
 	// Then
 	require.Len(t, events.Requests(), 1)
-	assert.Equal(t, "custom-value", events.Requests()[0].Header.Get("X-Custom"))
+	header := events.Requests()[0].Header
+	assert.Empty(t, header.Get("X-Custom"))
+	assert.Equal(t, fixtures.EnvironmentAPIKey, header.Get("X-Environment-Key"))
+	assert.Regexp(t, `^flagsmith-go-sdk/`, header.Get("User-Agent"))
+	assert.Regexp(t, `^flagsmith-go-sdk/`, header.Get("Flagsmith-SDK-User-Agent"))
+	assert.Equal(t, "application/json", header.Get("Accept"))
 }
 
 func TestWithEventsBaseURLWithoutTrailingSlash(t *testing.T) {

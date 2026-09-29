@@ -190,7 +190,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 	return c
 }
 
-// newEventProcessor shares the main client's transport and headers, but not its retries.
+// newEventProcessor shares the main client's transport, but not its retries or custom headers.
 func (c *Client) newEventProcessor() *EventProcessor {
 	log := c.log.With(slog.String("worker", "events"))
 	httpClient := c.client.GetClient()
@@ -198,8 +198,12 @@ func (c *Client) newEventProcessor() *EventProcessor {
 		SetLogger(newSlogToRestyAdapter(log)).
 		OnBeforeRequest(newRestyLogRequestMiddleware(log)).
 		OnAfterResponse(newRestyLogResponseMiddleware(log))
-	eventsClient.Header = c.client.Header.Clone()
-	eventsClient.SetHeader("Flagsmith-SDK-User-Agent", getUserAgent())
+	eventsClient.SetHeaders(map[string]string{
+		"Accept":                   "application/json",
+		"User-Agent":               getUserAgent(),
+		"Flagsmith-SDK-User-Agent": getUserAgent(),
+		EnvironmentKeyHeader:       c.apiKey,
+	})
 
 	timeout := httpClient.Timeout
 	if timeout <= 0 {
@@ -282,7 +286,7 @@ func (c *Client) TrackExposureEvent(featureName string, identifier string, value
 	if c.eventProcessor == nil {
 		return &FlagsmithClientError{msg: "flagsmith: events must be enabled (WithEvents) to track exposure events"}
 	}
-	if identifier == "" {
+	if strings.TrimSpace(identifier) == "" {
 		c.log.Info("not sending exposure: an exposure requires an identifier", "feature", featureName)
 		return nil
 	}
@@ -313,18 +317,22 @@ func (c *Client) DroppedEvents() int64 {
 	return c.eventProcessor.DroppedEvents()
 }
 
-// traitValues flattens the identity's traits to their values.
+// traitValues flattens the identity's non-transient traits to their values.
 func traitValues(ic *IdentityEvaluationContext) map[string]interface{} {
 	if ic == nil || len(ic.Traits) == 0 {
 		return nil
 	}
 	values := make(map[string]interface{}, len(ic.Traits))
 	for key, trait := range ic.Traits {
-		if trait == nil {
+		switch {
+		case trait == nil:
 			values[key] = nil
-			continue
+		case trait.Transient == nil || !*trait.Transient:
+			values[key] = trait.Value
 		}
-		values[key] = trait.Value
+	}
+	if len(values) == 0 {
+		return nil
 	}
 	return values
 }

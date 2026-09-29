@@ -286,7 +286,8 @@ func TestEventProcessorBuffersEvents(t *testing.T) {
 	exposure("f", "u", "treatment", 1)
 	exposure("f", "u", "treatment", 1)
 	exposure("f", "", "treatment", 1)
-	assert.Len(t, bufferedEvents(p), 1, "equal exposures are deduped; one without an identifier is ignored")
+	exposure("f", "  ", "treatment", 1)
+	assert.Len(t, bufferedEvents(p), 1, "equal exposures are deduped; one with a blank identifier is ignored")
 	exposure("f", "other-user", "treatment", 1)
 	exposure("f", "u", "control", 1)
 	exposure("g", "u", "treatment", 1)
@@ -295,6 +296,14 @@ func TestEventProcessorBuffersEvents(t *testing.T) {
 	p.TrackEvent("purchase", &EventOptions{Identifier: "u", Value: "1"})
 	p.TrackEvent("purchase", &EventOptions{Identifier: "u", Value: "1"})
 	assert.Len(t, bufferedEvents(p), 7, "custom events are never deduped")
+	p = newProc(t.Context(), noServer, 100, 0)
+	p.TrackExposureEvent("f", "a\x00b", "c", nil, nil)
+	p.TrackExposureEvent("f", "a", "b\x00c", nil, nil)
+	p.TrackExposureEvent("f", "u", "", nil, nil)
+	p.TrackExposureEvent("f", "u", nil, nil, nil)
+	assert.Len(t, bufferedEvents(p), 4, "keys cannot collide across fields, and an empty value differs from none")
+	p.TrackEvent("purchase", &EventOptions{Identifier: " "})
+	assert.Nil(t, bufferedEvents(p)[4].Identifier, "a blank identifier is sent as null")
 }
 
 func TestStringifyValue(t *testing.T) {
