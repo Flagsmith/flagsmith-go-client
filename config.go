@@ -33,7 +33,7 @@ type config struct {
 	eventsBaseURL       string
 	eventsFlushInterval time.Duration
 	eventsMaxBufferSize int
-	eventsRetryBackoff  *time.Duration // nil means min(request timeout, 1s)
+	eventsRetryBackoff  *time.Duration // nil means DefaultEventsRetryBackoff
 }
 
 // defaultConfig returns default configuration.

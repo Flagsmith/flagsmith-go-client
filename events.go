@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -153,6 +154,9 @@ type EventProcessor struct {
 	// autoPending is set while a timer or buffer-full batch is in flight. Until it
 	// clears, a full buffer drops its oldest events instead of starting another send.
 	autoPending bool
+	// held is set when a failed batch is put back in the buffer. Until the next timer tick
+	// or an explicit Flush, a full buffer drops its oldest events instead of resending it.
+	held bool
 	// overflowLogged limits the buffer-full warning to one per pending send.
 	overflowLogged bool
 
@@ -168,9 +172,9 @@ type EventProcessor struct {
 // The worker exits when ctx is done, after one final flush. That flush may retry with
 // backoff, but all of it, including batches already in flight, must fit within timeout; a
 // batch that still fails is dropped and counted, and so is anything left in the buffer.
-// Tracking after that is a no-op, counted as dropped. timeout also bounds each POST attempt, and the retry backoff starts at
-// DefaultEventsRetryBackoff. A flushInterval of 0 disables the timer; buffer-full and
-// manual flushes still work.
+// Tracking after that is a no-op, counted as dropped. timeout also bounds each POST
+// attempt, and the retry backoff starts at DefaultEventsRetryBackoff. A flushInterval of 0
+// disables the timer; buffer-full and manual flushes still work.
 func NewEventProcessor(ctx context.Context, client *resty.Client, eventsBaseURL string, maxBufferSize int, flushInterval time.Duration, timeout time.Duration, log *slog.Logger) *EventProcessor {
 	return newEventProcessor(ctx, client, eventProcessorConfig{
 		baseURL:       eventsBaseURL,
@@ -220,8 +224,9 @@ func newEventProcessor(ctx context.Context, client *resty.Client, cfg eventProce
 	return p
 }
 
-// TrackEvent buffers a custom event. opts may be nil. It is a no-op once a 401 or 403
-// has stopped the processor. It never blocks on the network and never panics.
+// TrackEvent buffers a custom event. opts may be nil. Once a 401 or 403 or shutdown has
+// stopped the processor it is a no-op, counted by DroppedEvents. It never blocks on the
+// network and never panics.
 func (p *EventProcessor) TrackEvent(name string, opts *EventOptions) {
 	if opts == nil {
 		opts = &EventOptions{}
@@ -230,9 +235,9 @@ func (p *EventProcessor) TrackEvent(name string, opts *EventOptions) {
 }
 
 // TrackExposureEvent buffers a $flag_exposure event. Exposures without an identifier, and
-// exposures equal to one buffered or sent since the last 2xx response, are discarded. It
-// is a no-op once a 401 or 403 has stopped the processor. It never blocks on the network
-// and never panics.
+// exposures equal to one buffered or sent since the last 2xx response, are discarded.
+// Once a 401 or 403 or shutdown has stopped the processor it is a no-op, counted by
+// DroppedEvents. It never blocks on the network and never panics.
 func (p *EventProcessor) TrackExposureEvent(featureName string, identifier string, value interface{}, traits map[string]interface{}, metadata map[string]interface{}) {
 	if identifier == "" {
 		p.debug("not buffering exposure: an exposure requires an identifier", "feature", featureName)
@@ -258,10 +263,11 @@ func (p *EventProcessor) Flush(ctx context.Context) error {
 
 // DroppedEvents returns how many events have been lost so far. It only ever increases.
 // It counts events dropped from a full buffer, whether because a send was already in
-// flight or because failed batches were put back; batches dropped on a non-retryable
-// status; the buffer and batches discarded on a 401 or 403; events listed as rejected in
-// a 202 response; and, at shutdown, batches that fail or are cut at the deadline, events
-// left in the buffer, and events tracked afterwards.
+// flight or a failed batch was held for the next tick; batches dropped on a non-retryable
+// status; events that cannot be encoded as JSON; the buffer and batches discarded on a
+// 401 or 403, and events tracked afterwards; events listed as rejected in a 202 response;
+// and, at shutdown, batches that fail or are cut at the deadline, events left in the
+// buffer, and events tracked afterwards.
 func (p *EventProcessor) DroppedEvents() int64 {
 	return p.dropped.Load()
 }
@@ -274,6 +280,9 @@ func (p *EventProcessor) flush(ctx context.Context, final bool) (err error) {
 			err = fmt.Errorf("flagsmith: flushing events failed: %v", r)
 		}
 	}()
+	p.mu.Lock()
+	p.held = false
+	p.mu.Unlock()
 	batch, waiting := p.takeBatch(true)
 	if batch != nil {
 		err = p.post(ctx, batch, final)
@@ -300,7 +309,7 @@ func (p *EventProcessor) start(ctx context.Context) {
 	for {
 		select {
 		case <-tick:
-			p.dispatch()
+			p.onTick()
 		case <-p.disabledCh:
 			p.debug("event processor stopped: the environment key was rejected")
 			return
@@ -336,16 +345,19 @@ func (p *EventProcessor) shutdown(ctx context.Context) {
 		p.warn("final events flush failed", "error", err)
 	}
 
-	// Cut whatever automatic batch is still retrying, and wait for it to give up. A batch
-	// started by an explicit Flush runs on its caller's context; it gets one more timeout.
+	// Cut whatever automatic batch is still retrying, and wait for it to give up, which is
+	// immediate once its context is cancelled. A batch started by an explicit Flush runs on
+	// its caller's context: it is only waited for until the same deadline.
 	p.cancelSend()
-	grace := time.NewTimer(timeout)
-	defer grace.Stop()
 	for _, b := range p.inFlightBatches() {
+		if b.auto {
+			<-b.done
+			continue
+		}
 		select {
 		case <-b.done:
-		case <-grace.C:
-			p.warn("events batch still in flight after shutdown")
+		case <-final.Done():
+			p.warn("events batch from an explicit flush still in flight after shutdown")
 		}
 	}
 
@@ -370,11 +382,20 @@ func (p *EventProcessor) inFlightBatches() []*eventBatch {
 	return batches
 }
 
+// onTick releases a batch held after a failure and sends the buffer.
+func (p *EventProcessor) onTick() {
+	p.mu.Lock()
+	p.held = false
+	p.mu.Unlock()
+	p.dispatch()
+}
+
 // dispatch takes the buffered events and posts them in the background, unless a timer or
 // buffer-full send is already in flight: that caps the goroutines and batches a stalled
 // events API can accumulate. The POST outlives the worker context's cancellation; the
 // final flush waits for it. When the batch is delivered and the buffer has filled again
-// meanwhile, the next batch is sent straight away. A failed batch waits for the timer.
+// meanwhile, the next batch is sent straight away, unless a failed batch is held: that
+// waits for the timer or an explicit Flush.
 func (p *EventProcessor) dispatch() {
 	if batch := p.takeAutoBatch(); batch != nil {
 		p.launch(batch)
@@ -391,11 +412,11 @@ func (p *EventProcessor) launch(batch *eventBatch) {
 }
 
 // takeAutoBatch takes the buffer as a timer or buffer-full batch, or returns nil when the
-// buffer is empty or such a batch is already in flight.
+// buffer is empty, such a batch is already in flight, or a failed batch is held.
 func (p *EventProcessor) takeAutoBatch() *eventBatch {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.autoPending || p.stopping || len(p.buffer) == 0 {
+	if p.autoPending || p.held || p.stopping || len(p.buffer) == 0 {
 		return nil
 	}
 	return p.takeAutoLocked()
@@ -454,15 +475,13 @@ func (p *EventProcessor) bufferEvent(name string, featureName *string, identifie
 // append adds e to the buffer unless it is a duplicate exposure or the processor is
 // disabled. When the buffer is full it is taken as a buffer-full batch for the caller
 // to launch, in the same critical section, so a reachable events API never costs an
-// event. If such a send is already in flight, the oldest event is dropped instead.
-// logOverflow reports the first drop since the last timer or buffer-full send finished.
+// event. If such a send is already in flight, or a failed batch is held for the next
+// tick, the oldest event is dropped instead. logOverflow reports the first drop since
+// the last timer or buffer-full send finished.
 func (p *EventProcessor) append(e event) (result appendResult, batch *eventBatch, logOverflow bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.disabled {
-		return appendDisabled, nil, false
-	}
-	if p.stopping {
+	if p.disabled || p.stopping {
 		// Nothing would ever send it.
 		p.dropped.Add(1)
 		return appendDisabled, nil, false
@@ -476,7 +495,7 @@ func (p *EventProcessor) append(e event) (result appendResult, batch *eventBatch
 	}
 	if len(p.buffer) >= p.cfg.maxBufferSize {
 		// Only reachable after a failed batch was put back, or while a send is pending.
-		if !p.autoPending {
+		if !p.autoPending && !p.held {
 			batch = p.takeAutoLocked()
 		} else {
 			p.dropOldestLocked(len(p.buffer) + 1 - p.cfg.maxBufferSize)
@@ -485,7 +504,7 @@ func (p *EventProcessor) append(e event) (result appendResult, batch *eventBatch
 		}
 	}
 	p.buffer = append(p.buffer, e)
-	if batch == nil && !p.autoPending && len(p.buffer) >= p.cfg.maxBufferSize {
+	if batch == nil && !p.autoPending && !p.held && len(p.buffer) >= p.cfg.maxBufferSize {
 		batch = p.takeAutoLocked()
 	}
 	return appendBuffered, batch, logOverflow
@@ -494,11 +513,7 @@ func (p *EventProcessor) append(e event) (result appendResult, batch *eventBatch
 // dropOldestLocked drops the n oldest buffered events and counts them. Their exposure
 // dedupe keys are released, since no copy of them is left to send.
 func (p *EventProcessor) dropOldestLocked(n int) {
-	for _, e := range p.buffer[:n] {
-		if e.Event == FlagExposureEvent {
-			delete(p.seen, exposureKey(e))
-		}
-	}
+	p.releaseKeysLocked(p.buffer[:n])
 	p.buffer = p.buffer[n:]
 	p.dropped.Add(int64(n))
 }
@@ -554,18 +569,21 @@ func (p *EventProcessor) finish(batch *eventBatch) {
 }
 
 // send posts events up to maxEventsAttempts times while the failure is retryable, waiting
-// with capped exponential backoff and full jitter in between. A batch that still fails is put back at
-// the head of the buffer, or dropped when final. Non-retryable failures drop the batch
-// straight away; a 401 or 403 also disables the processor.
+// with capped exponential backoff and full jitter in between. A batch that still fails is
+// put back at the head of the buffer, or dropped when final. Non-retryable failures drop
+// the batch straight away; a 401 or 403 also disables the processor. Events that cannot
+// be encoded as JSON are dropped before sending.
 func (p *EventProcessor) send(ctx context.Context, events []event, final bool) error {
-	body := eventsRequest{Events: events}
+	events, payload, err := p.encode(events)
+	if err != nil {
+		return err
+	}
 	b := newBackoffWithJitter(p.cfg.retryBackoff, maxEventsRetryBackoff, func(d time.Duration) time.Duration {
 		return p.cfg.jitter(min(d, maxEventsRetryBackoff))
 	})
-	var err error
 	for attempt := 1; ; attempt++ {
 		var outcome sendOutcome
-		outcome, err = p.attempt(ctx, body)
+		outcome, err = p.attempt(ctx, payload, events)
 		switch outcome {
 		case outcomeDelivered:
 			p.clearSeen()
@@ -574,7 +592,7 @@ func (p *EventProcessor) send(ctx context.Context, events []event, final bool) e
 			p.disable(len(events), err)
 			return err
 		case outcomeRejected:
-			p.dropped.Add(int64(len(events)))
+			p.drop(events)
 			return err
 		}
 		if attempt == maxEventsAttempts || ctx.Err() != nil {
@@ -597,8 +615,56 @@ func (p *EventProcessor) send(ctx context.Context, events []event, final bool) e
 	return err
 }
 
-// attempt posts body once and classifies the result.
-func (p *EventProcessor) attempt(ctx context.Context, body eventsRequest) (sendOutcome, error) {
+// encode marshals events into a request body. Events that cannot be encoded, e.g.
+// because a trait or metadata value is a channel or an infinite float, would fail every
+// retry, so they are dropped and counted, and the rest are sent. It fails only when no
+// event is left.
+func (p *EventProcessor) encode(events []event) ([]event, []byte, error) {
+	payload, err := json.Marshal(eventsRequest{Events: events})
+	if err == nil {
+		return events, payload, nil
+	}
+	valid := make([]event, 0, len(events))
+	var invalid []event
+	for _, e := range events {
+		if _, eErr := json.Marshal(e); eErr != nil {
+			invalid = append(invalid, e)
+			continue
+		}
+		valid = append(valid, e)
+	}
+	p.drop(invalid)
+	p.warn("events could not be encoded as JSON; dropping them", "count", len(invalid), "error", err)
+	if len(valid) == 0 {
+		return nil, nil, fmt.Errorf("flagsmith: encoding events: %w", err)
+	}
+	payload, err = json.Marshal(eventsRequest{Events: valid})
+	if err != nil {
+		p.drop(valid)
+		return nil, nil, fmt.Errorf("flagsmith: encoding events: %w", err)
+	}
+	return valid, payload, nil
+}
+
+// drop counts events as dropped and releases their exposure dedupe keys, since no copy
+// of them is left to send.
+func (p *EventProcessor) drop(events []event) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.releaseKeysLocked(events)
+	p.dropped.Add(int64(len(events)))
+}
+
+func (p *EventProcessor) releaseKeysLocked(events []event) {
+	for _, e := range events {
+		if e.Event == FlagExposureEvent {
+			delete(p.seen, exposureKey(e))
+		}
+	}
+}
+
+// attempt posts payload, the encoding of events, once and classifies the result.
+func (p *EventProcessor) attempt(ctx context.Context, payload []byte, events []event) (sendOutcome, error) {
 	if p.cfg.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, p.cfg.timeout)
@@ -608,13 +674,13 @@ func (p *EventProcessor) attempt(ctx context.Context, body eventsRequest) (sendO
 		SetContext(ctx).
 		SetHeader("Content-Type", "application/json").
 		SetHeader("Flagsmith-SDK-User-Agent", getUserAgent()).
-		SetBody(body).
+		SetBody(payload).
 		Post(p.endpoint)
 	if err != nil {
 		return outcomeRetryable, &FlagsmithAPIError{Msg: fmt.Sprintf("flagsmith: error sending events: %s", err), Err: err}
 	}
 	if resp.IsSuccess() {
-		p.logRejected(resp.Body(), body.Events)
+		p.logRejected(resp.Body(), events)
 		return outcomeDelivered, nil
 	}
 	apiErr := &FlagsmithAPIError{
@@ -629,38 +695,18 @@ func (p *EventProcessor) attempt(ctx context.Context, body eventsRequest) (sendO
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return outcomeUnauthorised, apiErr
 	}
-	// The body is untrusted and may echo the events sent, so it is never logged: only its
-	// size and, when it has one, the API's short error message.
-	respBody := resp.Body()
-	args := []any{"count", len(body.Events), "status", resp.StatusCode(), "body_bytes", len(respBody)}
-	if detail := responseDetail(respBody); detail != "" {
-		args = append(args, "detail", detail)
-	}
-	p.warn("events API rejected batch; dropping it", args...)
+	// The body is untrusted and may echo the events sent, so none of it is logged.
+	p.warn("events API rejected batch; dropping it",
+		"count", len(events),
+		"status", resp.StatusCode(),
+		"body_bytes", len(resp.Body()),
+	)
 	return outcomeRejected, apiErr
 }
 
-// maxLoggedDetail is the most characters of an error message from the events API that
-// are logged.
-const maxLoggedDetail = 200
-
-// responseDetail returns the top-level "detail", "error" or "message" string of a JSON
-// error body, truncated to maxLoggedDetail characters, or "" when there is none.
-func responseDetail(body []byte) string {
-	var parsed map[string]interface{}
-	if json.Unmarshal(body, &parsed) != nil {
-		return ""
-	}
-	for _, key := range []string{"detail", "error", "message"} {
-		if s, ok := parsed[key].(string); ok && s != "" {
-			if r := []rune(s); len(r) > maxLoggedDetail {
-				return string(r[:maxLoggedDetail])
-			}
-			return s
-		}
-	}
-	return ""
-}
+// maxLoggedRejectionError is the most characters of a per-event rejection error that are
+// logged.
+const maxLoggedRejectionError = 200
 
 // logRejected logs every event the events API accepted the request for but rejected on
 // its own. Those events are never sent again.
@@ -669,20 +715,33 @@ func (p *EventProcessor) logRejected(respBody []byte, events []event) {
 	if len(respBody) == 0 || json.Unmarshal(respBody, &parsed) != nil {
 		return
 	}
+	counted := make(map[int]struct{}, len(parsed.Rejected))
 	for _, r := range parsed.Rejected {
-		args := []any{"index", r.Index, "error", r.Error}
-		if r.Index >= 0 && r.Index < len(events) {
-			e := events[r.Index]
-			// Identifiers and traits are personal data and are never logged.
-			args = append(args, "event", e.Event, "feature", deref(e.FeatureName))
+		if r.Index < 0 || r.Index >= len(events) {
+			p.warn("events API rejected an event outside the batch", "index", r.Index)
+			continue
+		}
+		if _, dup := counted[r.Index]; dup {
+			continue
+		}
+		counted[r.Index] = struct{}{}
+		e := events[r.Index]
+		// Identifiers, traits and anything but a plain error message are never logged.
+		args := []any{"index", r.Index, "event", e.Event, "feature", deref(e.FeatureName)}
+		if msg, ok := r.Error.(string); ok {
+			if runes := []rune(msg); len(runes) > maxLoggedRejectionError {
+				msg = string(runes[:maxLoggedRejectionError])
+			}
+			args = append(args, "error", msg)
 		}
 		p.warn("events API rejected event", args...)
 	}
-	p.dropped.Add(int64(len(parsed.Rejected)))
+	p.dropped.Add(int64(len(counted)))
 }
 
 // requeue puts events that could not be sent back at the head of the buffer, ahead of
-// anything tracked since. The buffer stays within maxBufferSize by dropping the oldest.
+// anything tracked since, and holds them for the next timer tick or explicit Flush. The
+// buffer stays within maxBufferSize by dropping the oldest.
 //
 // It reports false when the processor is disabled or shutting down: nothing would flush
 // the buffer again, so the events are dropped and counted instead.
@@ -707,6 +766,7 @@ func (p *EventProcessor) requeueLocked(events []event) (kept bool, overflow int)
 	merged = append(merged, events...)
 	merged = append(merged, p.buffer...)
 	p.buffer = merged
+	p.held = true
 	overflow = len(merged) - p.cfg.maxBufferSize
 	if overflow <= 0 {
 		return true, 0
@@ -771,13 +831,20 @@ func (p *EventProcessor) debug(msg string, args ...any) {
 }
 
 // stringifyValue renders an event value the way the events API expects: nil stays nil,
-// strings are used as-is, and anything else is formatted with %v, so 49.0 becomes "49".
+// strings are used as-is, floats are written in plain decimal notation, so 49.0 becomes
+// "49" and 1.5e6 becomes "1500000", and anything else is formatted with %v.
 func stringifyValue(v interface{}) *string {
 	switch value := v.(type) {
 	case nil:
 		return nil
 	case string:
 		return &value
+	case float64:
+		s := strconv.FormatFloat(value, 'f', -1, 64)
+		return &s
+	case float32:
+		s := strconv.FormatFloat(float64(value), 'f', -1, 32)
+		return &s
 	default:
 		s := fmt.Sprintf("%v", value)
 		return &s

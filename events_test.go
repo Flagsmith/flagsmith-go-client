@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
@@ -301,6 +302,9 @@ func TestStringifyValue(t *testing.T) {
 		{"float64 fraction", 49.5, strPtr("49.5")},
 		{"bool", true, strPtr("true")},
 		{"int", 7, strPtr("7")},
+		{"float64 large", 1500000.0, strPtr("1500000")},
+		{"float64 small", 0.00001, strPtr("0.00001")},
+		{"float32", float32(0.1), strPtr("0.1")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -844,14 +848,15 @@ func TestEventProcessorUnauthorisedStops(t *testing.T) {
 				t.Fatal("worker goroutine and ticker were not stopped")
 			}
 
-			// Then: tracking is a no-op and nothing more is sent
+			// Then: tracking is a no-op counted as dropped, and nothing more is sent
+			require.Equal(t, int64(2), p.DroppedEvents())
 			p.TrackEvent("c", nil)
 			p.TrackExposureEvent("f", "u", "v", nil, nil)
 			assert.Empty(t, bufferedEvents(p))
 			assert.NoError(t, p.Flush(t.Context()))
 			time.Sleep(50 * time.Millisecond)
 			assert.Equal(t, 2, server.requestCount())
-			assert.Equal(t, int64(2), p.DroppedEvents())
+			assert.Equal(t, int64(4), p.DroppedEvents())
 
 			// Then: logged exactly once
 			assert.Len(t, logs.matching(slog.LevelWarn, "events API rejected the environment key; event tracking is disabled"), 1)
@@ -1166,14 +1171,12 @@ func TestEventProcessorShutdownDropsFinalBatchCutAtDeadline(t *testing.T) {
 
 func TestEventProcessorDoesNotLogResponseBody(t *testing.T) {
 	tests := []struct {
-		name       string
-		body       string
-		wantDetail interface{}
+		name string
+		body string
 	}{
 		{
-			name:       "JSON body echoing the batch",
-			body:       `{"detail": "Invalid batch.", "events": [{"identifier": "user@example.com", "traits": {"email": "trait@example.com"}}]}`,
-			wantDetail: "Invalid batch.",
+			name: "JSON body echoing the batch",
+			body: `{"detail": "Invalid batch.", "events": [{"identifier": "user@example.com", "traits": {"email": "trait@example.com"}}]}`,
 		},
 		{
 			name: "plain text body echoing the batch",
@@ -1203,35 +1206,210 @@ func TestEventProcessorDoesNotLogResponseBody(t *testing.T) {
 			assert.Equal(t, int64(http.StatusBadRequest), records[0]["status"])
 			assert.Equal(t, int64(len(tt.body)), records[0]["body_bytes"])
 			assert.NotContains(t, records[0], "body")
-			assert.Equal(t, tt.wantDetail, records[0]["detail"])
+			assert.NotContains(t, records[0], "detail")
+			assert.NotContains(t, logs.text(), "Invalid batch.")
 			assert.NotContains(t, logs.text(), "user@example.com")
 			assert.NotContains(t, logs.text(), "trait@example.com")
 		})
 	}
 }
 
-func TestResponseDetail(t *testing.T) {
+func TestEventProcessorHeldBatchWaitsForNextTick(t *testing.T) {
+	// Given: a full buffer whose batch failed and was put back, with the timer disabled
+	server := newEventsServer(t, statusSequence(
+		http.StatusServiceUnavailable, http.StatusServiceUnavailable, http.StatusServiceUnavailable,
+		http.StatusAccepted,
+	))
+	cfg := testEventsConfig(server.URL, 2, 0)
+	cfg.retryBackoff = 0
+	p := newTestEventProcessorWith(t.Context(), cfg)
+	p.TrackEvent("a", nil)
+	p.TrackEvent("b", nil)
+	require.Eventually(t, func() bool { return server.requestCount() == 3 && inFlightCount(p) == 0 }, time.Second, time.Millisecond)
+	require.Equal(t, []string{"a", "b"}, eventNames(bufferedEvents(p)))
+
+	// When: the next event finds the buffer full
+	p.TrackEvent("c", nil)
+
+	// Then: nothing is sent; the oldest event makes room and is counted
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, 3, server.requestCount())
+	assert.Equal(t, []string{"b", "c"}, eventNames(bufferedEvents(p)))
+	assert.Equal(t, int64(1), p.DroppedEvents())
+
+	// When: the timer ticks
+	p.onTick()
+
+	// Then: the buffer is sent once
+	require.Eventually(t, func() bool { return server.requestCount() == 4 && inFlightCount(p) == 0 }, time.Second, time.Millisecond)
+	events := server.events(t)
+	assert.Equal(t, "b", events[len(events)-2]["event"])
+	assert.Equal(t, "c", events[len(events)-1]["event"])
+	assert.Empty(t, bufferedEvents(p))
+}
+
+func TestEventProcessorHeldBatchSentByExplicitFlush(t *testing.T) {
+	// Given: a held batch, with the timer disabled
+	server := newEventsServer(t, statusSequence(
+		http.StatusServiceUnavailable, http.StatusServiceUnavailable, http.StatusServiceUnavailable,
+		http.StatusAccepted,
+	))
+	cfg := testEventsConfig(server.URL, 2, 0)
+	cfg.retryBackoff = 0
+	p := newTestEventProcessorWith(t.Context(), cfg)
+	p.TrackEvent("a", nil)
+	p.TrackEvent("b", nil)
+	require.Eventually(t, func() bool { return server.requestCount() == 3 && inFlightCount(p) == 0 }, time.Second, time.Millisecond)
+
+	// When
+	require.NoError(t, p.Flush(t.Context()))
+
+	// Then: sent once, and the next full buffer triggers a send again
+	assert.Equal(t, 4, server.requestCount())
+	p.TrackEvent("c", nil)
+	p.TrackEvent("d", nil)
+	assert.Eventually(t, func() bool { return server.requestCount() == 5 }, time.Second, time.Millisecond)
+	assert.Zero(t, p.DroppedEvents())
+}
+
+func TestEventProcessorShutdownIsBoundedByOneTimeout(t *testing.T) {
+	// Given: an explicit Flush stalled on its caller's context when shutdown starts
+	const timeout = 200 * time.Millisecond
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		_, _ = io.ReadAll(req.Body)
+		<-req.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+	ctx, cancel := context.WithCancel(t.Context())
+	cfg := testEventsConfig(server.URL, 100, 0)
+	cfg.timeout = timeout
+	cfg.retryBackoff = time.Millisecond
+	p := newTestEventProcessorWith(ctx, cfg)
+	p.TrackEvent("a", nil)
+	flushed := make(chan error, 1)
+	go func() { flushed <- p.Flush(t.Context()) }()
+	require.Eventually(t, func() bool { return inFlightCount(p) == 1 }, time.Second, time.Millisecond)
+
+	// When
+	start := time.Now()
+	cancel()
+
+	// Then: the worker exits within one timeout, not a timeout plus a grace period
+	select {
+	case <-p.stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("worker did not exit")
+	}
+	assert.Less(t, time.Since(start), timeout+80*time.Millisecond)
+
+	// Then: the explicit Flush's batch is dropped and counted when it gives up
+	require.Error(t, <-flushed)
+	assert.Equal(t, int64(1), p.DroppedEvents())
+	assert.Empty(t, bufferedEvents(p))
+}
+
+func TestEventProcessorNonRetryableDropReleasesDedupeKeys(t *testing.T) {
+	// Given
+	server := newEventsServer(t, statusSequence(http.StatusBadRequest))
+	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
+	p.TrackExposureEvent("f", "u", "treatment", nil, nil)
+
+	// When
+	require.Error(t, p.Flush(t.Context()))
+	p.TrackExposureEvent("f", "u", "treatment", nil, nil)
+
+	// Then: the dropped exposure no longer blocks the same one
+	assert.Len(t, bufferedEvents(p), 1)
+}
+
+func TestEventProcessorRejectedEventReleasesDedupeKey(t *testing.T) {
+	// Given
+	server := newEventsServerWithBody(t, func([]byte) (int, string) {
+		return http.StatusAccepted, `{"accepted": 0, "rejected": [{"index": 0, "error": "invalid"}]}`
+	})
+	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
+	p.TrackExposureEvent("f", "u", "treatment", nil, nil)
+
+	// When
+	require.NoError(t, p.Flush(t.Context()))
+	p.TrackExposureEvent("f", "u", "treatment", nil, nil)
+
+	// Then
+	assert.Len(t, bufferedEvents(p), 1)
+}
+
+func TestEventProcessorRejectedEntriesAreValidated(t *testing.T) {
+	// Given: duplicate and out-of-range indices, and errors that are not plain strings
 	long := strings.Repeat("é", 500)
-	tests := []struct {
-		name string
-		body string
-		want string
-	}{
-		{"detail", `{"detail": "a", "error": "b"}`, "a"},
-		{"error", `{"error": "b", "message": "c"}`, "b"},
-		{"message", `{"message": "c"}`, "c"},
-		{"truncated", `{"detail": "` + long + `"}`, strings.Repeat("é", maxLoggedDetail)},
-		{"not a string", `{"detail": {"identifier": "user@example.com"}}`, ""},
-		{"empty string falls through", `{"detail": "", "message": "c"}`, "c"},
-		{"not an object", `["user@example.com"]`, ""},
-		{"not JSON", `user@example.com`, ""},
-		{"empty", ``, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.want, responseDetail([]byte(tt.body)))
-		})
-	}
+	server := newEventsServerWithBody(t, func([]byte) (int, string) {
+		return http.StatusAccepted, `{"accepted": 0, "rejected": [
+			{"index": 0, "error": {"identifier": "user@example.com"}},
+			{"index": 0, "error": "duplicate"},
+			{"index": 1, "error": "` + long + `"},
+			{"index": 7, "error": "out of range"},
+			{"index": -1, "error": "negative"}
+		]}`
+	})
+	logs := &recordingHandler{}
+	cfg := testEventsConfig(server.URL, 100, 0)
+	cfg.log = slog.New(logs)
+	p := newTestEventProcessorWith(t.Context(), cfg)
+	p.TrackEvent("a", nil)
+	p.TrackEvent("b", nil)
+
+	// When
+	require.NoError(t, p.Flush(t.Context()))
+
+	// Then: each in-range index counted once
+	assert.Equal(t, int64(2), p.DroppedEvents())
+	rejected := logs.matching(slog.LevelWarn, "events API rejected event")
+	require.Len(t, rejected, 2)
+	assert.NotContains(t, rejected[0], "error")
+	assert.Equal(t, strings.Repeat("é", maxLoggedRejectionError), rejected[1]["error"])
+	assert.Len(t, logs.matching(slog.LevelWarn, "events API rejected an event outside the batch"), 2)
+	assert.NotContains(t, logs.text(), "user@example.com")
+	assert.NotContains(t, logs.text(), "out of range")
+}
+
+func TestEventProcessorDropsEventsThatCannotBeEncoded(t *testing.T) {
+	t.Run("only the invalid event is dropped", func(t *testing.T) {
+		// Given
+		server := newEventsServer(t, nil)
+		p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
+		p.TrackEvent("good", nil)
+		p.TrackEvent("bad", &EventOptions{Metadata: map[string]interface{}{"ratio": math.Inf(1)}})
+		p.TrackExposureEvent("f", "u", "v", map[string]interface{}{"ch": make(chan int)}, nil)
+
+		// When
+		err := p.Flush(t.Context())
+
+		// Then: sent once without the invalid events, which are counted and not kept
+		assert.NoError(t, err)
+		assert.Equal(t, 1, server.requestCount())
+		events := server.events(t)
+		require.Len(t, events, 1)
+		assert.Equal(t, "good", events[0]["event"])
+		assert.Equal(t, int64(2), p.DroppedEvents())
+		assert.Empty(t, bufferedEvents(p))
+	})
+
+	t.Run("a batch of only invalid events is never sent or kept", func(t *testing.T) {
+		// Given
+		server := newEventsServer(t, nil)
+		p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
+		p.TrackEvent("bad", &EventOptions{Metadata: map[string]interface{}{"ratio": math.NaN()}})
+
+		// When
+		err := p.Flush(t.Context())
+
+		// Then
+		assert.Error(t, err)
+		assert.Zero(t, server.requestCount())
+		assert.Equal(t, int64(1), p.DroppedEvents())
+		assert.Empty(t, bufferedEvents(p))
+		require.NoError(t, p.Flush(t.Context()))
+		assert.Zero(t, server.requestCount())
+	})
 }
 
 func TestEventProcessorIgnoresUnparseableAcceptedBody(t *testing.T) {
@@ -1268,20 +1446,6 @@ func TestEventProcessorDedupeSurvivesFailedFlush(t *testing.T) {
 
 		// Then: the dedupe set was cleared
 		assert.Len(t, bufferedEvents(p), 1)
-	})
-
-	t.Run("non-retryable failure", func(t *testing.T) {
-		// Given
-		server := newEventsServer(t, statusSequence(http.StatusBadRequest, http.StatusAccepted))
-		p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-		p.TrackExposureEvent("f", "u", "treatment", nil, nil)
-		require.Error(t, p.Flush(t.Context()))
-
-		// When
-		p.TrackExposureEvent("f", "u", "treatment", nil, nil)
-
-		// Then
-		assert.Empty(t, bufferedEvents(p))
 	})
 }
 

@@ -338,10 +338,11 @@ func (c *Client) FlushEvents(ctx context.Context) error {
 
 // DroppedEvents returns how many experimentation events have been lost so far. The count
 // only ever increases. It includes events dropped from a full buffer, either because a
-// send was already in flight or because failed batches were put back, batches dropped on a
-// non-retryable status, the buffer and batches discarded on a 401 or 403, events listed as
-// rejected in a 202 response, and, at shutdown, batches that fail or are cut at the
-// deadline, events left in the buffer, and events tracked afterwards. Returns 0 when
+// send was already in flight or because a failed batch was held for the next tick,
+// batches dropped on a non-retryable status, events that cannot be encoded as JSON, the
+// buffer and batches discarded on a 401 or 403 and events tracked afterwards, events
+// listed as rejected in a 202 response, and, at shutdown, batches that fail or are cut at
+// the deadline, events left in the buffer, and events tracked afterwards. Returns 0 when
 // events are not enabled.
 func (c *Client) DroppedEvents() int64 {
 	if c.eventProcessor == nil {

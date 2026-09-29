@@ -54,12 +54,13 @@ err = client.TrackExposureEvent("checkout_cta", "user-123", flag.Variant, nil)
 
 Events are sent in batches every 10 seconds, or as soon as 1000 are buffered. Failures never reach the code that tracks events. They are handled like this:
 
-- A network error, a timeout, or a 408, 429, 502, 503 or 504 response is retried, up to three attempts in total. The backoff starts at 1 second and doubles, up to 10 seconds. Each wait is a random duration between zero and the backoff. If every attempt fails, the batch goes back to the front of the buffer and waits for the next scheduled send.
+- A network error, a timeout, or a 408, 429, 502, 503 or 504 response is retried, up to three attempts in total. The backoff starts at 1 second and doubles, up to 10 seconds. Each wait is a random duration between zero and the backoff. If every attempt fails, the batch goes back to the front of the buffer and waits for the next scheduled send or `FlushEvents` call. Until then, a full buffer drops its oldest events rather than sending early.
 - Any other error status, including 500, drops the batch without a retry.
-- A 401 or 403 means the environment key was rejected. Event tracking stops, the buffer is dropped, and one warning is logged. Later tracking calls do nothing until you create a new client. Flags are still evaluated as normal.
+- A 401 or 403 means the environment key was rejected. Event tracking stops, the buffer is dropped, and one warning is logged. Later tracking calls do nothing, and are counted as dropped, until you create a new client. Flags are still evaluated as normal.
 - Only one scheduled or buffer-full send is in flight at a time. The buffer never holds more than the maximum buffer size. While a send is pending, or the events API is unreachable, the oldest events are dropped first.
 - When the events API accepts a batch but rejects some of its events, each rejection is logged as a warning. Rejected events are not sent again.
-- Logs never include identifiers, trait values or response bodies. When a batch is rejected, the log records the status, the size of the response body, and the events API's short error message, cut to 200 characters.
+- Events whose traits or metadata cannot be encoded as JSON, such as channels or infinite numbers, are dropped. The rest of the batch is still sent.
+- Logs never include identifiers, trait values or response content. When a batch is rejected, only its status and the size of the response body are logged.
 - Equal exposures are sent once. They can be sent again after the events API returns a success response, including a partial one.
 
 `DroppedEvents` returns how many events have been lost this way, so you can monitor it. The count only ever goes up.
