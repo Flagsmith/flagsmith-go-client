@@ -6,8 +6,86 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/Flagsmith/flagsmith-go-client/v5/fixtures"
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
 )
+
+func TestMakeFlagsFromIdentityAPIJsonWithExperiment(t *testing.T) {
+	// When
+	flags, err := makeFlagsfromIdentityAPIJson([]byte(fixtures.IdentityResponseJsonWithExperiment), nil, nil)
+
+	// Then
+	require.NoError(t, err)
+	require.Len(t, flags.flags, 4)
+	assert.Equal(t, Flag{
+		Enabled:     true,
+		Value:       "buy-now",
+		FeatureID:   fixtures.ExperimentFeatureID,
+		FeatureName: fixtures.ExperimentFeatureName,
+		Reason:      fixtures.ExperimentReason,
+		Variant:     fixtures.ExperimentVariant,
+		Experiment: &ExperimentMetadata{
+			ID:           fixtures.ExperimentID,
+			Name:         fixtures.ExperimentName,
+			InExperiment: true,
+		},
+	}, flags.flags[0])
+	assert.Equal(t, fixtures.NotEnrolledVariant, flags.flags[1].Variant)
+	assert.Equal(t, &ExperimentMetadata{ID: 43, Name: "other_exp", InExperiment: false}, flags.flags[1].Experiment)
+	assert.Empty(t, flags.flags[2].Variant)
+	assert.Nil(t, flags.flags[2].Experiment)
+	assert.False(t, flags.flags[3].Enabled)
+	assert.True(t, flags.flags[3].Experiment.InExperiment)
+}
+
+func TestMakeFlagsFromAPIFlagsMetadataWithoutExperiment(t *testing.T) {
+	// Given: metadata carrying only keys the SDK does not know about
+	flagsJson := []byte(`[{
+		"enabled": true,
+		"feature_state_value": "v",
+		"feature": {"id": 1, "name": "f"},
+		"metadata": {"something_else": {"id": 1}}
+	}]`)
+
+	// When
+	flags, err := makeFlagsFromAPIFlags(flagsJson, nil, nil)
+
+	// Then
+	require.NoError(t, err)
+	require.Len(t, flags.flags, 1)
+	assert.Nil(t, flags.flags[0].Experiment)
+}
+
+func TestMakeFlagsFromIdentityAPIJsonWithoutExperimentIsUnchanged(t *testing.T) {
+	// When
+	flags, err := makeFlagsfromIdentityAPIJson([]byte(fixtures.IdentityResponseJson), nil, nil)
+
+	// Then
+	require.NoError(t, err)
+	assert.Equal(t, []Flag{{
+		Enabled:     true,
+		Value:       fixtures.Feature1Value,
+		FeatureID:   fixtures.Feature1ID,
+		FeatureName: fixtures.Feature1Name,
+		Reason:      fixtures.Feature1IdentityReason,
+		Variant:     fixtures.Feature1IdentityVariant,
+	}}, flags.flags)
+}
+
+func TestMakeFlagFromEngineEvaluationFlagResultHasNoExperiment(t *testing.T) {
+	// When
+	flag := makeFlagFromEngineEvaluationFlagResult(&engine_eval.FlagResult{
+		Enabled: true,
+		Name:    "mv_feature",
+		Reason:  "SPLIT; weight=30",
+		Value:   "variant_value",
+		Variant: "treatment",
+	})
+
+	// Then
+	assert.Equal(t, "SPLIT; weight=30", flag.Reason)
+	assert.Nil(t, flag.Experiment)
+}
 
 func TestMakeFlagsFromAPIFlagsSetsReasonAndVariant(t *testing.T) {
 	// Given

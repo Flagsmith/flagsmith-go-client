@@ -14,8 +14,25 @@ type Flag struct {
 	IsDefault   bool
 	FeatureID   int
 	FeatureName string
-	Reason      string
-	Variant     string
+	// Reason is the evaluation reason, e.g. "DEFAULT", "SPLIT; weight=70.0" or
+	// "TARGETING_MATCH; segment=...". Empty when none was reported.
+	Reason string
+	// Variant is the key of the multivariate variant the identity was bucketed into.
+	// Empty for standard features and evaluation without an identity.
+	Variant string
+	// Experiment is the running experiment on this feature. Only populated by remote
+	// identity evaluation; nil otherwise.
+	Experiment *ExperimentMetadata
+}
+
+// ExperimentMetadata describes the running experiment a flag was evaluated under.
+// It is only populated by remote identity evaluation.
+type ExperimentMetadata struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+	// InExperiment reports whether this identity is enrolled. Variant alone cannot
+	// tell: outside the rollout an identity still gets a variant.
+	InExperiment bool `json:"in_experiment"`
 }
 
 type Trait = trait.Trait
@@ -67,16 +84,21 @@ type jsonFeature struct {
 	Name string `json:"name"`
 }
 
+type jsonFlagMetadata struct {
+	Experiment *ExperimentMetadata `json:"experiment"`
+}
+
 type jsonFlag struct {
-	Enabled bool        `json:"enabled"`
-	Value   interface{} `json:"feature_state_value"`
-	Feature jsonFeature `json:"feature"`
-	Reason  string      `json:"reason"`
-	Variant string      `json:"variant"`
+	Enabled  bool              `json:"enabled"`
+	Value    interface{}       `json:"feature_state_value"`
+	Feature  jsonFeature       `json:"feature"`
+	Reason   string            `json:"reason"`
+	Variant  string            `json:"variant"`
+	Metadata *jsonFlagMetadata `json:"metadata"`
 }
 
 func (jf *jsonFlag) toFlag() Flag {
-	return Flag{
+	f := Flag{
 		Enabled:     jf.Enabled,
 		Value:       jf.Value,
 		IsDefault:   false,
@@ -85,6 +107,10 @@ func (jf *jsonFlag) toFlag() Flag {
 		Reason:      jf.Reason,
 		Variant:     jf.Variant,
 	}
+	if jf.Metadata != nil {
+		f.Experiment = jf.Metadata.Experiment
+	}
+	return f
 }
 func makeFlagsFromAPIFlags(flagsJson []byte, analyticsProcessor *AnalyticsProcessor, defaultFlagHandler func(string) (Flag, error)) (Flags, error) {
 	var jsonflags []jsonFlag

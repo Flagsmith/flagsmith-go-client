@@ -37,6 +37,11 @@ var _ = []Option{
 	WithSlogLogger(nil),
 	WithRestyClient(nil),
 	WithHTTPClient(nil),
+	WithEvents(context.TODO()),
+	WithEventsBaseURL(""),
+	WithEventsFlushInterval(0),
+	WithEventsMaxBufferSize(0),
+	WithEventsRetryBackoff(0),
 }
 
 func WithBaseURL(url string) Option {
@@ -201,5 +206,56 @@ func WithRestyClient(restyClient *resty.Client) Option {
 		if restyClient != nil {
 			c.client = restyClient
 		}
+	}
+}
+
+// WithEvents enables experimentation event tracking (exposures and custom events).
+//
+// The goroutine responsible for asynchronously flushing buffered events uses the
+// context provided here. When it is done the processor performs one final flush,
+// bounded by the request timeout, and exits, so cancel it on shutdown to avoid
+// losing the last batch. Call FlushEvents first if the last events matter.
+//
+// Events cannot be used together with WithOfflineMode.
+func WithEvents(ctx context.Context) Option {
+	return func(c *Client) {
+		c.config.enableEvents = true
+		c.ctxEvents = ctx
+	}
+}
+
+// WithEventsBaseURL sets the events API base URL. A trailing slash is added if missing.
+// Defaults to DefaultEventsBaseURL.
+func WithEventsBaseURL(url string) Option {
+	return func(c *Client) {
+		if !strings.HasSuffix(url, "/") {
+			url += "/"
+		}
+		c.config.eventsBaseURL = url
+	}
+}
+
+// WithEventsFlushInterval sets how often buffered events are sent. 0 disables the timer,
+// leaving the buffer-full trigger and FlushEvents. Defaults to DefaultEventsFlushInterval.
+func WithEventsFlushInterval(interval time.Duration) Option {
+	return func(c *Client) {
+		c.config.eventsFlushInterval = interval
+	}
+}
+
+// WithEventsMaxBufferSize sets the number of buffered events that triggers a flush.
+// Defaults to DefaultEventsMaxBufferSize.
+func WithEventsMaxBufferSize(size int) Option {
+	return func(c *Client) {
+		c.config.eventsMaxBufferSize = size
+	}
+}
+
+// WithEventsRetryBackoff sets how long to wait before retrying a batch of events that
+// failed with a network error or a 5xx response. A batch is retried once, then dropped.
+// Defaults to the request timeout, capped at one second.
+func WithEventsRetryBackoff(backoff time.Duration) Option {
+	return func(c *Client) {
+		c.config.eventsRetryBackoff = &backoff
 	}
 }

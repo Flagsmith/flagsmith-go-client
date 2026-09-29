@@ -32,6 +32,7 @@ type Client struct {
 	engineEvaluationContext atomic.Value
 
 	analyticsProcessor *AnalyticsProcessor
+	eventProcessor     *EventProcessor
 	realtime           *realtime
 	defaultFlagHandler func(string) (Flag, error)
 
@@ -39,6 +40,7 @@ type Client struct {
 	httpClient     *http.Client
 	ctxLocalEval   context.Context
 	ctxAnalytics   context.Context
+	ctxEvents      context.Context
 	log            *slog.Logger
 	offlineHandler OfflineHandler
 	errorHandler   func(handler *FlagsmithAPIError)
@@ -126,6 +128,8 @@ func NewClient(apiKey string, options ...Option) *Client {
 		"analytics", c.config.enableAnalytics,
 		"realtime", c.config.useRealtime,
 		"realtime_url", c.config.realtimeBaseUrl,
+		"events", c.config.enableEvents,
+		"events_url", c.config.eventsBaseURL,
 		"env_refresh_interval", c.config.envRefreshInterval,
 		"timeout", c.config.timeout,
 	)
@@ -138,6 +142,15 @@ func NewClient(apiKey string, options ...Option) *Client {
 	}
 	if c.config.localEvaluation && c.offlineHandler != nil {
 		panic("local evaluation and offline handler cannot be used together.")
+	}
+	if c.config.enableEvents && c.config.offlineMode {
+		panic("events cannot be used in offline mode.")
+	}
+	if c.config.enableEvents && (c.config.eventsMaxBufferSize < 1 || c.config.eventsFlushInterval < 0) {
+		panic("events buffer size must be positive and flush interval must not be negative.")
+	}
+	if c.config.enableEvents && c.config.eventsRetryBackoff != nil && *c.config.eventsRetryBackoff < 0 {
+		panic("events retry backoff must not be negative.")
 	}
 	if c.offlineHandler != nil {
 		env := c.offlineHandler.GetEnvironment()
@@ -171,7 +184,152 @@ func NewClient(apiKey string, options ...Option) *Client {
 			),
 		)
 	}
+	if c.config.enableEvents {
+		c.eventProcessor = c.newEventProcessor()
+	}
 	return c
+}
+
+// newEventProcessor builds the event processor on a dedicated resty client. It shares the
+// transport, timeout, proxy and headers of the main client, but not its retry settings:
+// the processor owns its retry policy.
+func (c *Client) newEventProcessor() *EventProcessor {
+	log := c.log.With(slog.String("worker", "events"))
+	httpClient := c.client.GetClient()
+	eventsClient := resty.NewWithClient(httpClient).
+		SetLogger(newSlogToRestyAdapter(log)).
+		OnBeforeRequest(newRestyLogRequestMiddleware(log)).
+		OnAfterResponse(newRestyLogResponseMiddleware(log))
+	eventsClient.Header = c.client.Header.Clone()
+	eventsClient.SetHeader("Flagsmith-SDK-User-Agent", getUserAgent())
+
+	timeout := httpClient.Timeout
+	if timeout <= 0 {
+		timeout = c.config.timeout
+	}
+	retryBackoff := defaultEventsRetryBackoff(timeout)
+	if c.config.eventsRetryBackoff != nil {
+		retryBackoff = *c.config.eventsRetryBackoff
+	}
+	return newEventProcessor(
+		c.ctxEvents, eventsClient, c.config.eventsBaseURL,
+		c.config.eventsMaxBufferSize, c.config.eventsFlushInterval, timeout, retryBackoff,
+		log,
+	)
+}
+
+// GetExperimentFlag evaluates one flag for the identity in ec and records a $flag_exposure
+// event when that identity is enrolled in a running experiment on the feature.
+//
+// Flags are fetched exactly as GetFlags would fetch them for ec. Experiment metadata is only
+// present with remote evaluation; with local evaluation the flag is returned and no exposure
+// is recorded. No exposure is recorded either when the flag is disabled, served by the
+// default handler, or evaluated for another environment through ec.Environment.
+//
+// Returns a FlagsmithClientError when events are not enabled or ec carries no identity.
+func (c *Client) GetExperimentFlag(ctx context.Context, featureName string, ec EvaluationContext) (Flag, error) {
+	if c.eventProcessor == nil {
+		return Flag{}, &FlagsmithClientError{msg: "flagsmith: events must be enabled (WithEvents) to use experiment flags"}
+	}
+	if ec.Identity == nil || ec.Identity.Identifier == nil || *ec.Identity.Identifier == "" {
+		return Flag{}, &FlagsmithClientError{msg: "flagsmith: GetExperimentFlag requires an identity in the evaluation context"}
+	}
+	identifier := *ec.Identity.Identifier
+
+	flags, err := c.GetFlags(ctx, &ec)
+	if err != nil {
+		return Flag{}, err
+	}
+	flag, err := flags.GetFlag(featureName)
+	if err != nil {
+		return flag, err
+	}
+
+	skip := func(reason string) (Flag, error) {
+		c.log.Info("not recording exposure", "feature", featureName, "reason", reason)
+		return flag, nil
+	}
+	switch {
+	case flag.IsDefault:
+		return skip("flag served by the default handler")
+	case !flag.Enabled:
+		return skip("flag is disabled")
+	case flag.Experiment == nil || !flag.Experiment.InExperiment:
+		return skip("identity is not enrolled in an experiment")
+	case ec.Environment != nil && ec.Environment.APIKey != c.apiKey:
+		c.log.Warn("not recording exposure: flags were evaluated for a different environment than the events client",
+			"feature", featureName)
+		return flag, nil
+	}
+
+	c.eventProcessor.TrackExposureEvent(featureName, identifier, flag.Variant, traitValues(ec.Identity),
+		map[string]interface{}{"experiment_id": flag.Experiment.ID})
+	return flag, nil
+}
+
+// TrackEvent records a custom event, e.g. a conversion to reconcile with experiment
+// exposures. opts may be nil. Names starting with "$" are reserved and rejected.
+//
+// Returns a FlagsmithClientError when events are not enabled.
+func (c *Client) TrackEvent(name string, opts *EventOptions) error {
+	if c.eventProcessor == nil {
+		return &FlagsmithClientError{msg: "flagsmith: events must be enabled (WithEvents) to track events"}
+	}
+	if strings.HasPrefix(name, "$") {
+		return &FlagsmithClientError{msg: fmt.Sprintf("flagsmith: event names starting with \"$\" are reserved; use TrackExposureEvent to record %q", FlagExposureEvent)}
+	}
+	c.eventProcessor.TrackEvent(name, opts)
+	return nil
+}
+
+// TrackExposureEvent records a $flag_exposure event manually, for a flag evaluated
+// elsewhere; GetExperimentFlag records exposures on its own. Nothing is sent when
+// identifier is empty. Only Traits and Metadata are read from opts, which may be nil:
+// the identifier and value are the positional arguments.
+//
+// Returns a FlagsmithClientError when events are not enabled.
+func (c *Client) TrackExposureEvent(featureName string, identifier string, value interface{}, opts *EventOptions) error {
+	if c.eventProcessor == nil {
+		return &FlagsmithClientError{msg: "flagsmith: events must be enabled (WithEvents) to track exposure events"}
+	}
+	if identifier == "" {
+		c.log.Info("not sending exposure: an exposure requires an identifier", "feature", featureName)
+		return nil
+	}
+	var traits, metadata map[string]interface{}
+	if opts != nil {
+		traits, metadata = opts.Traits, opts.Metadata
+	}
+	c.eventProcessor.TrackExposureEvent(featureName, identifier, value, traits, metadata)
+	return nil
+}
+
+// FlushEvents sends buffered events now. It returns once every event tracked before the
+// call has been sent or dropped, or when ctx is done. Batches started after the call are
+// not waited for.
+//
+// Returns nil immediately when events are not enabled.
+func (c *Client) FlushEvents(ctx context.Context) error {
+	if c.eventProcessor == nil {
+		return nil
+	}
+	return c.eventProcessor.Flush(ctx)
+}
+
+// traitValues flattens the identity's traits to their values, or nil when there are none.
+func traitValues(ic *IdentityEvaluationContext) map[string]interface{} {
+	if ic == nil || len(ic.Traits) == 0 {
+		return nil
+	}
+	values := make(map[string]interface{}, len(ic.Traits))
+	for key, trait := range ic.Traits {
+		if trait == nil {
+			values[key] = nil
+			continue
+		}
+		values[key] = trait.Value
+	}
+	return values
 }
 
 // GetFlags evaluates the feature flags within an EvaluationContext.

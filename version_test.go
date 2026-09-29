@@ -39,3 +39,11 @@ func TestGetUserAgentValidFormats(t *testing.T) {
 	assert.True(t, isValid,
 		"Version should be 'unknown' or start with 'v', got: %s", versionPart)
 }
+
+func TestGetSDKVersionMatchesUserAgent(t *testing.T) {
+	// When
+	version := getSDKVersion()
+
+	// Then
+	assert.Equal(t, "flagsmith-go-sdk/"+version, getUserAgent())
+}

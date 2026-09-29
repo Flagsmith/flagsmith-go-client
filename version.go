@@ -45,3 +45,9 @@ func getUserAgent() string {
 
 	return fmt.Sprintf("%s/%s", sdkName, unknownVersion)
 }
+
+// getSDKVersion returns the version part of getUserAgent, e.g. "v5.2.0", or "unknown".
+func getSDKVersion() string {
+	ua := getUserAgent()
+	return ua[strings.LastIndex(ua, "/")+1:]
+}

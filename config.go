@@ -28,6 +28,12 @@ type config struct {
 	useRealtime        bool
 	polling            bool
 	userProvidedClient bool
+
+	enableEvents        bool
+	eventsBaseURL       string
+	eventsFlushInterval time.Duration
+	eventsMaxBufferSize int
+	eventsRetryBackoff  *time.Duration // nil means min(request timeout, 1s)
 }
 
 // defaultConfig returns default configuration.
@@ -38,5 +44,9 @@ func defaultConfig() config {
 		envRefreshInterval: time.Second * 60,
 		realtimeBaseUrl:    DefaultRealtimeBaseUrl,
 		userProvidedClient: false,
+
+		eventsBaseURL:       DefaultEventsBaseURL,
+		eventsFlushInterval: DefaultEventsFlushInterval,
+		eventsMaxBufferSize: DefaultEventsMaxBufferSize,
 	}
 }
