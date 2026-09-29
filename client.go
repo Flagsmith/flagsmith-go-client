@@ -190,9 +190,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 	return c
 }
 
-// newEventProcessor builds the event processor on a dedicated resty client. It shares the
-// transport, timeout, proxy and headers of the main client, but not its retry settings:
-// the processor owns its retry policy.
+// newEventProcessor shares the main client's transport and headers, but not its retries.
 func (c *Client) newEventProcessor() *EventProcessor {
 	log := c.log.With(slog.String("worker", "events"))
 	httpClient := c.client.GetClient()
@@ -221,19 +219,9 @@ func (c *Client) newEventProcessor() *EventProcessor {
 	})
 }
 
-// GetExperimentFlag evaluates one flag for the identity in ec and records a $flag_exposure
-// event when that identity is enrolled in a running experiment on the feature.
-//
-// Flags are fetched exactly as GetFlags would fetch them for ec. Experiment metadata is only
-// present with remote evaluation; with local evaluation the flag is returned and no exposure
-// is recorded. No exposure is recorded either when the flag is disabled, served by the
-// default handler, or evaluated for another environment through ec.Environment.
-//
-// The exposure is buffered and sent in the background like any other event; see WithEvents
-// for how failures are handled. Once a 401 or 403 has stopped event tracking, the flag is
-// still returned but no exposure is recorded.
-//
-// Returns a FlagsmithClientError when events are not enabled or ec carries no identity.
+// GetExperimentFlag evaluates one flag for the identity in ec and records an exposure when
+// that identity is enrolled in a running experiment, which requires remote evaluation.
+// See the README's Experimentation section. Requires WithEvents and an identity in ec.
 func (c *Client) GetExperimentFlag(ctx context.Context, featureName string, ec EvaluationContext) (Flag, error) {
 	if c.eventProcessor == nil {
 		return Flag{}, &FlagsmithClientError{msg: "flagsmith: events must be enabled (WithEvents) to use experiment flags"}
@@ -274,14 +262,8 @@ func (c *Client) GetExperimentFlag(ctx context.Context, featureName string, ec E
 	return flag, nil
 }
 
-// TrackEvent records a custom event, e.g. a conversion to reconcile with experiment
-// exposures. opts may be nil. Names starting with "$" are reserved and rejected.
-//
-// The event is buffered and sent in the background; it never blocks on the network, and
-// sending failures are handled as described on WithEvents, not returned here. It is a
-// no-op once a 401 or 403 has stopped event tracking.
-//
-// Returns a FlagsmithClientError when events are not enabled.
+// TrackEvent buffers a custom event, such as a conversion; opts may be nil. Names starting
+// with "$" are reserved. Requires WithEvents; see the README's Experimentation section.
 func (c *Client) TrackEvent(name string, opts *EventOptions) error {
 	if c.eventProcessor == nil {
 		return &FlagsmithClientError{msg: "flagsmith: events must be enabled (WithEvents) to track events"}
@@ -293,16 +275,9 @@ func (c *Client) TrackEvent(name string, opts *EventOptions) error {
 	return nil
 }
 
-// TrackExposureEvent records a $flag_exposure event manually, for a flag evaluated
-// elsewhere; GetExperimentFlag records exposures on its own. Nothing is sent when
-// identifier is empty. Only Traits and Metadata are read from opts, which may be nil:
-// the identifier and value are the positional arguments.
-//
-// Equal exposures are sent once until the events API returns a 2xx response. Like
-// TrackEvent, it never blocks on the network, and it is a no-op once a 401 or 403 has
-// stopped event tracking.
-//
-// Returns a FlagsmithClientError when events are not enabled.
+// TrackExposureEvent buffers a $flag_exposure for a flag evaluated elsewhere. It is ignored
+// without an identifier, and reads only Traits and Metadata from opts, which may be nil.
+// Requires WithEvents; see the README's Experimentation section.
 func (c *Client) TrackExposureEvent(featureName string, identifier string, value interface{}, opts *EventOptions) error {
 	if c.eventProcessor == nil {
 		return &FlagsmithClientError{msg: "flagsmith: events must be enabled (WithEvents) to track exposure events"}
@@ -319,17 +294,9 @@ func (c *Client) TrackExposureEvent(featureName string, identifier string, value
 	return nil
 }
 
-// FlushEvents sends buffered events now, with the usual retries. It returns once every
-// event tracked before the call has been sent, put back in the buffer after a retryable
-// failure, or dropped, or when ctx is done. Batches started after the call are not waited
-// for. A retry whose wait would pass ctx's deadline is not attempted.
-//
-// It returns the error of the batch it sent, if any; a batch put back in the buffer is
-// sent again on the next flush. Shutdown of the WithEvents context also cuts its batch at
-// the shutdown deadline, whatever ctx is; the batch is then dropped and counted. Call it
-// with a deadline before a short-lived process exits. It never panics.
-//
-// Returns nil immediately when events are not enabled.
+// FlushEvents sends buffered events and returns once every event tracked before the call
+// has been sent, kept for retry or dropped, or when ctx ends. Call it with a deadline
+// before a short-lived process exits. Returns nil when events are not enabled.
 func (c *Client) FlushEvents(ctx context.Context) error {
 	if c.eventProcessor == nil {
 		return nil
@@ -338,13 +305,7 @@ func (c *Client) FlushEvents(ctx context.Context) error {
 }
 
 // DroppedEvents returns how many experimentation events have been lost so far. The count
-// only ever increases. It includes events dropped from a full buffer, either because a
-// send was already in flight or because a failed batch was held for the next tick,
-// batches dropped on a non-retryable status, events that cannot be encoded as JSON, the
-// buffer and batches discarded on a 401 or 403 and events tracked afterwards, events
-// listed as rejected in a 202 response, and, at shutdown, batches that fail or are cut at
-// the deadline, events left in the buffer, and events tracked afterwards. Returns 0 when
-// events are not enabled.
+// only increases; the README lists what it counts. Returns 0 when events are not enabled.
 func (c *Client) DroppedEvents() int64 {
 	if c.eventProcessor == nil {
 		return 0
@@ -352,7 +313,7 @@ func (c *Client) DroppedEvents() int64 {
 	return c.eventProcessor.DroppedEvents()
 }
 
-// traitValues flattens the identity's traits to their values, or nil when there are none.
+// traitValues flattens the identity's traits to their values.
 func traitValues(ic *IdentityEvaluationContext) map[string]interface{} {
 	if ic == nil || len(ic.Traits) == 0 {
 		return nil

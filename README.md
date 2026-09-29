@@ -14,76 +14,46 @@ For full documentation visit [https://docs.flagsmith.com/clients/server-side?lan
 
 ## Experimentation
 
-Enable event tracking with `WithEvents`. The context you pass controls the background goroutine that sends buffered events.
+Enable events with `WithEvents`. Its context runs the background sender, and cancelling it is the shutdown flush.
 
 ```go
 eventsCtx, stopEvents := context.WithCancel(context.Background())
-client := flagsmith.NewClient(os.Getenv("FLAGSMITH_SERVER_KEY"),
-	flagsmith.WithEvents(eventsCtx),
-)
-```
+client := flagsmith.NewClient(os.Getenv("FLAGSMITH_SERVER_KEY"), flagsmith.WithEvents(eventsCtx))
 
-`GetExperimentFlag` evaluates one flag for an identity. When that identity is enrolled in a running experiment on the feature, it also records a `$flag_exposure` event.
-
-```go
 ec := flagsmith.NewEvaluationContext("user-123", map[string]interface{}{"plan": "premium"})
 flag, err := client.GetExperimentFlag(ctx, "checkout_cta", ec)
-if err != nil {
-	return err
-}
-fmt.Println(flag.Value, flag.Variant, flag.Experiment)
 ```
 
-Experiment metadata is only returned by remote evaluation. With local evaluation the flag is returned and no exposure is recorded.
+`GetExperimentFlag` returns the flag and records a `$flag_exposure` when the identity is enrolled in a running experiment. Experiment metadata needs remote evaluation, so local evaluation records no exposure. `TrackExposureEvent` records one for a flag you evaluated some other way.
 
-Record conversions with `TrackEvent`. Event names starting with `$` are reserved.
+Record conversions with `TrackEvent`. Names starting with `$` are reserved.
 
 ```go
-err = client.TrackEvent("purchase", &flagsmith.EventOptions{
-	Identifier: "user-123",
-	Value:      49.99,
-	Metadata:   map[string]interface{}{"currency": "EUR"},
-})
+err = client.TrackEvent("purchase", &flagsmith.EventOptions{Identifier: "user-123", Value: 49.99})
 ```
 
-Use `TrackExposureEvent` to record an exposure for a flag you evaluated some other way. Exposures without an identifier are not sent.
+### Delivery and failure handling
 
-```go
-err = client.TrackExposureEvent("checkout_cta", "user-123", flag.Variant, nil)
-```
+Events are sent every 10 seconds (`WithEventsFlushInterval`) or when 1000 are buffered (`WithEventsMaxBufferSize`). Failures never reach the code that tracks events.
 
-Events are sent in batches every 10 seconds, or as soon as 1000 are buffered. Failures never reach the code that tracks events. They are handled like this:
-
-- A network error, a timeout, or a 408, 429, 502, 503 or 504 response is retried, up to three attempts in total. The backoff starts at 1 second and doubles, up to 10 seconds. Each wait is a random duration between zero and the backoff. If every attempt fails, the batch goes back to the front of the buffer and waits for the next scheduled send or `FlushEvents` call. Until then, a full buffer drops its oldest events rather than sending early.
-- Any other error status, including 500, drops the batch without a retry.
-- A 401 or 403 means the environment key was rejected. Event tracking stops, the buffer is dropped, and one warning is logged. Later tracking calls do nothing, and are counted as dropped, until you create a new client. Flags are still evaluated as normal.
-- Only one scheduled or buffer-full send is in flight at a time. The buffer never holds more than the maximum buffer size. While a send is pending, or the events API is unreachable, the oldest events are dropped first.
-- When the events API accepts a batch but rejects some of its events, each rejection is logged as a warning, by its position in the batch only. Rejected events are not sent again.
-- Traits and metadata, including nested maps and slices, are captured when an event is tracked. Changing them afterwards does not change what is sent, and is safe while a send is in progress.
-- Events whose traits or metadata cannot be encoded as JSON, such as channels or infinite numbers, are dropped and counted when they are tracked.
+- Network errors, timeouts and 408, 429, 502, 503 and 504 are retried: three attempts, backoff from 1 second (`WithEventsRetryBackoff`) doubling to 10 seconds, with full jitter. A batch that still fails goes back to the front of the buffer until the next scheduled send or `FlushEvents`.
+- Any other error status, including 500, drops the batch.
+- A 401 or 403 stops event tracking, drops the buffer and logs one warning, until the client is re-created. Flags keep working.
+- One scheduled send is in flight at a time. When the buffer is full meanwhile, the oldest events are dropped.
+- Events a 202 lists as rejected are logged by index and not resent.
+- Equal exposures are sent once until a success response.
+- Traits and metadata are captured when tracked. Values that cannot be encoded as JSON drop the event.
 - Logs never include identifiers, trait values or response content.
-- Equal exposures are sent once. They can be sent again after the events API returns a success response, including a partial one.
 
-`DroppedEvents` returns how many events have been lost this way, so you can monitor it. The count only ever goes up.
-
-```go
-dropped := client.DroppedEvents()
-```
-
-These options tune the behaviour:
-
-- `WithEventsFlushInterval` sets the interval between sends. 0 disables the timer.
-- `WithEventsMaxBufferSize` sets the number of buffered events that triggers a send. It is also the most events the buffer holds.
-- `WithEventsRetryBackoff` sets the backoff before the first retry, which then doubles up to 10 seconds. It defaults to 1 second.
-- `WithEventsBaseURL` sets the events API URL, which defaults to `https://events.api.flagsmith.com/`.
+`DroppedEvents` returns a running count of events lost in any of these ways, including at shutdown.
 
 Events cannot be used with `WithOfflineMode`.
 
 ### Shutdown
 
-The client has no `Close` method. Cancelling the context passed to `WithEvents` is the shutdown flush. It sends whatever is still buffered, then stops the background goroutine. That final send retries with backoff, but only while the retries fit within the request timeout. The same deadline also cuts sends that were already in progress, including a `FlushEvents` call. Anything that still fails, and anything left in the buffer, is dropped and counted by `DroppedEvents`. Events tracked after shutdown are dropped and counted too.
+Cancelling the `WithEvents` context sends what is buffered, retrying only within one request timeout. The same deadline cuts sends already in progress, including `FlushEvents`. Anything left is dropped and counted.
 
-When you need a guarantee, call `FlushEvents` with a deadline before the process exits. This matters most for short-lived processes such as CLI tools, jobs and serverless functions, which can exit before the next scheduled send.
+For a guarantee, for example in a CLI tool, job or serverless function, call `FlushEvents` with a deadline before exit. It returns once every event tracked before the call has been sent, kept for retry or dropped.
 
 ```go
 flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -93,8 +63,6 @@ if err := client.FlushEvents(flushCtx); err != nil {
 }
 stopEvents()
 ```
-
-`FlushEvents` returns once every event tracked before the call has been sent, put back in the buffer after a failure, or dropped. It uses the same retries, and skips any retry whose wait would pass the deadline. It returns the error when its batch could not be sent.
 
 ## Contributing
 

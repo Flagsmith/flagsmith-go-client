@@ -209,24 +209,9 @@ func WithRestyClient(restyClient *resty.Client) Option {
 	}
 }
 
-// WithEvents enables experimentation event tracking (exposures and custom events).
-//
-// Events are buffered and sent in batches by a background goroutine that uses the
-// context provided here. Cancelling it is the shutdown flush: the processor sends what is
-// still buffered, retrying with backoff as long as the retries fit within the request
-// timeout. The same deadline cuts batches that were already in flight. What still fails,
-// and anything left in the buffer, is dropped and counted, nothing stays in flight, and
-// the goroutine exits. Tracking after that is a no-op. Cancel it on shutdown. When the
-// last events must be delivered, for example in a short-lived process, call FlushEvents
-// with a deadline first.
-//
-// Sending failures never reach the code that tracks events. Network errors, timeouts and
-// 408, 429, 502, 503 and 504 responses are retried, three attempts in total, and a batch
-// that still fails waits in the buffer for the next flush. Other error statuses drop the
-// batch. A 401 or 403 stops event tracking until the client is re-created. Lost events
-// are counted by Client.DroppedEvents.
-//
-// Events cannot be used together with WithOfflineMode.
+// WithEvents enables experimentation events. Cancelling ctx performs the shutdown flush,
+// bounded by the request timeout. Not compatible with WithOfflineMode. See the README's
+// Experimentation section for delivery and failure handling.
 func WithEvents(ctx context.Context) Option {
 	return func(c *Client) {
 		c.config.enableEvents = true
@@ -245,32 +230,24 @@ func WithEventsBaseURL(url string) Option {
 	}
 }
 
-// WithEventsFlushInterval sets how often buffered events are sent. A batch that failed with
-// a retryable error is sent again on the next tick. 0 disables the timer, leaving the
-// buffer-full trigger and FlushEvents. Defaults to DefaultEventsFlushInterval.
+// WithEventsFlushInterval sets how often buffered events are sent; 0 disables the timer.
+// Defaults to DefaultEventsFlushInterval.
 func WithEventsFlushInterval(interval time.Duration) Option {
 	return func(c *Client) {
 		c.config.eventsFlushInterval = interval
 	}
 }
 
-// WithEventsMaxBufferSize sets the number of buffered events that triggers a flush. It is
-// also the most events the buffer holds. Only one timer or buffer-full send is in flight
-// at a time, so while it is pending, or while failed batches are put back, the oldest
-// events are dropped and counted by Client.DroppedEvents. Defaults to
-// DefaultEventsMaxBufferSize.
+// WithEventsMaxBufferSize sets the buffer size that triggers a send; beyond it the oldest
+// events are dropped. Defaults to DefaultEventsMaxBufferSize.
 func WithEventsMaxBufferSize(size int) Option {
 	return func(c *Client) {
 		c.config.eventsMaxBufferSize = size
 	}
 }
 
-// WithEventsRetryBackoff sets the backoff before the first retry of a batch of events that
-// failed with a retryable error: a network error, a timeout, or a 408, 429, 502, 503 or 504
-// response. A batch is posted up to three times in total. The backoff doubles before each
-// further retry, up to 10 seconds, and each wait is a random duration between zero and
-// the backoff. A batch that still fails is kept for the next flush. Defaults to
-// DefaultEventsRetryBackoff.
+// WithEventsRetryBackoff sets the backoff before the first retry of a failed batch. It
+// doubles, up to 10 seconds, with full jitter. Defaults to DefaultEventsRetryBackoff.
 func WithEventsRetryBackoff(backoff time.Duration) Option {
 	return func(c *Client) {
 		c.config.eventsRetryBackoff = &backoff

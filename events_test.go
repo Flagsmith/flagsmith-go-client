@@ -10,6 +10,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -21,204 +22,168 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const (
-	testEventsTimeout      = time.Second
-	testEventsRetryBackoff = 10 * time.Millisecond
-)
+// responder answers one events request. Status 0 closes the connection; -1 writes nothing.
+type responder func(req *http.Request, body []byte) (int, string)
 
-// eventsServer is a fake events API whose behaviour is chosen per request by respond.
 type eventsServer struct {
 	*httptest.Server
-
-	mu       sync.Mutex
-	bodies   [][]byte
-	headers  []http.Header
-	paths    []string
-	finished int
+	mu                     sync.Mutex
+	bodies                 [][]byte
+	headers                []http.Header
+	paths                  []string
+	finished, activeNumber int
 }
 
-func newEventsServer(t *testing.T, respond func(body []byte) int) *eventsServer {
+func newEventsServer(t *testing.T, respond responder) *eventsServer {
 	t.Helper()
-	return newEventsServerWithBody(t, func(body []byte) (int, string) {
-		status := http.StatusAccepted
-		if respond != nil {
-			status = respond(body)
-		}
-		return status, `{"accepted": 0, "rejected": []}`
-	})
-}
-
-// newEventsServerWithBody is newEventsServer with control over the response body. A
-// status of 0 closes the connection without a response, causing a transport error.
-func newEventsServerWithBody(t *testing.T, respond func(body []byte) (int, string)) *eventsServer {
-	t.Helper()
+	if respond == nil {
+		respond = statuses(http.StatusAccepted)
+	}
 	s := &eventsServer{}
 	s.Server = httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		body, err := io.ReadAll(req.Body)
-		assert.NoError(t, err)
+		body, _ := io.ReadAll(req.Body)
 		s.mu.Lock()
-		s.bodies = append(s.bodies, body)
-		s.headers = append(s.headers, req.Header.Clone())
-		s.paths = append(s.paths, req.URL.Path)
+		s.bodies, s.headers, s.paths = append(s.bodies, body), append(s.headers, req.Header.Clone()), append(s.paths, req.URL.Path)
+		s.activeNumber++
 		s.mu.Unlock()
-
-		status, respBody := respond(body)
-
+		status, resp := respond(req, body)
 		s.mu.Lock()
-		s.finished++
+		s.finished, s.activeNumber = s.finished+1, s.activeNumber-1
 		s.mu.Unlock()
-		if status == 0 {
-			conn, _, err := rw.(http.Hijacker).Hijack()
-			if assert.NoError(t, err) {
+		switch status {
+		case 0:
+			if conn, _, err := rw.(http.Hijacker).Hijack(); err == nil {
 				_ = conn.Close()
 			}
-			return
+		case -1:
+		default:
+			rw.WriteHeader(status)
+			_, _ = io.WriteString(rw, resp)
 		}
-		rw.WriteHeader(status)
-		_, _ = io.WriteString(rw, respBody)
 	}))
 	t.Cleanup(s.Close)
 	return s
 }
-
-func (s *eventsServer) requestCount() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.bodies)
-}
-
-func (s *eventsServer) request(i int) (string, http.Header) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.paths[i], s.headers[i]
-}
-
-func (s *eventsServer) finishedCount() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.finished
-}
-
+func (s *eventsServer) count() int  { s.mu.Lock(); defer s.mu.Unlock(); return len(s.bodies) }
+func (s *eventsServer) done() int   { s.mu.Lock(); defer s.mu.Unlock(); return s.finished }
+func (s *eventsServer) active() int { s.mu.Lock(); defer s.mu.Unlock(); return s.activeNumber }
 func (s *eventsServer) events(t *testing.T) []map[string]interface{} {
 	t.Helper()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var events []map[string]interface{}
 	for _, b := range s.bodies {
-		var payload struct {
-			Events []map[string]interface{} `json:"events"`
-		}
+		var payload struct{ Events []map[string]interface{} }
 		require.NoError(t, json.Unmarshal(b, &payload))
 		events = append(events, payload.Events...)
 	}
 	return events
 }
-
-func testEventsConfig(url string, maxBufferSize int, flushInterval time.Duration) eventProcessorConfig {
-	return eventProcessorConfig{
-		baseURL:       url,
-		maxBufferSize: maxBufferSize,
-		flushInterval: flushInterval,
-		timeout:       testEventsTimeout,
-		retryBackoff:  testEventsRetryBackoff,
-		log:           createLogger(),
-	}
-}
-
-func newTestEventProcessor(ctx context.Context, url string, maxBufferSize int, flushInterval time.Duration) *EventProcessor {
-	return newTestEventProcessorWith(ctx, testEventsConfig(url, maxBufferSize, flushInterval))
-}
-
-func newTestEventProcessorWith(ctx context.Context, cfg eventProcessorConfig) *EventProcessor {
-	client := resty.New().SetHeader(EnvironmentKeyHeader, EnvironmentAPIKey)
-	return newEventProcessor(ctx, client, cfg)
-}
-
-// statusSequence answers with each status in turn, then repeats the last one.
-func statusSequence(statuses ...int) func([]byte) int {
+func statuses(codes ...int) responder {
 	var mu sync.Mutex
-	return func([]byte) int {
+	return func(*http.Request, []byte) (int, string) {
 		mu.Lock()
 		defer mu.Unlock()
-		s := statuses[0]
-		if len(statuses) > 1 {
-			statuses = statuses[1:]
+		code := codes[0]
+		if len(codes) > 1 {
+			codes = codes[1:]
 		}
-		return s
+		return code, `{"accepted": 0, "rejected": []}`
 	}
 }
+func withBody(code int, body string) responder {
+	return func(*http.Request, []byte) (int, string) { return code, body }
+}
+func after(release <-chan struct{}, then responder) responder {
+	return func(req *http.Request, body []byte) (int, string) { <-release; return then(req, body) }
+}
+func byEvent(routes map[string]responder) responder {
+	return func(req *http.Request, body []byte) (int, string) {
+		for name, respond := range routes {
+			if strings.Contains(string(body), `"event":"`+name+`"`) {
+				return respond(req, body)
+			}
+		}
+		return http.StatusAccepted, "{}"
+	}
+}
+func slow(d time.Duration, code int) responder {
+	return func(*http.Request, []byte) (int, string) { time.Sleep(d); return code, "{}" }
+}
+func stall(req *http.Request, _ []byte) (int, string) { <-req.Context().Done(); return -1, "" }
+func newRelease() (chan struct{}, func()) {
+	ch := make(chan struct{})
+	var once sync.Once
+	return ch, func() { once.Do(func() { close(ch) }) }
+}
 
-// recordingHandler is a slog.Handler that keeps every record.
+type option func(*eventProcessorConfig)
+
+func withTimeout(d time.Duration) option { return func(c *eventProcessorConfig) { c.timeout = d } }
+func withBackoff(d time.Duration) option { return func(c *eventProcessorConfig) { c.retryBackoff = d } }
+func withLogs(h slog.Handler) option     { return func(c *eventProcessorConfig) { c.log = slog.New(h) } }
+func noJitter(c *eventProcessorConfig)   { c.jitter = func(d time.Duration) time.Duration { return d } }
+func noSleep(c *eventProcessorConfig) {
+	c.sleep = func(context.Context, time.Duration) error { return nil }
+}
+func newProc(ctx context.Context, url string, maxBufferSize int, flushInterval time.Duration, opts ...option) *EventProcessor {
+	cfg := eventProcessorConfig{baseURL: url, maxBufferSize: maxBufferSize, flushInterval: flushInterval,
+		timeout: time.Second, retryBackoff: 10 * time.Millisecond, log: createLogger()}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	return newEventProcessor(ctx, resty.New().SetHeader(EnvironmentKeyHeader, EnvironmentAPIKey), cfg)
+}
+
 type recordingHandler struct {
 	mu      sync.Mutex
 	records []slog.Record
 }
 
 func (h *recordingHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler       { return h }
+func (h *recordingHandler) WithGroup(string) slog.Handler            { return h }
 func (h *recordingHandler) Handle(_ context.Context, r slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.records = append(h.records, r.Clone())
 	return nil
 }
-func (h *recordingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
-func (h *recordingHandler) WithGroup(string) slog.Handler      { return h }
-
-// matching returns the attributes of every record at level whose message is msg.
-func (h *recordingHandler) matching(level slog.Level, msg string) []map[string]interface{} {
+func (h *recordingHandler) matching(level slog.Level, msg string) (found []map[string]interface{}) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	var found []map[string]interface{}
 	for _, r := range h.records {
-		if r.Level != level || r.Message != msg {
-			continue
+		if r.Level == level && r.Message == msg {
+			attrs := map[string]interface{}{}
+			r.Attrs(func(a slog.Attr) bool { attrs[a.Key] = a.Value.Any(); return true })
+			found = append(found, attrs)
 		}
-		attrs := map[string]interface{}{}
-		r.Attrs(func(a slog.Attr) bool {
-			attrs[a.Key] = a.Value.Any()
-			return true
-		})
-		found = append(found, attrs)
 	}
 	return found
 }
-
-// text renders every record, message and attributes, as one string.
-func (h *recordingHandler) text() string {
+func (h *recordingHandler) assertAbsent(t *testing.T, texts ...string) {
+	t.Helper()
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	var b strings.Builder
 	for _, r := range h.records {
-		b.WriteString(r.Level.String() + " " + r.Message)
-		r.Attrs(func(a slog.Attr) bool {
-			b.WriteString(" " + a.String())
-			return true
-		})
-		b.WriteString("\n")
+		b.WriteString(r.Message)
+		r.Attrs(func(a slog.Attr) bool { b.WriteString(" " + a.String()); return true })
 	}
-	return b.String()
-}
-
-func inFlightCount(p *EventProcessor) int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return len(p.inFlight)
-}
-
-func eventNames(events []event) []string {
-	names := make([]string, len(events))
-	for i, e := range events {
-		names[i] = e.Event
+	h.mu.Unlock()
+	for _, text := range texts {
+		assert.NotContains(t, b.String(), text)
 	}
-	return names
 }
 
-// bodyHas reports whether a request body contains an event with the given name.
-func bodyHas(body []byte, name string) bool {
-	return strings.Contains(string(body), `"event":"`+name+`"`)
-}
+type panickingHandler struct{}
 
-// bufferedEvents decodes the buffered events from the JSON they were frozen to.
+func (panickingHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (panickingHandler) Handle(context.Context, slog.Record) error {
+	panic(errors.New("logger failure"))
+}
+func (h panickingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h panickingHandler) WithGroup(string) slog.Handler      { return h }
+func inFlightCount(p *EventProcessor) int                     { p.mu.Lock(); defer p.mu.Unlock(); return len(p.inFlight) }
 func bufferedEvents(p *EventProcessor) []event {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -230,942 +195,60 @@ func bufferedEvents(p *EventProcessor) []event {
 	}
 	return events
 }
-
-// frozen encodes events the way bufferEvent does, for tests that call send directly.
-func frozen(t *testing.T, events ...event) []bufferedEvent {
-	t.Helper()
-	out := make([]bufferedEvent, len(events))
-	for i, e := range events {
-		raw, err := json.Marshal(e)
-		require.NoError(t, err)
-		out[i] = bufferedEvent{raw: raw}
-		if e.Event == FlagExposureEvent {
-			out[i].key = exposureKey(e)
-		}
+func bufferedNames(p *EventProcessor) []string {
+	var names []string
+	for _, e := range bufferedEvents(p) {
+		names = append(names, e.Event)
 	}
-	return out
+	return names
 }
-
-func TestEventProcessorBuffersCustomEvent(t *testing.T) {
-	// Given
-	p := newTestEventProcessor(t.Context(), "http://localhost:1/", 100, 0)
-	before := time.Now().UnixMilli()
-
-	// When
-	p.TrackEvent("purchase", &EventOptions{
-		Identifier: "user-123",
-		Value:      49.0,
-		Metadata:   map[string]interface{}{"currency": "EUR", "sdk_version": "caller"},
-	})
-
-	// Then
-	events := bufferedEvents(p)
-	require.Len(t, events, 1)
-	e := events[0]
-	assert.Equal(t, "purchase", e.Event)
-	assert.Nil(t, e.FeatureName)
-	require.NotNil(t, e.Identifier)
-	assert.Equal(t, "user-123", *e.Identifier)
-	require.NotNil(t, e.Value)
-	assert.Equal(t, "49", *e.Value)
-	assert.Nil(t, e.Traits)
-	assert.Equal(t, map[string]interface{}{"currency": "EUR", "sdk_version": getSDKVersion()}, e.Metadata)
-	assert.GreaterOrEqual(t, e.Timestamp, before)
-	assert.LessOrEqual(t, e.Timestamp, time.Now().UnixMilli())
-
-	raw, err := json.Marshal(e)
-	require.NoError(t, err)
-	assert.Contains(t, string(raw), `"feature_name":null`)
-	assert.Contains(t, string(raw), `"traits":null`)
-}
-
-func TestEventProcessorTrackEventWithNilOptions(t *testing.T) {
-	// Given
-	p := newTestEventProcessor(t.Context(), "http://localhost:1/", 100, 0)
-
-	// When
-	p.TrackEvent("signup", nil)
-
-	// Then
-	events := bufferedEvents(p)
-	require.Len(t, events, 1)
-	assert.Nil(t, events[0].Identifier)
-	assert.Nil(t, events[0].Value)
-	assert.Equal(t, map[string]interface{}{"sdk_version": getSDKVersion()}, events[0].Metadata)
-}
-
-func TestEventProcessorCopiesCallerMaps(t *testing.T) {
-	// Given
-	p := newTestEventProcessor(t.Context(), "http://localhost:1/", 100, 0)
-	traits := map[string]interface{}{"plan": "premium"}
-	metadata := map[string]interface{}{"k": "v"}
-
-	// When
-	p.TrackEvent("purchase", &EventOptions{Traits: traits, Metadata: metadata})
-	traits["plan"] = "free"
-	metadata["k"] = "changed"
-
-	// Then
-	events := bufferedEvents(p)
-	assert.Equal(t, "premium", events[0].Traits["plan"])
-	assert.Equal(t, "v", events[0].Metadata["k"])
-	assert.NotContains(t, metadata, "sdk_version")
-}
-
-func TestStringifyValue(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    interface{}
-		expected *string
-	}{
-		{"nil", nil, nil},
-		{"string", "buy-now", strPtr("buy-now")},
-		{"float64 whole", 49.0, strPtr("49")},
-		{"float64 fraction", 49.5, strPtr("49.5")},
-		{"bool", true, strPtr("true")},
-		{"int", 7, strPtr("7")},
-		{"float64 large", 1500000.0, strPtr("1500000")},
-		{"float64 small", 0.00001, strPtr("0.00001")},
-		{"float32", float32(0.1), strPtr("0.1")},
+func sentNames(t *testing.T, s *eventsServer) []string {
+	var names []string
+	for _, e := range s.events(t) {
+		names = append(names, e["event"].(string))
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, stringifyValue(tt.input))
-		})
-	}
+	return names
 }
-
+func takeBuffer(p *EventProcessor) []bufferedEvent {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	events := p.buffer
+	p.buffer = nil
+	return events
+}
 func strPtr(s string) *string { return &s }
-
-func TestEventProcessorExposureDedupe(t *testing.T) {
-	exposure := func(p *EventProcessor, feature, identifier string, value interface{}, experimentID int) {
-		p.TrackExposureEvent(feature, identifier, value, nil, map[string]interface{}{"experiment_id": experimentID})
+func track(p *EventProcessor, names ...string) {
+	for _, name := range names {
+		p.TrackEvent(name, nil)
 	}
-
-	t.Run("equal exposures within a window are deduped", func(t *testing.T) {
-		p := newTestEventProcessor(t.Context(), "http://localhost:1/", 100, 0)
-		exposure(p, "f", "u", "treatment", 1)
-		exposure(p, "f", "u", "treatment", 1)
-		assert.Len(t, bufferedEvents(p), 1)
-	})
-
-	t.Run("differing exposures are not deduped", func(t *testing.T) {
-		p := newTestEventProcessor(t.Context(), "http://localhost:1/", 100, 0)
-		exposure(p, "f", "u", "treatment", 1)
-		exposure(p, "f", "other-user", "treatment", 1)
-		exposure(p, "f", "u", "control", 1)
-		exposure(p, "g", "u", "treatment", 1)
-		exposure(p, "f", "u", "treatment", 2)
-		assert.Len(t, bufferedEvents(p), 5)
-	})
-
-	t.Run("equal exposure after a flush is buffered again", func(t *testing.T) {
-		server := newEventsServer(t, nil)
-		p := newTestEventProcessor(t.Context(), server.URL+"/", 100, 0)
-		exposure(p, "f", "u", "treatment", 1)
-		require.NoError(t, p.Flush(t.Context()))
-		exposure(p, "f", "u", "treatment", 1)
-		assert.Len(t, bufferedEvents(p), 1)
-	})
-
-	t.Run("custom events are never deduped", func(t *testing.T) {
-		p := newTestEventProcessor(t.Context(), "http://localhost:1/", 100, 0)
-		p.TrackEvent("purchase", &EventOptions{Identifier: "u", Value: "1"})
-		p.TrackEvent("purchase", &EventOptions{Identifier: "u", Value: "1"})
-		assert.Len(t, bufferedEvents(p), 2)
-	})
-
-	t.Run("exposure without an identifier is not buffered", func(t *testing.T) {
-		p := newTestEventProcessor(t.Context(), "http://localhost:1/", 100, 0)
-		exposure(p, "f", "", "treatment", 1)
-		assert.Empty(t, bufferedEvents(p))
-	})
 }
-
-func TestEventProcessorFlushPostsBatch(t *testing.T) {
-	// Given
-	server := newEventsServer(t, nil)
-	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-	p.TrackExposureEvent("checkout_cta", "user-123", "treatment",
-		map[string]interface{}{"plan": "premium"}, map[string]interface{}{"experiment_id": 167})
-	p.TrackEvent("purchase", &EventOptions{Identifier: "user-123", Value: "49"})
-
-	// When
-	err := p.Flush(t.Context())
-
-	// Then
-	require.NoError(t, err)
-	require.Equal(t, 1, server.requestCount())
-	path, h := server.request(0)
-	assert.Equal(t, "/v1/events", path)
-	assert.Equal(t, EnvironmentAPIKey, h.Get(EnvironmentKeyHeader))
-	assert.Regexp(t, `^flagsmith-go-sdk/`, h.Get("Flagsmith-SDK-User-Agent"))
-	assert.Regexp(t, `^application/json`, h.Get("Content-Type"))
-
-	events := server.events(t)
-	require.Len(t, events, 2)
-	assert.Equal(t, map[string]interface{}{
-		"event":        FlagExposureEvent,
-		"feature_name": "checkout_cta",
-		"identifier":   "user-123",
-		"value":        "treatment",
-		"traits":       map[string]interface{}{"plan": "premium"},
-		"metadata":     map[string]interface{}{"experiment_id": 167.0, "sdk_version": getSDKVersion()},
-		"timestamp":    events[0]["timestamp"],
-	}, events[0])
-	assert.Equal(t, "purchase", events[1]["event"])
-	assert.Nil(t, events[1]["feature_name"])
-	assert.Empty(t, bufferedEvents(p))
+func eventually(t *testing.T, cond func() bool) {
+	t.Helper()
+	require.Eventually(t, cond, 2*time.Second, time.Millisecond)
 }
-
-func TestEventProcessorFlushEmptyBufferSendsNothing(t *testing.T) {
-	// Given
-	server := newEventsServer(t, nil)
-	p := newTestEventProcessor(t.Context(), server.URL+"/", 100, 0)
-
-	// When
-	err := p.Flush(t.Context())
-
-	// Then
-	assert.NoError(t, err)
-	assert.Equal(t, 0, server.requestCount())
+func goFlush(ctx context.Context, p *EventProcessor) chan error {
+	ch := make(chan error, 1)
+	go func() { ch <- p.Flush(ctx) }()
+	return ch
 }
-
-func TestEventProcessorAutoFlushAtMaxBufferSize(t *testing.T) {
-	// Given: a slow server
-	server := newEventsServer(t, func([]byte) int {
-		time.Sleep(200 * time.Millisecond)
-		return http.StatusAccepted
-	})
-	p := newTestEventProcessor(t.Context(), server.URL+"/", 2, 0)
-
-	// When
-	start := time.Now()
-	p.TrackEvent("a", nil)
-	p.TrackEvent("b", nil)
-	elapsed := time.Since(start)
-
-	// Then: the caller is not blocked by the POST
-	assert.Less(t, elapsed, 100*time.Millisecond)
-	assert.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, 5*time.Millisecond)
-	assert.Len(t, server.events(t), 2)
-}
-
-func TestEventProcessorFlushWaitsForInFlightBatch(t *testing.T) {
-	// Given: a batch started by the buffer-full trigger on a slow server
-	server := newEventsServer(t, func([]byte) int {
-		time.Sleep(100 * time.Millisecond)
-		return http.StatusAccepted
-	})
-	p := newTestEventProcessor(t.Context(), server.URL+"/", 1, 0)
-	start := time.Now()
-	p.TrackEvent("a", nil)
-	require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-
-	// When: the buffer is already empty
-	err := p.Flush(t.Context())
-
-	// Then: Flush still waited for the batch in flight
-	assert.NoError(t, err)
-	assert.GreaterOrEqual(t, time.Since(start), 100*time.Millisecond)
-	assert.Equal(t, 1, server.finishedCount())
-}
-
-func TestEventProcessorFlushReturnsWhileLaterBatchInFlight(t *testing.T) {
-	// Given: a server that holds each batch until it is released
-	releaseFirst := make(chan struct{})
-	releaseSecond := make(chan struct{})
-	server := newEventsServer(t, func(body []byte) int {
-		if bodyHas(body, "first") {
-			<-releaseFirst
-		} else {
-			<-releaseSecond
-		}
-		return http.StatusAccepted
-	})
-	// Registered after the server, so it runs first and a failing test cannot hang in Close.
-	var releaseOnce, releaseSecondOnce sync.Once
-	release := func() { releaseOnce.Do(func() { close(releaseFirst) }) }
-	releaseLater := func() { releaseSecondOnce.Do(func() { close(releaseSecond) }) }
-	t.Cleanup(func() { release(); releaseLater() })
-	p := newTestEventProcessor(t.Context(), server.URL+"/", 100, 0)
-
-	p.TrackEvent("first", nil)
-	firstDone := make(chan error, 1)
-	go func() { firstDone <- p.Flush(t.Context()) }()
-	require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-
-	// When: a second batch starts after the first Flush was called
-	p.TrackEvent("second", nil)
-	secondDone := make(chan error, 1)
-	go func() { secondDone <- p.Flush(t.Context()) }()
-	require.Eventually(t, func() bool { return server.requestCount() == 2 }, time.Second, time.Millisecond)
-	release()
-
-	// Then: the first Flush returns without waiting for the second batch
+func receive[T any](t *testing.T, ch <-chan T, what string, within ...time.Duration) T {
+	t.Helper()
 	select {
-	case err := <-firstDone:
-		assert.NoError(t, err)
-	case <-time.After(time.Second):
-		t.Fatal("Flush waited for a batch started after it was called")
-	}
-	select {
-	case <-secondDone:
-		t.Fatal("second Flush returned before its batch completed")
-	default:
-	}
-
-	releaseLater()
-	select {
-	case err := <-secondDone:
-		assert.NoError(t, err)
-	case <-time.After(time.Second):
-		t.Fatal("second Flush did not return")
+	case v := <-ch:
+		return v
+	case <-time.After(append(within, 2*time.Second)[0]):
+		t.Fatal(what)
+		panic(what)
 	}
 }
-
-func TestEventProcessorFlushIsBoundedUnderSustainedTraffic(t *testing.T) {
-	// Given: every event fills the buffer and every POST takes 20ms
-	server := newEventsServer(t, func([]byte) int {
-		time.Sleep(20 * time.Millisecond)
-		return http.StatusAccepted
-	})
-	p := newTestEventProcessor(t.Context(), server.URL+"/", 1, 0)
-	stop := make(chan struct{})
-	streamDone := make(chan struct{})
-	go func() {
-		defer close(streamDone)
-		for {
-			select {
-			case <-stop:
-				return
-			case <-time.After(5 * time.Millisecond):
-				p.TrackEvent("tick", nil)
-			}
-		}
-	}()
-	defer func() {
-		close(stop)
-		<-streamDone
-	}()
-	require.Eventually(t, func() bool { return server.requestCount() >= 3 }, time.Second, time.Millisecond)
-
-	// When
-	flushed := make(chan error, 1)
-	go func() { flushed <- p.Flush(t.Context()) }()
-
-	// Then: Flush returns although batches keep starting
-	select {
-	case err := <-flushed:
-		assert.NoError(t, err)
-	case <-time.After(500 * time.Millisecond):
-		t.Error("Flush did not return under sustained traffic")
-	}
+func waitStopped(t *testing.T, p *EventProcessor) {
+	t.Helper()
+	receive(t, p.stopped, "event processor goroutine did not exit")
 }
-
-func TestEventProcessorFlushWaitsForEveryBatchWhenOneFails(t *testing.T) {
-	// Given: one batch fails fast and another succeeds slowly
-	var slowDone sync.WaitGroup
-	slowDone.Add(1)
-	var mu sync.Mutex
-	slowFinished := false
-	server := newEventsServer(t, func(body []byte) int {
-		if bodyHas(body, "fail") {
-			time.Sleep(20 * time.Millisecond)
-			return http.StatusBadRequest
-		}
-		time.Sleep(200 * time.Millisecond)
-		mu.Lock()
-		slowFinished = true
-		mu.Unlock()
-		return http.StatusAccepted
-	})
-	p := newTestEventProcessor(t.Context(), server.URL+"/", 100, 0)
-
-	p.TrackEvent("fail", nil)
-	go func() { _ = p.Flush(t.Context()) }()
-	require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-	p.TrackEvent("slow", nil)
-	go func() { defer slowDone.Done(); _ = p.Flush(t.Context()) }()
-	require.Eventually(t, func() bool { return server.requestCount() == 2 }, time.Second, time.Millisecond)
-
-	// When
-	err := p.Flush(t.Context())
-
-	// Then: Flush waited for the slow batch even though the other one failed
-	assert.NoError(t, err)
-	mu.Lock()
-	assert.True(t, slowFinished)
-	mu.Unlock()
-	slowDone.Wait()
-}
-
-func TestEventProcessorFlushHonoursContextWhileWaiting(t *testing.T) {
-	// Given: a batch in flight on a server that takes longer than the caller will wait
-	release := make(chan struct{})
-	server := newEventsServer(t, func([]byte) int {
-		<-release
-		return http.StatusAccepted
-	})
-	defer close(release)
-	client := resty.New()
-	p := NewEventProcessor(t.Context(), client, server.URL+"/", 1, 0, time.Second, createLogger())
-	p.TrackEvent("a", nil)
-	require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-
-	// When
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
-	err := p.Flush(ctx)
-
-	// Then
-	assert.ErrorIs(t, err, context.DeadlineExceeded)
-}
-
-func TestEventProcessorRetries(t *testing.T) {
-	t.Run("503 then 202 retries and delivers once", func(t *testing.T) {
-		server := newEventsServer(t, statusSequence(http.StatusServiceUnavailable, http.StatusAccepted))
-		p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-		p.TrackEvent("purchase", nil)
-
-		err := p.Flush(t.Context())
-
-		assert.NoError(t, err)
-		assert.Equal(t, 2, server.requestCount())
-		assert.Empty(t, bufferedEvents(p))
-		assert.Zero(t, p.DroppedEvents())
-	})
-
-	t.Run("503 is attempted three times in total", func(t *testing.T) {
-		server := newEventsServer(t, statusSequence(http.StatusServiceUnavailable))
-		p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-		p.TrackEvent("purchase", nil)
-
-		err := p.Flush(t.Context())
-
-		var apiErr *FlagsmithAPIError
-		require.ErrorAs(t, err, &apiErr)
-		assert.Equal(t, http.StatusServiceUnavailable, apiErr.ResponseStatusCode)
-		assert.Equal(t, 3, server.requestCount())
-	})
-
-	t.Run("transport error is attempted three times in total", func(t *testing.T) {
-		server := newEventsServerWithBody(t, func([]byte) (int, string) { return 0, "" })
-		p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-		p.TrackEvent("purchase", nil)
-
-		err := p.Flush(t.Context())
-
-		assert.Error(t, err)
-		assert.Equal(t, 3, server.requestCount())
-		assert.Len(t, bufferedEvents(p), 1)
-	})
-
-	for _, status := range []int{
-		http.StatusRequestTimeout,
-		http.StatusTooManyRequests,
-		http.StatusBadGateway,
-		http.StatusServiceUnavailable,
-		http.StatusGatewayTimeout,
-	} {
-		t.Run(fmt.Sprintf("%d is retried then kept", status), func(t *testing.T) {
-			server := newEventsServer(t, statusSequence(status))
-			p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-			p.TrackEvent("purchase", nil)
-
-			err := p.Flush(t.Context())
-
-			var apiErr *FlagsmithAPIError
-			require.ErrorAs(t, err, &apiErr)
-			assert.Equal(t, status, apiErr.ResponseStatusCode)
-			assert.Equal(t, 3, server.requestCount())
-			assert.Len(t, bufferedEvents(p), 1)
-			assert.Zero(t, p.DroppedEvents())
-		})
-	}
-
-	for _, status := range []int{
-		http.StatusBadRequest,
-		http.StatusNotFound,
-		http.StatusConflict,
-		http.StatusUnsupportedMediaType,
-		http.StatusUnprocessableEntity,
-		http.StatusInternalServerError,
-		http.StatusNotImplemented,
-	} {
-		t.Run(fmt.Sprintf("%d is dropped after one attempt", status), func(t *testing.T) {
-			server := newEventsServer(t, statusSequence(status))
-			p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-			p.TrackEvent("purchase", nil)
-
-			err := p.Flush(t.Context())
-
-			var apiErr *FlagsmithAPIError
-			require.ErrorAs(t, err, &apiErr)
-			assert.Equal(t, status, apiErr.ResponseStatusCode)
-			assert.Equal(t, 1, server.requestCount())
-			assert.Empty(t, bufferedEvents(p))
-			assert.Equal(t, int64(1), p.DroppedEvents())
-			require.NoError(t, p.Flush(t.Context()))
-			assert.Equal(t, 1, server.requestCount())
-		})
-	}
-}
-
-func TestEventProcessorRetryBackoffIsExponentialWithJitter(t *testing.T) {
-	// Given: sleeps are recorded instead of waited
-	server := newEventsServer(t, statusSequence(http.StatusServiceUnavailable))
-	var mu sync.Mutex
-	var bases, waits []time.Duration
-	cfg := testEventsConfig(server.URL, 100, 0)
-	cfg.retryBackoff = 100 * time.Millisecond
-	cfg.jitter = func(d time.Duration) time.Duration {
-		mu.Lock()
-		defer mu.Unlock()
-		bases = append(bases, d)
-		return d - time.Millisecond
-	}
-	cfg.sleep = func(_ context.Context, d time.Duration) error {
-		mu.Lock()
-		defer mu.Unlock()
-		waits = append(waits, d)
-		return nil
-	}
-	p := newTestEventProcessorWith(t.Context(), cfg)
-	p.TrackEvent("purchase", nil)
-
-	// When
-	require.Error(t, p.Flush(t.Context()))
-
-	// Then: one wait before each retry, doubling, with the jitter applied
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, []time.Duration{100 * time.Millisecond, 200 * time.Millisecond}, bases)
-	assert.Equal(t, []time.Duration{99 * time.Millisecond, 199 * time.Millisecond}, waits)
-}
-
-func TestEventProcessorDefaultJitterStaysWithinBackoff(t *testing.T) {
-	// Given
-	server := newEventsServer(t, statusSequence(http.StatusServiceUnavailable))
-	var mu sync.Mutex
-	var waits []time.Duration
-	cfg := testEventsConfig(server.URL, 100, 0)
-	cfg.retryBackoff = 100 * time.Millisecond
-	cfg.sleep = func(_ context.Context, d time.Duration) error {
-		mu.Lock()
-		defer mu.Unlock()
-		waits = append(waits, d)
-		return nil
-	}
-	p := newTestEventProcessorWith(t.Context(), cfg)
-	p.TrackEvent("purchase", nil)
-
-	// When
-	require.Error(t, p.Flush(t.Context()))
-
-	// Then: full jitter, between zero and the backoff
-	mu.Lock()
-	defer mu.Unlock()
-	require.Len(t, waits, 2)
-	assert.GreaterOrEqual(t, waits[0], time.Duration(0))
-	assert.LessOrEqual(t, waits[0], 100*time.Millisecond)
-	assert.GreaterOrEqual(t, waits[1], time.Duration(0))
-	assert.LessOrEqual(t, waits[1], 200*time.Millisecond)
-}
-
-func TestEventProcessorFailedRetryableBatchIsKeptForNextFlush(t *testing.T) {
-	// Given: the events API is down for one flush, then back
-	server := newEventsServer(t, statusSequence(
-		http.StatusServiceUnavailable, http.StatusServiceUnavailable, http.StatusServiceUnavailable,
-		http.StatusAccepted,
-	))
-	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-	p.TrackEvent("first", nil)
-
-	// When
-	err := p.Flush(t.Context())
-
-	// Then: Flush returns the error without looping, and the batch is back in the buffer
-	assert.Error(t, err)
-	assert.Equal(t, 3, server.requestCount())
-	assert.Equal(t, []string{"first"}, eventNames(bufferedEvents(p)))
-
-	// When: an event tracked since is flushed with it
-	p.TrackEvent("second", nil)
-	require.NoError(t, p.Flush(t.Context()))
-
-	// Then: the kept event is sent first, and nothing is lost
-	events := server.events(t)
-	require.Len(t, events, 5)
-	assert.Equal(t, "first", events[3]["event"])
-	assert.Equal(t, "second", events[4]["event"])
-	assert.Empty(t, bufferedEvents(p))
-	assert.Zero(t, p.DroppedEvents())
-}
-
-func TestEventProcessorBufferOverflowDropsOldest(t *testing.T) {
-	// Given: a batch held by an events API that then fails it
-	release := make(chan struct{})
-	server := newEventsServer(t, func([]byte) int {
-		<-release
-		return http.StatusServiceUnavailable
-	})
-	var once sync.Once
-	t.Cleanup(func() { once.Do(func() { close(release) }) })
-	p := newTestEventProcessor(t.Context(), server.URL, 3, 0)
-	p.TrackEvent("old-1", nil)
-	p.TrackEvent("old-2", nil)
-	flushed := make(chan error, 1)
-	go func() { flushed <- p.Flush(t.Context()) }()
-	require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-
-	// When: newer events are tracked meanwhile, then the batch comes back
-	p.TrackEvent("new-1", nil)
-	p.TrackEvent("new-2", nil)
-	once.Do(func() { close(release) })
-	require.Error(t, <-flushed)
-
-	// Then: the buffer keeps the newest maxBufferSize events and counts the dropped one
-	assert.Equal(t, []string{"old-2", "new-1", "new-2"}, eventNames(bufferedEvents(p)))
-	assert.Equal(t, int64(1), p.DroppedEvents())
-}
-
-func TestEventProcessorUnauthorisedStops(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
-		t.Run(fmt.Sprint(status), func(t *testing.T) {
-			// Given: two batches in flight when the events API rejects the key
-			release := make(chan struct{})
-			server := newEventsServer(t, func([]byte) int {
-				<-release
-				return status
-			})
-			var once sync.Once
-			t.Cleanup(func() { once.Do(func() { close(release) }) })
-			logs := &recordingHandler{}
-			cfg := testEventsConfig(server.URL, 100, 20*time.Millisecond)
-			cfg.log = slog.New(logs)
-			p := newTestEventProcessorWith(t.Context(), cfg)
-
-			p.TrackEvent("a", nil)
-			first := make(chan error, 1)
-			go func() { first <- p.Flush(t.Context()) }()
-			require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-			p.TrackEvent("b", nil)
-			second := make(chan error, 1)
-			go func() { second <- p.Flush(t.Context()) }()
-			require.Eventually(t, func() bool { return server.requestCount() == 2 }, time.Second, time.Millisecond)
-
-			// When
-			once.Do(func() { close(release) })
-
-			// Then: both fail without a retry, and the processor stops. The first 401 or 403
-			// stops the processor, which cuts the other batch if its response is still on
-			// the wire, so only one is sure to carry the status.
-			errs := []error{<-first, <-second}
-			require.Error(t, errs[0])
-			require.Error(t, errs[1])
-			sawStatus := false
-			for _, err := range errs {
-				var apiErr *FlagsmithAPIError
-				if errors.As(err, &apiErr) && apiErr.ResponseStatusCode == status {
-					sawStatus = true
-				}
-			}
-			assert.True(t, sawStatus, "no flush reported status %d: %v", status, errs)
-			assert.Equal(t, 2, server.requestCount())
-			select {
-			case <-p.stopped:
-			case <-time.After(time.Second):
-				t.Fatal("worker goroutine and ticker were not stopped")
-			}
-
-			// Then: tracking is a no-op counted as dropped, and nothing more is sent
-			require.Equal(t, int64(2), p.DroppedEvents())
-			p.TrackEvent("c", nil)
-			p.TrackExposureEvent("f", "u", "v", nil, nil)
-			assert.Empty(t, bufferedEvents(p))
-			assert.NoError(t, p.Flush(t.Context()))
-			time.Sleep(50 * time.Millisecond)
-			assert.Equal(t, 2, server.requestCount())
-			assert.Equal(t, int64(4), p.DroppedEvents())
-
-			// Then: logged exactly once
-			assert.Len(t, logs.matching(slog.LevelWarn, "events API rejected the environment key; event tracking is disabled"), 1)
-			assert.Empty(t, logs.matching(slog.LevelError, "events API rejected the environment key; event tracking is disabled"))
-		})
-	}
-}
-
-func TestEventProcessorUnauthorisedDiscardsBuffer(t *testing.T) {
-	// Given: a batch in flight and more events buffered behind it
-	release := make(chan struct{})
-	server := newEventsServer(t, func([]byte) int {
-		<-release
-		return http.StatusUnauthorized
-	})
-	var once sync.Once
-	t.Cleanup(func() { once.Do(func() { close(release) }) })
-	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-	p.TrackEvent("a", nil)
-	flushed := make(chan error, 1)
-	go func() { flushed <- p.Flush(t.Context()) }()
-	require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-	p.TrackEvent("b", nil)
-	p.TrackEvent("c", nil)
-
-	// When
-	once.Do(func() { close(release) })
-	require.Error(t, <-flushed)
-
-	// Then
-	assert.Empty(t, bufferedEvents(p))
-	assert.Equal(t, int64(3), p.DroppedEvents())
-}
-
-func TestEventProcessorLogsRejectedEventsAndDoesNotResend(t *testing.T) {
-	// Given: the events API accepts the batch but rejects its second event
-	server := newEventsServerWithBody(t, func([]byte) (int, string) {
-		return http.StatusAccepted, `{"accepted": 1, "rejected": [{"index": 1, "error": "invalid identifier user@example.com"}]}`
-	})
-	logs := &recordingHandler{}
-	cfg := testEventsConfig(server.URL, 100, 0)
-	cfg.log = slog.New(logs)
-	p := newTestEventProcessorWith(t.Context(), cfg)
-	p.TrackEvent("good", nil)
-	p.TrackExposureEvent("checkout_cta", "user@example.com", "treatment", map[string]interface{}{"email": "trait@example.com"}, nil)
-
-	// When
-	err := p.Flush(t.Context())
-
-	// Then: the rejection is logged at warn by index only, with a summary count
-	require.NoError(t, err)
-	rejected := logs.matching(slog.LevelWarn, "events API rejected event")
-	require.Len(t, rejected, 1)
-	assert.Equal(t, map[string]interface{}{"index": int64(1)}, rejected[0])
-	summary := logs.matching(slog.LevelWarn, "events API rejected events in an accepted batch; dropping them")
-	require.Len(t, summary, 1)
-	assert.Equal(t, int64(1), summary[0]["count"])
-	assert.NotContains(t, logs.text(), "invalid identifier")
-	assert.NotContains(t, logs.text(), "user@example.com")
-	assert.NotContains(t, logs.text(), "trait@example.com")
-	assert.Equal(t, int64(1), p.DroppedEvents())
-
-	// Then: it is not sent again
-	assert.Empty(t, bufferedEvents(p))
-	require.NoError(t, p.Flush(t.Context()))
-	assert.Equal(t, 1, server.requestCount())
-}
-
-func TestEventProcessorLogsNoIdentifiersOrTraits(t *testing.T) {
-	// Given: an events API that rejects every batch
-	server := newEventsServer(t, statusSequence(http.StatusBadRequest))
-	logs := &recordingHandler{}
-	cfg := testEventsConfig(server.URL, 100, 0)
-	cfg.log = slog.New(logs)
-	p := newTestEventProcessorWith(t.Context(), cfg)
-	traits := map[string]interface{}{"email": "trait@example.com"}
-
-	// When: an exposure is deduped, a custom event is tracked, and the batch is rejected
-	p.TrackExposureEvent("checkout_cta", "user@example.com", "treatment", traits, nil)
-	p.TrackExposureEvent("checkout_cta", "user@example.com", "treatment", traits, nil)
-	p.TrackEvent("purchase", &EventOptions{Identifier: "user@example.com", Traits: traits})
-	require.Error(t, p.Flush(t.Context()))
-
-	// Then
-	require.NotEmpty(t, logs.matching(slog.LevelDebug, "skipping duplicate exposure"))
-	require.NotEmpty(t, logs.matching(slog.LevelWarn, "events API rejected batch; dropping it"))
-	assert.NotContains(t, logs.text(), "user@example.com")
-	assert.NotContains(t, logs.text(), "trait@example.com")
-}
-
-func TestEventProcessorStalledServerBoundsInFlightBatches(t *testing.T) {
-	// Given: an events API that holds every request until released
-	const maxBufferSize = 10
-	release := make(chan struct{})
-	server := newEventsServer(t, func([]byte) int {
-		<-release
-		return http.StatusAccepted
-	})
-	var once sync.Once
-	t.Cleanup(func() { once.Do(func() { close(release) }) })
-	p := newTestEventProcessor(t.Context(), server.URL, maxBufferSize, 0)
-	goroutinesBefore := runtime.NumGoroutine()
-
-	// When: five buffers' worth of events are tracked while the first send is stalled
-	for i := 1; i <= 5*maxBufferSize; i++ {
-		p.TrackEvent(fmt.Sprintf("e%d", i), nil)
-
-		// Then: one send in flight at most, and the buffer stays bounded
-		require.LessOrEqual(t, inFlightCount(p), 1)
-		require.LessOrEqual(t, len(bufferedEvents(p)), maxBufferSize)
-	}
-	require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-	time.Sleep(50 * time.Millisecond)
-
-	// Then: no further batches or goroutines piled up, and the overflow was counted
-	assert.Equal(t, 1, server.requestCount())
-	assert.LessOrEqual(t, runtime.NumGoroutine(), goroutinesBefore+10)
-	assert.Equal(t, int64(3*maxBufferSize), p.DroppedEvents())
-	buffered := eventNames(bufferedEvents(p))
-	require.Len(t, buffered, maxBufferSize)
-	assert.Equal(t, "e41", buffered[0])
-	assert.Equal(t, "e50", buffered[maxBufferSize-1])
-
-	// When: the events API recovers
-	once.Do(func() { close(release) })
-
-	// Then: the stalled batch and the full buffer behind it are both delivered
-	require.Eventually(t, func() bool { return len(server.events(t)) == 2*maxBufferSize }, time.Second, time.Millisecond)
-	events := server.events(t)
-	assert.Equal(t, "e1", events[0]["event"])
-	assert.Equal(t, "e10", events[maxBufferSize-1]["event"])
-	assert.Equal(t, "e41", events[maxBufferSize]["event"])
-	assert.Equal(t, "e50", events[2*maxBufferSize-1]["event"])
-	assert.Equal(t, 2, server.requestCount())
-	assert.Empty(t, bufferedEvents(p))
-	assert.Equal(t, int64(3*maxBufferSize), p.DroppedEvents())
-}
-
-func TestEventProcessorTimerDoesNotStackOnPendingSend(t *testing.T) {
-	// Given: a stalled send started by the timer
-	release := make(chan struct{})
-	server := newEventsServer(t, func([]byte) int {
-		<-release
-		return http.StatusAccepted
-	})
-	var once sync.Once
-	t.Cleanup(func() { once.Do(func() { close(release) }) })
-	p := newTestEventProcessor(t.Context(), server.URL, 100, 5*time.Millisecond)
-	p.TrackEvent("a", nil)
-	require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-
-	// When: more events are tracked across many ticks
-	p.TrackEvent("b", nil)
-	time.Sleep(50 * time.Millisecond)
-
-	// Then: the timer did not start another send
-	assert.Equal(t, 1, server.requestCount())
-	assert.Equal(t, 1, inFlightCount(p))
-
-	// When
-	once.Do(func() { close(release) })
-
-	// Then: the next tick sends the rest
-	assert.Eventually(t, func() bool { return len(server.events(t)) == 2 }, time.Second, time.Millisecond)
-}
-
-func TestEventProcessorFlushDuringStalledSend(t *testing.T) {
-	// Given: a stalled buffer-full send and more events buffered behind it
-	release := make(chan struct{})
-	server := newEventsServer(t, func([]byte) int {
-		<-release
-		return http.StatusAccepted
-	})
-	var once sync.Once
-	t.Cleanup(func() { once.Do(func() { close(release) }) })
-	p := newTestEventProcessor(t.Context(), server.URL, 2, 0)
-	p.TrackEvent("a", nil)
-	p.TrackEvent("b", nil)
-	p.TrackEvent("c", nil)
-	require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-
-	// When: an explicit Flush sends its own batch and waits for the stalled one
-	flushed := make(chan error, 1)
-	go func() { flushed <- p.Flush(t.Context()) }()
-	require.Eventually(t, func() bool { return server.requestCount() == 2 }, time.Second, time.Millisecond)
-	select {
-	case <-flushed:
-		t.Fatal("Flush returned before the batch in flight at the call completed")
-	case <-time.After(20 * time.Millisecond):
-	}
-	once.Do(func() { close(release) })
-
-	// Then
-	assert.NoError(t, <-flushed)
-	assert.Len(t, server.events(t), 3)
-	assert.Zero(t, p.DroppedEvents())
-}
-
-func TestEventProcessorShutdownBoundsInFlightBatch(t *testing.T) {
-	// Given: an events API that stalls every request until the client gives up on it
-	const batchSize = 5
-	const timeout = 100 * time.Millisecond
-	var mu sync.Mutex
-	requests, active := 0, 0
-	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		_, _ = io.ReadAll(req.Body)
-		mu.Lock()
-		requests++
-		active++
-		mu.Unlock()
-		<-req.Context().Done()
-		mu.Lock()
-		active--
-		mu.Unlock()
-	}))
-	t.Cleanup(server.Close)
-	requestCount := func() int {
-		mu.Lock()
-		defer mu.Unlock()
-		return requests
-	}
-
-	ctx, cancel := context.WithCancel(t.Context())
-	cfg := testEventsConfig(server.URL, batchSize, 0)
-	cfg.timeout = timeout
-	cfg.retryBackoff = time.Millisecond
-	p := newTestEventProcessorWith(ctx, cfg)
-	for i := 0; i < batchSize; i++ {
-		p.TrackEvent(fmt.Sprintf("e%d", i), nil)
-	}
-	require.Eventually(t, func() bool { return requestCount() == 1 }, time.Second, time.Millisecond)
-
-	// When: shutdown starts while the buffer-full batch is stalled
-	start := time.Now()
-	cancel()
-
-	// Then: the worker exits at the shutdown deadline, not after the batch's retries
-	select {
-	case <-p.stopped:
-	case <-time.After(time.Second):
-		t.Fatal("worker did not exit")
-	}
-	assert.Less(t, time.Since(start), timeout+150*time.Millisecond)
-
-	// Then: the batch was dropped and counted, nothing is in flight or re-queued
-	assert.Equal(t, int64(batchSize), p.DroppedEvents())
-	assert.Zero(t, inFlightCount(p))
-	assert.Empty(t, bufferedEvents(p))
-
-	// Then: no attempt starts after the worker exits. One aborted at the deadline may
-	// still reach the server just after, so let those land first.
-	time.Sleep(50 * time.Millisecond)
-	sent := requestCount()
-	time.Sleep(3 * timeout)
-	assert.Equal(t, sent, requestCount())
-
-	// Then: tracking after shutdown is a counted no-op
-	p.TrackEvent("late", nil)
-	assert.Empty(t, bufferedEvents(p))
-	assert.Equal(t, int64(batchSize+1), p.DroppedEvents())
-
-	// Then: every goroutine the processor started has exited, and no request is open
-	// Processors from earlier tests may still be inside their own bounded shutdown.
-	assert.Eventually(t, func() bool { return len(processorGoroutines()) == 0 }, 3*time.Second, 10*time.Millisecond)
-	assert.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return active == 0
-	}, time.Second, 10*time.Millisecond)
-}
-
-// processorGoroutines returns the stacks of live goroutines running EventProcessor code,
-// other than the calling one.
 func processorGoroutines() []string {
 	buf := make([]byte, 1<<22)
-	stacks := strings.Split(string(buf[:runtime.Stack(buf, true)]), "\n\n")
 	var found []string
-	for _, stack := range stacks[1:] {
+	for _, stack := range strings.Split(string(buf[:runtime.Stack(buf, true)]), "\n\n")[1:] {
 		if strings.Contains(stack, "(*EventProcessor)") {
 			found = append(found, stack)
 		}
@@ -1173,486 +256,576 @@ func processorGoroutines() []string {
 	return found
 }
 
-func TestEventProcessorShutdownDropsFinalBatchCutAtDeadline(t *testing.T) {
-	// Given: a stalled buffer-full batch, and more events buffered behind it
-	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		_, _ = io.ReadAll(req.Body)
-		<-req.Context().Done()
-	}))
-	t.Cleanup(server.Close)
-	ctx, cancel := context.WithCancel(t.Context())
-	cfg := testEventsConfig(server.URL, 3, 0)
-	cfg.timeout = 100 * time.Millisecond
-	cfg.retryBackoff = time.Millisecond
-	p := newTestEventProcessorWith(ctx, cfg)
-	for _, name := range []string{"a", "b", "c", "d", "e"} {
-		p.TrackEvent(name, nil)
+const noServer = "http://localhost:1/"
+
+// Tracked events are shaped for the wire, and exposures are deduplicated.
+func TestEventProcessorBuffersEvents(t *testing.T) {
+	p := newProc(t.Context(), noServer, 100, 0)
+	before := time.Now().UnixMilli()
+	meta := map[string]interface{}{"currency": "EUR", "sdk_version": "caller"}
+	p.TrackEvent("purchase", &EventOptions{Identifier: "user-123", Value: 49.0, Metadata: meta})
+	meta["currency"] = "USD"
+	p.TrackEvent("signup", nil)
+	events := bufferedEvents(p)
+	require.Len(t, events, 2)
+	assert.Equal(t, event{Event: "purchase", Identifier: strPtr("user-123"), Value: strPtr("49"), Timestamp: events[0].Timestamp,
+		Metadata: map[string]interface{}{"currency": "EUR", "sdk_version": getSDKVersion()}}, events[0])
+	assert.Equal(t, "caller", meta["sdk_version"])
+	assert.GreaterOrEqual(t, events[0].Timestamp, before)
+	assert.LessOrEqual(t, events[0].Timestamp, time.Now().UnixMilli())
+	raw, err := json.Marshal(events[0])
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"feature_name":null`)
+	assert.Contains(t, string(raw), `"traits":null`)
+	assert.Equal(t, event{Event: "signup", Timestamp: events[1].Timestamp,
+		Metadata: map[string]interface{}{"sdk_version": getSDKVersion()}}, events[1])
+	p = newProc(t.Context(), noServer, 100, 0)
+	exposure := func(feature, identifier, value string, experimentID int) {
+		p.TrackExposureEvent(feature, identifier, value, nil, map[string]interface{}{"experiment_id": experimentID})
 	}
-	require.Eventually(t, func() bool { return inFlightCount(p) == 1 }, time.Second, time.Millisecond)
-
-	// When
-	cancel()
-	<-p.stopped
-
-	// Then: both the stalled batch and the final one are counted
-	assert.Equal(t, int64(5), p.DroppedEvents())
-	assert.Zero(t, inFlightCount(p))
-	assert.Empty(t, bufferedEvents(p))
+	exposure("f", "u", "treatment", 1)
+	exposure("f", "u", "treatment", 1)
+	exposure("f", "", "treatment", 1)
+	assert.Len(t, bufferedEvents(p), 1, "equal exposures are deduped; one without an identifier is ignored")
+	exposure("f", "other-user", "treatment", 1)
+	exposure("f", "u", "control", 1)
+	exposure("g", "u", "treatment", 1)
+	exposure("f", "u", "treatment", 2)
+	assert.Len(t, bufferedEvents(p), 5, "differing exposures are not deduped")
+	p.TrackEvent("purchase", &EventOptions{Identifier: "u", Value: "1"})
+	p.TrackEvent("purchase", &EventOptions{Identifier: "u", Value: "1"})
+	assert.Len(t, bufferedEvents(p), 7, "custom events are never deduped")
 }
 
-func TestEventProcessorDoesNotLogResponseBody(t *testing.T) {
-	tests := []struct {
-		name string
-		body string
-	}{
-		{
-			name: "JSON body echoing the batch",
-			body: `{"detail": "Invalid batch.", "events": [{"identifier": "user@example.com", "traits": {"email": "trait@example.com"}}]}`,
-		},
-		{
-			name: "plain text body echoing the batch",
-			body: `bad request for user@example.com with trait trait@example.com`,
-		},
-		{
-			name: "JSON body without a message",
-			body: `{"identifier": "user@example.com", "traits": {"email": "trait@example.com"}}`,
-		},
+func TestStringifyValue(t *testing.T) {
+	for input, want := range map[interface{}]*string{
+		"buy-now": strPtr("buy-now"), 49.0: strPtr("49"), 49.5: strPtr("49.5"), true: strPtr("true"), 7: strPtr("7"),
+		1500000.0: strPtr("1500000"), 0.00001: strPtr("0.00001"), float32(0.1): strPtr("0.1"),
+	} {
+		assert.Equal(t, want, stringifyValue(input), "%#v", input)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Given
-			server := newEventsServerWithBody(t, func([]byte) (int, string) { return http.StatusBadRequest, tt.body })
-			logs := &recordingHandler{}
-			cfg := testEventsConfig(server.URL, 100, 0)
-			cfg.log = slog.New(logs)
-			p := newTestEventProcessorWith(t.Context(), cfg)
-			p.TrackEvent("purchase", nil)
-
-			// When
-			require.Error(t, p.Flush(t.Context()))
-
-			// Then: a content-free diagnostic, and none of the body
-			records := logs.matching(slog.LevelWarn, "events API rejected batch; dropping it")
-			require.Len(t, records, 1)
-			assert.Equal(t, int64(http.StatusBadRequest), records[0]["status"])
-			assert.Equal(t, int64(len(tt.body)), records[0]["body_bytes"])
-			assert.NotContains(t, records[0], "body")
-			assert.NotContains(t, records[0], "detail")
-			assert.NotContains(t, logs.text(), "Invalid batch.")
-			assert.NotContains(t, logs.text(), "user@example.com")
-			assert.NotContains(t, logs.text(), "trait@example.com")
-		})
-	}
+	assert.Nil(t, stringifyValue(nil))
 }
 
-func TestEventProcessorHeldBatchWaitsForNextTick(t *testing.T) {
-	// Given: a full buffer whose batch failed and was put back, with the timer disabled
-	server := newEventsServer(t, statusSequence(
-		http.StatusServiceUnavailable, http.StatusServiceUnavailable, http.StatusServiceUnavailable,
-		http.StatusAccepted,
-	))
-	cfg := testEventsConfig(server.URL, 2, 0)
-	cfg.retryBackoff = 0
-	p := newTestEventProcessorWith(t.Context(), cfg)
-	p.TrackEvent("a", nil)
-	p.TrackEvent("b", nil)
-	require.Eventually(t, func() bool { return server.requestCount() == 3 && inFlightCount(p) == 0 }, time.Second, time.Millisecond)
-	require.Equal(t, []string{"a", "b"}, eventNames(bufferedEvents(p)))
-
-	// When: the next event finds the buffer full
-	p.TrackEvent("c", nil)
-
-	// Then: nothing is sent; the oldest event makes room and is counted
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 3, server.requestCount())
-	assert.Equal(t, []string{"b", "c"}, eventNames(bufferedEvents(p)))
-	assert.Equal(t, int64(1), p.DroppedEvents())
-
-	// When: the timer ticks
-	p.onTick()
-
-	// Then: the buffer is sent once
-	require.Eventually(t, func() bool { return server.requestCount() == 4 && inFlightCount(p) == 0 }, time.Second, time.Millisecond)
+// Flush posts the buffer to /v1/events with the SDK headers.
+func TestEventProcessorFlushPostsBatch(t *testing.T) {
+	server := newEventsServer(t, nil)
+	p := newProc(t.Context(), server.URL, 100, 0)
+	require.NoError(t, p.Flush(t.Context()))
+	assert.Zero(t, server.count(), "an empty buffer sends nothing")
+	p.TrackExposureEvent("checkout_cta", "user-123", "treatment",
+		map[string]interface{}{"plan": "premium"}, map[string]interface{}{"experiment_id": 167})
+	p.TrackEvent("purchase", &EventOptions{Identifier: "user-123", Value: "49"})
+	require.NoError(t, p.Flush(t.Context()))
+	require.Equal(t, 1, server.count())
+	assert.Equal(t, "/v1/events", server.paths[0], "a trailing slash is added to the base URL")
+	h := server.headers[0]
+	assert.Equal(t, EnvironmentAPIKey, h.Get(EnvironmentKeyHeader))
+	assert.Regexp(t, `^flagsmith-go-sdk/`, h.Get("Flagsmith-SDK-User-Agent"))
+	assert.Regexp(t, `^application/json`, h.Get("Content-Type"))
 	events := server.events(t)
-	assert.Equal(t, "b", events[len(events)-2]["event"])
-	assert.Equal(t, "c", events[len(events)-1]["event"])
+	require.Len(t, events, 2)
+	assert.Equal(t, map[string]interface{}{
+		"event": FlagExposureEvent, "feature_name": "checkout_cta", "identifier": "user-123", "value": "treatment",
+		"traits":    map[string]interface{}{"plan": "premium"},
+		"metadata":  map[string]interface{}{"experiment_id": 167.0, "sdk_version": getSDKVersion()},
+		"timestamp": events[0]["timestamp"],
+	}, events[0])
+	assert.Equal(t, "purchase", events[1]["event"])
+	assert.Nil(t, events[1]["feature_name"])
 	assert.Empty(t, bufferedEvents(p))
 }
 
-func TestEventProcessorHeldBatchSentByExplicitFlush(t *testing.T) {
-	// Given: a held batch, with the timer disabled
-	server := newEventsServer(t, statusSequence(
-		http.StatusServiceUnavailable, http.StatusServiceUnavailable, http.StatusServiceUnavailable,
-		http.StatusAccepted,
-	))
-	cfg := testEventsConfig(server.URL, 2, 0)
-	cfg.retryBackoff = 0
-	p := newTestEventProcessorWith(t.Context(), cfg)
-	p.TrackEvent("a", nil)
-	p.TrackEvent("b", nil)
-	require.Eventually(t, func() bool { return server.requestCount() == 3 && inFlightCount(p) == 0 }, time.Second, time.Millisecond)
-
-	// When
-	require.NoError(t, p.Flush(t.Context()))
-
-	// Then: sent once, and the next full buffer triggers a send again
-	assert.Equal(t, 4, server.requestCount())
-	p.TrackEvent("c", nil)
-	p.TrackEvent("d", nil)
-	assert.Eventually(t, func() bool { return server.requestCount() == 5 }, time.Second, time.Millisecond)
-	assert.Zero(t, p.DroppedEvents())
-}
-
-func TestEventProcessorShutdownIsBoundedByOneTimeout(t *testing.T) {
-	// Given: an explicit Flush stalled on its caller's context when shutdown starts
-	const timeout = 200 * time.Millisecond
-	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		_, _ = io.ReadAll(req.Body)
-		<-req.Context().Done()
-	}))
-	t.Cleanup(server.Close)
-	ctx, cancel := context.WithCancel(t.Context())
-	cfg := testEventsConfig(server.URL, 100, 0)
-	cfg.timeout = timeout
-	cfg.retryBackoff = time.Millisecond
-	p := newTestEventProcessorWith(ctx, cfg)
-	p.TrackEvent("a", nil)
-	flushed := make(chan error, 1)
-	go func() { flushed <- p.Flush(t.Context()) }()
-	require.Eventually(t, func() bool { return inFlightCount(p) == 1 }, time.Second, time.Millisecond)
-
-	// When
-	start := time.Now()
-	cancel()
-
-	// Then: the worker exits within one timeout, not a timeout plus a grace period
-	select {
-	case <-p.stopped:
-	case <-time.After(2 * time.Second):
-		t.Fatal("worker did not exit")
-	}
-	assert.Less(t, time.Since(start), timeout+80*time.Millisecond)
-
-	// Then: the explicit Flush's batch is dropped and counted when it gives up
-	require.Error(t, <-flushed)
-	assert.Equal(t, int64(1), p.DroppedEvents())
-	assert.Empty(t, bufferedEvents(p))
-}
-
-func TestEventProcessorNonRetryableDropReleasesDedupeKeys(t *testing.T) {
-	// Given
-	server := newEventsServer(t, statusSequence(http.StatusBadRequest))
-	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-	p.TrackExposureEvent("f", "u", "treatment", nil, nil)
-
-	// When
-	require.Error(t, p.Flush(t.Context()))
-	p.TrackExposureEvent("f", "u", "treatment", nil, nil)
-
-	// Then: the dropped exposure no longer blocks the same one
-	assert.Len(t, bufferedEvents(p), 1)
-}
-
-func TestEventProcessorRejectedEventReleasesDedupeKey(t *testing.T) {
-	// Given
-	server := newEventsServerWithBody(t, func([]byte) (int, string) {
-		return http.StatusAccepted, `{"accepted": 0, "rejected": [{"index": 0, "error": "invalid"}]}`
+// Flush waits for exactly the batches in flight when it was called.
+func TestEventProcessorFlushWaits(t *testing.T) {
+	t.Run("for a batch already in flight, until ctx ends", func(t *testing.T) {
+		release, done := newRelease()
+		defer done()
+		server := newEventsServer(t, after(release, statuses(http.StatusAccepted)))
+		p := NewEventProcessor(t.Context(), resty.New(), server.URL+"/", 1, 0, time.Second, createLogger())
+		track(p, "a")
+		eventually(t, func() bool { return server.count() == 1 })
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+		defer cancel()
+		assert.ErrorIs(t, p.Flush(ctx), context.DeadlineExceeded)
+		flushed := goFlush(t.Context(), p)
+		time.Sleep(20 * time.Millisecond)
+		assert.Empty(t, flushed, "Flush returned while a batch was in flight")
+		done()
+		assert.NoError(t, receive(t, flushed, "Flush did not return"))
+		assert.Equal(t, 1, server.done())
 	})
-	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-	p.TrackExposureEvent("f", "u", "treatment", nil, nil)
-
-	// When
-	require.NoError(t, p.Flush(t.Context()))
-	p.TrackExposureEvent("f", "u", "treatment", nil, nil)
-
-	// Then
-	assert.Len(t, bufferedEvents(p), 1)
-}
-
-func TestEventProcessorRejectedEntriesAreValidated(t *testing.T) {
-	// Given: duplicate and out-of-range indices, and string and object errors
-	server := newEventsServerWithBody(t, func([]byte) (int, string) {
-		return http.StatusAccepted, `{"accepted": 0, "rejected": [
-			{"index": 0, "error": {"identifier": "user@example.com"}},
-			{"index": 0, "error": "duplicate"},
-			{"index": 1, "error": "invalid identifier user@example.com"},
-			{"index": 7, "error": "out of range"},
-			{"index": -1, "error": "negative"}
-		]}`
+	t.Run("not for a batch started after the call", func(t *testing.T) {
+		first, releaseFirst := newRelease()
+		second, releaseSecond := newRelease()
+		defer releaseFirst()
+		defer releaseSecond()
+		ok := statuses(http.StatusAccepted)
+		server := newEventsServer(t, byEvent(map[string]responder{"first": after(first, ok), "second": after(second, ok)}))
+		p := newProc(t.Context(), server.URL, 100, 0)
+		track(p, "first")
+		firstDone := goFlush(t.Context(), p)
+		eventually(t, func() bool { return server.count() == 1 })
+		track(p, "second")
+		secondDone := goFlush(t.Context(), p)
+		eventually(t, func() bool { return server.count() == 2 })
+		releaseFirst()
+		assert.NoError(t, receive(t, firstDone, "Flush waited for a batch started after it was called"))
+		assert.Empty(t, secondDone, "second Flush returned before its batch completed")
+		releaseSecond()
+		assert.NoError(t, receive(t, secondDone, "second Flush did not return"))
 	})
-	logs := &recordingHandler{}
-	cfg := testEventsConfig(server.URL, 100, 0)
-	cfg.log = slog.New(logs)
-	p := newTestEventProcessorWith(t.Context(), cfg)
-	p.TrackEvent("a", nil)
-	p.TrackEvent("b", nil)
-
-	// When
-	require.NoError(t, p.Flush(t.Context()))
-
-	// Then: each in-range index counted once
-	assert.Equal(t, int64(2), p.DroppedEvents())
-	rejected := logs.matching(slog.LevelWarn, "events API rejected event")
-	require.Len(t, rejected, 2)
-	assert.Equal(t, map[string]interface{}{"index": int64(0)}, rejected[0])
-	assert.Equal(t, map[string]interface{}{"index": int64(1)}, rejected[1])
-	assert.Len(t, logs.matching(slog.LevelWarn, "events API rejected an event outside the batch"), 2)
-	summary := logs.matching(slog.LevelWarn, "events API rejected events in an accepted batch; dropping them")
-	require.Len(t, summary, 1)
-	assert.Equal(t, int64(2), summary[0]["count"])
-	for _, text := range []string{"user@example.com", "invalid identifier", "duplicate", "out of range", "negative"} {
-		assert.NotContains(t, logs.text(), text)
-	}
-}
-
-func TestEventProcessorStopsRetryingOnceDisabledElsewhere(t *testing.T) {
-	// Given: the first request is held and then gets a 401, the second gets a 503 first
-	release := make(chan struct{})
-	var mu sync.Mutex
-	calls := 0
-	server := newEventsServer(t, func([]byte) int {
-		mu.Lock()
-		calls++
-		n := calls
-		mu.Unlock()
-		switch n {
-		case 1:
-			<-release
-			return http.StatusUnauthorized
-		case 2:
-			return http.StatusServiceUnavailable
-		default:
-			return http.StatusAccepted
+	t.Run("bounded under sustained traffic", func(t *testing.T) {
+		server := newEventsServer(t, slow(20*time.Millisecond, http.StatusAccepted))
+		p := newProc(t.Context(), server.URL, 1, 0)
+		stop, streamDone := make(chan struct{}), make(chan struct{})
+		go func() {
+			defer close(streamDone)
+			for {
+				select {
+				case <-stop:
+					return
+				case <-time.After(5 * time.Millisecond):
+					track(p, "tick")
+				}
+			}
+		}()
+		defer func() { close(stop); <-streamDone }()
+		eventually(t, func() bool { return server.count() >= 3 })
+		assert.NoError(t, receive(t, goFlush(t.Context(), p), "Flush did not return under sustained traffic", 500*time.Millisecond))
+	})
+	t.Run("for every batch when one fails", func(t *testing.T) {
+		server := newEventsServer(t, byEvent(map[string]responder{
+			"fail": slow(20*time.Millisecond, http.StatusBadRequest), "slow": slow(200*time.Millisecond, http.StatusAccepted)}))
+		p := newProc(t.Context(), server.URL, 100, 0)
+		var pending []chan error
+		for i, name := range []string{"fail", "slow"} {
+			track(p, name)
+			pending = append(pending, goFlush(t.Context(), p))
+			eventually(t, func() bool { return server.count() == i+1 })
+		}
+		assert.NoError(t, p.Flush(t.Context()))
+		assert.Equal(t, 2, server.done(), "the slow batch finished although the other failed")
+		for _, ch := range pending {
+			<-ch
 		}
 	})
-	var once sync.Once
-	t.Cleanup(func() { once.Do(func() { close(release) }) })
-	cfg := testEventsConfig(server.URL, 100, 0)
-	cfg.retryBackoff = 100 * time.Millisecond
-	cfg.jitter = func(d time.Duration) time.Duration { return d }
-	p := newTestEventProcessorWith(t.Context(), cfg)
-
-	p.TrackEvent("a", nil)
-	first := make(chan error, 1)
-	go func() { first <- p.Flush(context.Background()) }()
-	require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-	p.TrackEvent("b", nil)
-	second := make(chan error, 1)
-	go func() { second <- p.Flush(context.Background()) }()
-	require.Eventually(t, func() bool { return server.finishedCount() == 1 }, time.Second, time.Millisecond)
-
-	// When: the 401 arrives while the second batch waits to retry
-	once.Do(func() { close(release) })
-
-	// Then: no request starts after the 401, and both batches are counted
-	require.Error(t, <-first)
-	require.Error(t, <-second)
-	time.Sleep(50 * time.Millisecond)
-	assert.Equal(t, 2, server.requestCount())
-	assert.Equal(t, int64(2), p.DroppedEvents())
-	assert.Empty(t, bufferedEvents(p))
-}
-
-func TestEventProcessorSendSkipsWhenDisabled(t *testing.T) {
-	// Given: a processor stopped by a 401, and a batch on a context shutdown does not cut
-	server := newEventsServer(t, nil)
-	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-	p.mu.Lock()
-	p.disabled = true
-	p.mu.Unlock()
-	events := frozen(t, event{Event: "a"}, event{Event: FlagExposureEvent, FeatureName: strPtr("f"), Identifier: strPtr("u")})
-
-	// When
-	err := p.send(context.Background(), events, false)
-
-	// Then: nothing is sent, and the batch is counted
-	assert.ErrorIs(t, err, errEventsDisabled)
-	assert.Zero(t, server.requestCount())
-	assert.Equal(t, int64(2), p.DroppedEvents())
-	assert.Empty(t, bufferedEvents(p))
-}
-
-func TestEventProcessorSendStopsBeforeRetryWhenDisabled(t *testing.T) {
-	// Given: the processor is stopped while the first attempt is on the wire
-	var p *EventProcessor
-	server := newEventsServer(t, func([]byte) int {
-		p.mu.Lock()
-		p.disabled = true
-		p.mu.Unlock()
-		return http.StatusServiceUnavailable
+	t.Run("sends its own batch during a stalled send", func(t *testing.T) {
+		release, done := newRelease()
+		defer done()
+		server := newEventsServer(t, after(release, statuses(http.StatusAccepted)))
+		p := newProc(t.Context(), server.URL, 2, 0)
+		track(p, "a", "b", "c")
+		eventually(t, func() bool { return server.count() == 1 })
+		flushed := goFlush(t.Context(), p)
+		eventually(t, func() bool { return server.count() == 2 })
+		time.Sleep(20 * time.Millisecond)
+		assert.Empty(t, flushed, "Flush returned before the batch in flight at the call completed")
+		done()
+		assert.NoError(t, receive(t, flushed, "Flush did not return"))
+		assert.Len(t, server.events(t), 3)
+		assert.Zero(t, p.DroppedEvents())
 	})
-	cfg := testEventsConfig(server.URL, 100, 0)
-	cfg.sleep = func(context.Context, time.Duration) error { return nil }
-	p = newTestEventProcessorWith(t.Context(), cfg)
-
-	// When
-	err := p.send(context.Background(), frozen(t, event{Event: "a"}), false)
-
-	// Then: no retry, and the batch is counted
-	assert.ErrorIs(t, err, errEventsDisabled)
-	assert.Equal(t, 1, server.requestCount())
-	assert.Equal(t, int64(1), p.DroppedEvents())
 }
 
-func TestEventProcessorShutdownCutsExplicitFlush(t *testing.T) {
-	// Given: an explicit Flush on a context that never ends, stalled by the events API
-	const timeout = 100 * time.Millisecond
-	var mu sync.Mutex
-	active := 0
-	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		_, _ = io.ReadAll(req.Body)
-		mu.Lock()
-		active++
-		mu.Unlock()
-		<-req.Context().Done()
-		mu.Lock()
-		active--
-		mu.Unlock()
-	}))
-	t.Cleanup(server.Close)
-	ctx, cancel := context.WithCancel(t.Context())
-	cfg := testEventsConfig(server.URL, 100, 0)
-	// Unbounded, the ladder would run about 600ms: three 100ms attempts and 100ms + 200ms
-	// of backoff.
-	cfg.timeout = timeout
-	cfg.retryBackoff = 100 * time.Millisecond
-	cfg.jitter = func(d time.Duration) time.Duration { return d }
-	p := newTestEventProcessorWith(ctx, cfg)
-	p.TrackEvent("a", nil)
-	flushed := make(chan error, 1)
-	go func() { flushed <- p.Flush(context.Background()) }()
-	require.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return active == 1
-	}, time.Second, time.Millisecond)
-
-	// When
-	start := time.Now()
-	cancel()
-
-	// Then: the worker exits and the Flush returns at the shutdown deadline
-	select {
-	case <-p.stopped:
-	case <-time.After(time.Second):
-		t.Fatal("worker did not exit")
+// Retryable failures get three attempts and are kept; others are dropped after one.
+func TestEventProcessorRetries(t *testing.T) {
+	flushOnce := func(t *testing.T, respond responder, opts ...option) (*EventProcessor, *eventsServer, error) {
+		server := newEventsServer(t, respond)
+		p := newProc(t.Context(), server.URL, 100, 0, opts...)
+		track(p, "purchase")
+		return p, server, p.Flush(t.Context())
 	}
-	select {
-	case err := <-flushed:
-		assert.Error(t, err)
-	case <-time.After(time.Second):
-		t.Fatal("explicit Flush kept running after shutdown")
-	}
-	assert.Less(t, time.Since(start), timeout+150*time.Millisecond)
-
-	// Then: the batch is dropped and counted, and its request has ended
-	assert.Equal(t, int64(1), p.DroppedEvents())
+	p, server, err := flushOnce(t, statuses(http.StatusServiceUnavailable, http.StatusAccepted))
+	assert.NoError(t, err, "503 then 202 delivers once")
+	assert.Equal(t, 2, server.count())
 	assert.Empty(t, bufferedEvents(p))
-	assert.Zero(t, inFlightCount(p))
-	assert.Eventually(t, func() bool {
+	assert.Zero(t, p.DroppedEvents())
+	for status, name := range map[int]string{408: "408", 429: "429", 502: "502", 503: "503", 504: "504", 0: "transport error", -1: "attempt timeout"} {
+		t.Run(name+" is retried then kept", func(t *testing.T) {
+			respond, opts := statuses(status), []option(nil)
+			if status == -1 {
+				respond, opts = stall, []option{withTimeout(30 * time.Millisecond)}
+			}
+			start := time.Now()
+			p, server, err := flushOnce(t, respond, opts...)
+			var apiErr *FlagsmithAPIError
+			require.ErrorAs(t, err, &apiErr)
+			if status > 0 {
+				assert.Equal(t, status, apiErr.ResponseStatusCode)
+			}
+			assert.Less(t, time.Since(start), 500*time.Millisecond)
+			assert.Equal(t, 3, server.count())
+			assert.Len(t, bufferedEvents(p), 1)
+			assert.Zero(t, p.DroppedEvents())
+		})
+	}
+	for _, status := range []int{400, 404, 409, 415, 422, 500, 501} {
+		t.Run(fmt.Sprintf("%d is dropped after one attempt", status), func(t *testing.T) {
+			p, server, err := flushOnce(t, statuses(status))
+			var apiErr *FlagsmithAPIError
+			require.ErrorAs(t, err, &apiErr)
+			assert.Equal(t, status, apiErr.ResponseStatusCode)
+			assert.Equal(t, 1, server.count())
+			assert.Empty(t, bufferedEvents(p))
+			assert.Equal(t, int64(1), p.DroppedEvents())
+			require.NoError(t, p.Flush(t.Context()))
+			assert.Equal(t, 1, server.count())
+		})
+	}
+	t.Run("kept batch is sent first by the next flush", func(t *testing.T) {
+		server := newEventsServer(t, statuses(503, 503, 503, http.StatusAccepted))
+		p := newProc(t.Context(), server.URL, 100, 0)
+		track(p, "first")
+		assert.Error(t, p.Flush(t.Context()))
+		assert.Equal(t, 3, server.count())
+		assert.Equal(t, []string{"first"}, bufferedNames(p))
+		track(p, "second")
+		require.NoError(t, p.Flush(t.Context()))
+		assert.Equal(t, []string{"first", "first", "first", "first", "second"}, sentNames(t, server))
+		assert.Empty(t, bufferedEvents(p))
+		assert.Zero(t, p.DroppedEvents())
+	})
+}
+
+// The retry backoff starts at 1s by default, doubles, is capped at 10s and fully jittered.
+func TestEventProcessorRetryBackoff(t *testing.T) {
+	assert.Equal(t, time.Second, DefaultEventsRetryBackoff)
+	p := NewEventProcessor(t.Context(), resty.New(), noServer, 100, 0, 50*time.Millisecond, createLogger())
+	assert.Equal(t, time.Second, p.cfg.retryBackoff)
+	assert.Equal(t, reflect.ValueOf(fullJitter).Pointer(), reflect.ValueOf(p.cfg.jitter).Pointer(), "full jitter by default")
+	record := func(backoff time.Duration, jitter func(time.Duration) time.Duration) (bases, waits []time.Duration) {
+		server := newEventsServer(t, statuses(http.StatusServiceUnavailable))
+		var mu sync.Mutex
+		p := newProc(t.Context(), server.URL, 100, 0, withBackoff(backoff), func(c *eventProcessorConfig) {
+			c.jitter = func(d time.Duration) time.Duration {
+				mu.Lock()
+				defer mu.Unlock()
+				bases = append(bases, d)
+				return jitter(d)
+			}
+			c.sleep = func(_ context.Context, d time.Duration) error {
+				mu.Lock()
+				defer mu.Unlock()
+				waits = append(waits, d)
+				return nil
+			}
+		})
+		track(p, "purchase")
+		require.Error(t, p.Flush(t.Context()))
 		mu.Lock()
 		defer mu.Unlock()
-		return active == 0
-	}, time.Second, 10*time.Millisecond)
-}
-
-func TestFlushContextKeepsCallerDeadline(t *testing.T) {
-	// Given
-	p := newTestEventProcessor(t.Context(), "http://localhost:1/", 100, 0)
-	caller, cancelCaller := context.WithTimeout(t.Context(), time.Minute)
-	defer cancelCaller()
-
-	// When
-	merged, cancel := p.flushContext(caller)
-	defer cancel()
-
-	// Then: the caller's deadline and cancellation carry over
-	want, _ := caller.Deadline()
-	got, ok := merged.Deadline()
-	require.True(t, ok)
-	assert.Equal(t, want, got)
-	cancelCaller()
-	select {
-	case <-merged.Done():
-	case <-time.After(time.Second):
-		t.Fatal("cancelling the caller's context did not end the flush context")
+		return bases, waits
 	}
+	bases, waits := record(100*time.Millisecond, func(d time.Duration) time.Duration { return d - time.Millisecond })
+	assert.Equal(t, []time.Duration{100 * time.Millisecond, 200 * time.Millisecond}, bases)
+	assert.Equal(t, []time.Duration{99 * time.Millisecond, 199 * time.Millisecond}, waits)
+	bases, _ = record(8*time.Second, func(d time.Duration) time.Duration { return d })
+	assert.Equal(t, []time.Duration{8 * time.Second, 10 * time.Second}, bases, "capped at 10s")
 }
 
-func TestEventProcessorDropsEventsThatCannotBeEncoded(t *testing.T) {
-	t.Run("only the invalid event is dropped", func(t *testing.T) {
-		// Given
+// The timer and a full buffer send without blocking the caller, one send at a time.
+func TestEventProcessorAutomaticSends(t *testing.T) {
+	server := newEventsServer(t, nil)
+	p := newProc(t.Context(), server.URL, 100, 20*time.Millisecond)
+	track(p, "purchase")
+	eventually(t, func() bool { return server.count() == 1 })
+	server = newEventsServer(t, slow(200*time.Millisecond, http.StatusAccepted))
+	p = newProc(t.Context(), server.URL, 2, 0)
+	track(p, "a")
+	time.Sleep(50 * time.Millisecond)
+	assert.Zero(t, server.count(), "a zero interval disables the ticker")
+	start := time.Now()
+	track(p, "b")
+	assert.Less(t, time.Since(start), 100*time.Millisecond, "a full buffer does not block the caller")
+	eventually(t, func() bool { return server.count() == 1 })
+	assert.Len(t, server.events(t), 2)
+	release, done := newRelease()
+	defer done()
+	server = newEventsServer(t, after(release, statuses(http.StatusAccepted)))
+	p = newProc(t.Context(), server.URL, 100, 5*time.Millisecond)
+	track(p, "a")
+	eventually(t, func() bool { return server.count() == 1 })
+	track(p, "b")
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, 1, server.count(), "the timer does not stack on a pending send")
+	assert.Equal(t, 1, inFlightCount(p))
+	done()
+	eventually(t, func() bool { return len(server.events(t)) == 2 })
+}
+
+// The buffer stays within maxBufferSize, dropping and counting the oldest events.
+func TestEventProcessorBufferBounds(t *testing.T) {
+	t.Run("re-queued batch drops the oldest to fit", func(t *testing.T) {
+		release, done := newRelease()
+		defer done()
+		server := newEventsServer(t, after(release, statuses(http.StatusServiceUnavailable)))
+		p := newProc(t.Context(), server.URL, 3, 0)
+		track(p, "old-1", "old-2")
+		flushed := goFlush(t.Context(), p)
+		eventually(t, func() bool { return server.count() == 1 })
+		track(p, "new-1", "new-2")
+		done()
+		require.Error(t, <-flushed)
+		assert.Equal(t, []string{"old-2", "new-1", "new-2"}, bufferedNames(p))
+		assert.Equal(t, int64(1), p.DroppedEvents())
+	})
+	t.Run("stalled server keeps one batch in flight", func(t *testing.T) {
+		const size = 10
+		release, done := newRelease()
+		defer done()
+		server := newEventsServer(t, after(release, statuses(http.StatusAccepted)))
+		p := newProc(t.Context(), server.URL, size, 0)
+		goroutinesBefore := runtime.NumGoroutine()
+		for i := 1; i <= 5*size; i++ {
+			track(p, fmt.Sprintf("e%d", i))
+			require.LessOrEqual(t, inFlightCount(p), 1)
+			require.LessOrEqual(t, len(bufferedEvents(p)), size)
+		}
+		eventually(t, func() bool { return server.count() == 1 })
+		time.Sleep(50 * time.Millisecond)
+		assert.Equal(t, 1, server.count())
+		assert.LessOrEqual(t, runtime.NumGoroutine(), goroutinesBefore+10)
+		assert.Equal(t, int64(3*size), p.DroppedEvents())
+		buffered := bufferedNames(p)
+		require.Len(t, buffered, size)
+		assert.Equal(t, []string{"e41", "e50"}, []string{buffered[0], buffered[size-1]})
+		done()
+		eventually(t, func() bool { return len(server.events(t)) == 2*size })
+		sent := sentNames(t, server)
+		assert.Equal(t, []string{"e1", "e10", "e41", "e50"}, []string{sent[0], sent[size-1], sent[size], sent[2*size-1]})
+		assert.Equal(t, 2, server.count())
+		assert.Empty(t, bufferedEvents(p))
+		assert.Equal(t, int64(3*size), p.DroppedEvents())
+	})
+}
+
+// A failed batch put back in the buffer waits for the next tick or an explicit Flush.
+func TestEventProcessorHeldBatch(t *testing.T) {
+	setup := func(t *testing.T) (*EventProcessor, *eventsServer) {
+		server := newEventsServer(t, statuses(503, 503, 503, http.StatusAccepted))
+		p := newProc(t.Context(), server.URL, 2, 0, withBackoff(0))
+		track(p, "a", "b")
+		eventually(t, func() bool { return server.count() == 3 && inFlightCount(p) == 0 })
+		require.Equal(t, []string{"a", "b"}, bufferedNames(p))
+		return p, server
+	}
+	t.Run("a full buffer drops instead of resending; the tick sends", func(t *testing.T) {
+		p, server := setup(t)
+		track(p, "c")
+		time.Sleep(50 * time.Millisecond)
+		assert.Equal(t, 3, server.count())
+		assert.Equal(t, []string{"b", "c"}, bufferedNames(p))
+		assert.Equal(t, int64(1), p.DroppedEvents())
+		p.onTick()
+		eventually(t, func() bool { return server.count() == 4 && inFlightCount(p) == 0 })
+		assert.Equal(t, []string{"b", "c"}, sentNames(t, server)[6:])
+		assert.Empty(t, bufferedEvents(p))
+	})
+	t.Run("explicit Flush sends it and releases the hold", func(t *testing.T) {
+		p, server := setup(t)
+		require.NoError(t, p.Flush(t.Context()))
+		assert.Equal(t, 4, server.count())
+		track(p, "c", "d")
+		eventually(t, func() bool { return server.count() == 5 })
+		assert.Zero(t, p.DroppedEvents())
+	})
+}
+
+// A 401 or 403 stops the processor for good, logging one warning.
+func TestEventProcessorUnauthorised(t *testing.T) {
+	const disabledMsg = "events API rejected the environment key; event tracking is disabled"
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			release, done := newRelease()
+			defer done()
+			server := newEventsServer(t, after(release, statuses(status)))
+			logs := &recordingHandler{}
+			p := newProc(t.Context(), server.URL, 100, time.Hour, withLogs(logs))
+			var pending []chan error
+			for i, name := range []string{"a", "b"} {
+				track(p, name)
+				pending = append(pending, goFlush(t.Context(), p))
+				eventually(t, func() bool { return server.count() == i+1 })
+			}
+			track(p, "buffered")
+			done()
+			sawStatus := false
+			for _, ch := range pending {
+				err := <-ch
+				require.Error(t, err)
+				var apiErr *FlagsmithAPIError
+				sawStatus = sawStatus || (errors.As(err, &apiErr) && apiErr.ResponseStatusCode == status)
+			}
+			assert.True(t, sawStatus, "the first rejection cuts the other batch, so only one is sure to carry the status")
+			waitStopped(t, p)
+			require.Equal(t, int64(3), p.DroppedEvents(), "both batches and the buffer are discarded")
+			assert.Empty(t, bufferedEvents(p))
+			track(p, "c")
+			p.TrackExposureEvent("f", "u", "v", nil, nil)
+			assert.Empty(t, bufferedEvents(p))
+			assert.NoError(t, p.Flush(t.Context()))
+			time.Sleep(50 * time.Millisecond)
+			assert.Equal(t, 2, server.count())
+			assert.Equal(t, int64(5), p.DroppedEvents(), "tracking afterwards is counted")
+			assert.Len(t, logs.matching(slog.LevelWarn, disabledMsg), 1)
+			assert.Empty(t, logs.matching(slog.LevelError, disabledMsg))
+		})
+	}
+	t.Run("send skips a batch once disabled", func(t *testing.T) {
 		server := newEventsServer(t, nil)
-		p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-		p.TrackEvent("good", nil)
-		p.TrackEvent("bad", &EventOptions{Metadata: map[string]interface{}{"ratio": math.Inf(1)}})
-		p.TrackExposureEvent("f", "u", "v", map[string]interface{}{"ch": make(chan int)}, nil)
-
-		// When
-		err := p.Flush(t.Context())
-
-		// Then: sent once without the invalid events, which are counted and not kept
-		assert.NoError(t, err)
-		assert.Equal(t, 1, server.requestCount())
-		events := server.events(t)
-		require.Len(t, events, 1)
-		assert.Equal(t, "good", events[0]["event"])
+		p := newProc(t.Context(), server.URL, 100, 0)
+		track(p, "a")
+		p.TrackExposureEvent("f", "u", "v", nil, nil)
+		events := takeBuffer(p)
+		p.disabled.Store(true)
+		assert.ErrorIs(t, p.send(context.Background(), events, false), errEventsDisabled)
+		assert.Zero(t, server.count())
 		assert.Equal(t, int64(2), p.DroppedEvents())
 		assert.Empty(t, bufferedEvents(p))
 	})
-
-	t.Run("an invalid event is dropped when tracked and never buffered", func(t *testing.T) {
-		// Given
-		server := newEventsServer(t, nil)
-		logs := &recordingHandler{}
-		cfg := testEventsConfig(server.URL, 100, 0)
-		cfg.log = slog.New(logs)
-		p := newTestEventProcessorWith(t.Context(), cfg)
-
-		// When
-		p.TrackEvent("bad", &EventOptions{Metadata: map[string]interface{}{"ratio": math.NaN()}})
-
-		// Then: counted straight away, with only the error's type logged
-		assert.Equal(t, int64(1), p.DroppedEvents())
-		assert.Empty(t, bufferedEvents(p))
-		dropped := logs.matching(slog.LevelWarn, "event could not be encoded as JSON; dropping it")
-		require.Len(t, dropped, 1)
-		assert.NotContains(t, dropped[0], "error")
-		assert.NotContains(t, logs.text(), "NaN")
-		require.NoError(t, p.Flush(t.Context()))
-		assert.Zero(t, server.requestCount())
-	})
-
-	t.Run("an invalid exposure does not take a dedupe slot", func(t *testing.T) {
-		// Given
-		p := newTestEventProcessor(t.Context(), "http://localhost:1/", 100, 0)
-		p.TrackExposureEvent("f", "u", "v", map[string]interface{}{"ch": make(chan int)}, nil)
-
-		// When: the same exposure, now encodable
-		p.TrackExposureEvent("f", "u", "v", nil, nil)
-
-		// Then
-		assert.Len(t, bufferedEvents(p), 1)
+	t.Run("send stops before a retry once disabled", func(t *testing.T) {
+		var p *EventProcessor
+		server := newEventsServer(t, func(*http.Request, []byte) (int, string) {
+			p.disabled.Store(true)
+			return http.StatusServiceUnavailable, ""
+		})
+		p = newProc(t.Context(), server.URL, 100, 0, noSleep)
+		track(p, "a")
+		assert.ErrorIs(t, p.send(context.Background(), takeBuffer(p), false), errEventsDisabled)
+		assert.Equal(t, 1, server.count())
 		assert.Equal(t, int64(1), p.DroppedEvents())
 	})
 }
 
-func TestEventProcessorSnapshotsNestedData(t *testing.T) {
-	// Given: traits and metadata holding nested maps and slices the caller keeps changing
+// Rejected entries of a 202 are logged by index, counted once, and never resent.
+func TestEventProcessorRejectedEntries(t *testing.T) {
+	const rejectedMsg = "events API rejected event"
+	const summaryMsg = "events API rejected events in an accepted batch; dropping them"
+	server := newEventsServer(t, withBody(http.StatusAccepted, `{"accepted": 1, "rejected": [{"index": 1, "error": "invalid identifier user@example.com"}]}`))
+	logs := &recordingHandler{}
+	p := newProc(t.Context(), server.URL, 100, 0, withLogs(logs))
+	track(p, "good")
+	p.TrackExposureEvent("checkout_cta", "user@example.com", "treatment", map[string]interface{}{"email": "trait@example.com"}, nil)
+	require.NoError(t, p.Flush(t.Context()))
+	assert.Equal(t, []map[string]interface{}{{"index": int64(1)}}, logs.matching(slog.LevelWarn, rejectedMsg))
+	assert.Equal(t, []map[string]interface{}{{"count": int64(1)}}, logs.matching(slog.LevelWarn, summaryMsg))
+	logs.assertAbsent(t, "invalid identifier", "user@example.com", "trait@example.com")
+	assert.Equal(t, int64(1), p.DroppedEvents())
+	assert.Empty(t, bufferedEvents(p))
+	require.NoError(t, p.Flush(t.Context()))
+	assert.Equal(t, 1, server.count(), "rejected events are not resent")
+	server = newEventsServer(t, withBody(http.StatusAccepted, `{"accepted": 0, "rejected": [
+		{"index": 0, "error": {"identifier": "user@example.com"}},
+		{"index": 0, "error": "duplicate"},
+		{"index": 1, "error": "invalid identifier user@example.com"},
+		{"index": 7, "error": "out of range"},
+		{"index": -1, "error": "negative"}]}`))
+	logs = &recordingHandler{}
+	p = newProc(t.Context(), server.URL, 100, 0, withLogs(logs))
+	track(p, "a", "b")
+	require.NoError(t, p.Flush(t.Context()))
+	assert.Equal(t, int64(2), p.DroppedEvents(), "each in-range index is counted once")
+	assert.Equal(t, []map[string]interface{}{{"index": int64(0)}, {"index": int64(1)}}, logs.matching(slog.LevelWarn, rejectedMsg))
+	assert.Len(t, logs.matching(slog.LevelWarn, "events API rejected an event outside the batch"), 2)
+	assert.Equal(t, []map[string]interface{}{{"count": int64(2)}}, logs.matching(slog.LevelWarn, summaryMsg))
+	logs.assertAbsent(t, "user@example.com", "invalid identifier", "duplicate", "out of range", "negative")
+	server = newEventsServer(t, withBody(http.StatusAccepted, "not json"))
+	p = newProc(t.Context(), server.URL, 100, 0)
+	track(p, "a")
+	assert.NoError(t, p.Flush(t.Context()))
+	assert.Zero(t, p.DroppedEvents(), "an unparseable accepted body drops nothing")
+}
+
+// The exposure dedupe set survives failures, is cleared on 2xx, and frees dropped keys.
+func TestEventProcessorDedupeRelease(t *testing.T) {
+	exposeTwice := func(respond responder) *EventProcessor {
+		p := newProc(t.Context(), newEventsServer(t, respond).URL, 100, 0)
+		p.TrackExposureEvent("f", "u", "treatment", nil, nil)
+		_ = p.Flush(t.Context())
+		p.TrackExposureEvent("f", "u", "treatment", nil, nil)
+		return p
+	}
+	p := exposeTwice(statuses(503, 503, 503, http.StatusAccepted))
+	assert.Len(t, bufferedEvents(p), 1, "survives a retryable failure")
+	require.NoError(t, p.Flush(t.Context()))
+	p.TrackExposureEvent("f", "u", "treatment", nil, nil)
+	assert.Len(t, bufferedEvents(p), 1, "cleared on 2xx")
+	assert.Len(t, bufferedEvents(exposeTwice(statuses(http.StatusBadRequest))), 1, "released by a non-retryable drop")
+	rejected := withBody(http.StatusAccepted, `{"accepted": 0, "rejected": [{"index": 0, "error": "invalid"}]}`)
+	assert.Len(t, bufferedEvents(exposeTwice(rejected)), 1, "released by a rejected entry")
+	p = newProc(t.Context(), noServer, 100, 0)
+	p.TrackExposureEvent("f", "u", "v", map[string]interface{}{"ch": make(chan int)}, nil)
+	p.TrackExposureEvent("f", "u", "v", nil, nil)
+	assert.Len(t, bufferedEvents(p), 1, "not taken by an unencodable exposure")
+	assert.Equal(t, int64(1), p.DroppedEvents())
+}
+
+// Logs never contain identifiers, trait values or response content.
+func TestEventProcessorLogsNoPersonalData(t *testing.T) {
+	const email, trait = "user@example.com", "trait@example.com"
+	server := newEventsServer(t, statuses(http.StatusBadRequest))
+	logs := &recordingHandler{}
+	p := newProc(t.Context(), server.URL, 100, 0, withLogs(logs))
+	traits := map[string]interface{}{"email": trait}
+	p.TrackExposureEvent("checkout_cta", email, "treatment", traits, nil)
+	p.TrackExposureEvent("checkout_cta", email, "treatment", traits, nil)
+	p.TrackEvent("purchase", &EventOptions{Identifier: email, Traits: traits})
+	require.Error(t, p.Flush(t.Context()))
+	require.NotEmpty(t, logs.matching(slog.LevelDebug, "skipping duplicate exposure"))
+	require.NotEmpty(t, logs.matching(slog.LevelWarn, "events API rejected batch; dropping it"))
+	logs.assertAbsent(t, email, trait)
+	for _, body := range []string{
+		`{"detail": "Invalid batch.", "events": [{"identifier": "user@example.com", "traits": {"email": "trait@example.com"}}]}`,
+		`bad request for user@example.com with trait trait@example.com`,
+		`{"identifier": "user@example.com", "traits": {"email": "trait@example.com"}}`,
+	} {
+		logs := &recordingHandler{}
+		p := newProc(t.Context(), newEventsServer(t, withBody(http.StatusBadRequest, body)).URL, 100, 0, withLogs(logs))
+		track(p, "purchase")
+		require.Error(t, p.Flush(t.Context()))
+		assert.Equal(t, []map[string]interface{}{{"count": int64(1), "status": int64(http.StatusBadRequest), "body_bytes": int64(len(body))}},
+			logs.matching(slog.LevelWarn, "events API rejected batch; dropping it"))
+		logs.assertAbsent(t, "Invalid batch.", email, trait)
+	}
+}
+
+// Events that cannot be encoded are dropped and counted when tracked.
+func TestEventProcessorDropsUnencodableEvents(t *testing.T) {
 	server := newEventsServer(t, nil)
-	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-	nestedTrait := map[string]interface{}{"tier": "gold"}
-	traitList := []interface{}{"a", "b"}
-	nestedMeta := map[string]interface{}{"source": "checkout"}
-	metaList := []interface{}{1.0, 2.0}
+	logs := &recordingHandler{}
+	p := newProc(t.Context(), server.URL, 100, 0, withLogs(logs))
+	p.TrackEvent("bad", &EventOptions{Metadata: map[string]interface{}{"ratio": math.NaN()}})
+	assert.Equal(t, int64(1), p.DroppedEvents())
+	assert.Empty(t, bufferedEvents(p))
+	dropped := logs.matching(slog.LevelWarn, "event could not be encoded as JSON; dropping it")
+	require.Len(t, dropped, 1)
+	assert.NotContains(t, dropped[0], "error")
+	logs.assertAbsent(t, "NaN")
+	require.NoError(t, p.Flush(t.Context()))
+	assert.Zero(t, server.count())
+	track(p, "good")
+	p.TrackEvent("bad", &EventOptions{Metadata: map[string]interface{}{"ratio": math.Inf(1)}})
+	p.TrackExposureEvent("f", "u", "v", map[string]interface{}{"ch": make(chan int)}, nil)
+	require.NoError(t, p.Flush(t.Context()))
+	assert.Equal(t, 1, server.count())
+	assert.Equal(t, []string{"good"}, sentNames(t, server))
+	assert.Equal(t, int64(3), p.DroppedEvents())
+	assert.Empty(t, bufferedEvents(p))
+}
+
+// Traits and metadata are captured at track time; later mutation cannot race or change them.
+func TestEventProcessorSnapshotsNestedData(t *testing.T) {
+	server := newEventsServer(t, nil)
+	p := newProc(t.Context(), server.URL, 100, 0)
+	nestedTrait, traitList := map[string]interface{}{"tier": "gold"}, []interface{}{"a", "b"}
+	nestedMeta, metaList := map[string]interface{}{"source": "checkout"}, []interface{}{1.0, 2.0}
 	p.TrackEvent("purchase", &EventOptions{
 		Identifier: "user-1",
 		Traits:     map[string]interface{}{"profile": nestedTrait, "tags": traitList},
 		Metadata:   map[string]interface{}{"context": nestedMeta, "items": metaList},
 	})
-
-	stop := make(chan struct{})
-	mutated := make(chan struct{})
+	stop, mutated := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(mutated)
 		for i := 0; ; i++ {
@@ -1661,337 +834,165 @@ func TestEventProcessorSnapshotsNestedData(t *testing.T) {
 				return
 			default:
 			}
-			nestedTrait["tier"] = fmt.Sprint("changed-", i)
-			nestedTrait[fmt.Sprint("k", i%10)] = i
-			traitList[0] = i
-			nestedMeta["source"] = fmt.Sprint("changed-", i)
-			nestedMeta[fmt.Sprint("k", i%10)] = i
-			metaList[1] = float64(i)
+			nestedTrait["tier"], nestedTrait[fmt.Sprint("k", i%10)], traitList[0] = fmt.Sprint("changed-", i), i, i
+			nestedMeta["source"], nestedMeta[fmt.Sprint("k", i%10)], metaList[1] = fmt.Sprint("changed-", i), i, float64(i)
 		}
 	}()
-
-	// When: the batch is flushed while the caller mutates
 	for i := 0; i < 20; i++ {
 		require.NoError(t, p.Flush(t.Context()))
-		p.TrackEvent(fmt.Sprint("next-", i), nil)
+		track(p, fmt.Sprint("next-", i))
 	}
 	close(stop)
 	<-mutated
 	require.NoError(t, p.Flush(t.Context()))
-
-	// Then: the event sent is the call-time snapshot
 	events := server.events(t)
 	require.NotEmpty(t, events)
 	assert.Equal(t, "purchase", events[0]["event"])
-	assert.Equal(t, map[string]interface{}{
-		"profile": map[string]interface{}{"tier": "gold"},
-		"tags":    []interface{}{"a", "b"},
-	}, events[0]["traits"])
+	assert.Equal(t, map[string]interface{}{"profile": map[string]interface{}{"tier": "gold"}, "tags": []interface{}{"a", "b"}}, events[0]["traits"])
 	metadata := events[0]["metadata"].(map[string]interface{})
 	assert.Equal(t, map[string]interface{}{"source": "checkout"}, metadata["context"])
 	assert.Equal(t, []interface{}{1.0, 2.0}, metadata["items"])
 }
 
-func TestEventProcessorIgnoresUnparseableAcceptedBody(t *testing.T) {
-	// Given
-	server := newEventsServerWithBody(t, func([]byte) (int, string) { return http.StatusAccepted, "not json" })
-	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-	p.TrackEvent("a", nil)
-
-	// When, Then
-	assert.NoError(t, p.Flush(t.Context()))
-	assert.Zero(t, p.DroppedEvents())
-}
-
-func TestEventProcessorDedupeSurvivesFailedFlush(t *testing.T) {
-	t.Run("retryable failure", func(t *testing.T) {
-		// Given
-		server := newEventsServer(t, statusSequence(
-			http.StatusServiceUnavailable, http.StatusServiceUnavailable, http.StatusServiceUnavailable,
-			http.StatusAccepted,
-		))
-		p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-		p.TrackExposureEvent("f", "u", "treatment", nil, nil)
-		require.Error(t, p.Flush(t.Context()))
-
-		// When
-		p.TrackExposureEvent("f", "u", "treatment", nil, nil)
-
-		// Then: still deduped against the kept exposure
-		assert.Len(t, bufferedEvents(p), 1)
-
-		// When: the exposure is delivered
-		require.NoError(t, p.Flush(t.Context()))
-		p.TrackExposureEvent("f", "u", "treatment", nil, nil)
-
-		// Then: the dedupe set was cleared
-		assert.Len(t, bufferedEvents(p), 1)
-	})
-}
-
-func TestEventProcessorFinalFlushDoesNotSleepPastTimeout(t *testing.T) {
-	// Given: a retry backoff longer than the request timeout and an unavailable events API
-	server := newEventsServer(t, statusSequence(http.StatusServiceUnavailable))
+// Cancelling the context flushes once, retrying only within the request timeout.
+func TestEventProcessorFinalFlush(t *testing.T) {
+	server := newEventsServer(t, nil)
 	ctx, cancel := context.WithCancel(t.Context())
-	cfg := testEventsConfig(server.URL, 100, 0)
-	cfg.timeout = 100 * time.Millisecond
-	cfg.retryBackoff = time.Second
-	cfg.jitter = func(d time.Duration) time.Duration { return d }
-	p := newTestEventProcessorWith(ctx, cfg)
-	p.TrackEvent("a", nil)
-
-	// When
-	start := time.Now()
+	p := newProc(ctx, server.URL, 100, time.Hour)
+	track(p, "purchase")
+	assert.Zero(t, server.count())
 	cancel()
-
-	// Then: the final flush gives up instead of sleeping, and counts the lost event
-	select {
-	case <-p.stopped:
-	case <-time.After(time.Second):
-		t.Fatal("final flush did not finish")
+	waitStopped(t, p)
+	assert.Equal(t, 1, server.count())
+	assert.Len(t, server.events(t), 1, "sends the buffer and stops")
+	server = newEventsServer(t, slow(30*time.Millisecond, http.StatusAccepted))
+	ctx, cancel = context.WithCancel(t.Context())
+	p = NewEventProcessor(ctx, resty.New(), server.URL+"/", 1, 0, time.Second, createLogger())
+	track(p, "a")
+	eventually(t, func() bool { return server.count() == 1 })
+	cancel()
+	waitStopped(t, p)
+	assert.Equal(t, 1, server.done(), "does not abort a batch in flight")
+	for _, tt := range []struct {
+		name             string
+		respond          responder
+		timeout, backoff time.Duration
+		wantRequests     int
+		wantDropped      int64
+	}{
+		{"does not sleep past the timeout", statuses(503), 100 * time.Millisecond, time.Second, 1, 1},
+		{"makes the retries that fit, then drops", statuses(503), 500 * time.Millisecond, time.Millisecond, 3, 1},
+		{"delivers on a retry that succeeds", statuses(503, http.StatusAccepted), 500 * time.Millisecond, time.Millisecond, 2, 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newEventsServer(t, tt.respond)
+			ctx, cancel := context.WithCancel(t.Context())
+			p := newProc(ctx, server.URL, 100, 0, withTimeout(tt.timeout), withBackoff(tt.backoff), noJitter)
+			track(p, "a")
+			start := time.Now()
+			cancel()
+			waitStopped(t, p)
+			assert.Less(t, time.Since(start), 5*tt.timeout)
+			assert.Equal(t, tt.wantRequests, server.count())
+			assert.Empty(t, bufferedEvents(p))
+			assert.Equal(t, tt.wantDropped, p.DroppedEvents())
+		})
 	}
-	assert.Less(t, time.Since(start), 500*time.Millisecond)
-	assert.Equal(t, 1, server.requestCount())
-	assert.Empty(t, bufferedEvents(p))
-	assert.Equal(t, int64(1), p.DroppedEvents())
 }
 
-func TestEventProcessorFinalFlushRetriesWithinTimeout(t *testing.T) {
-	t.Run("retries that fit are made, then the batch is dropped", func(t *testing.T) {
-		// Given
-		server := newEventsServer(t, statusSequence(http.StatusServiceUnavailable))
+// Shutdown cuts every batch in flight at one request timeout and counts what it drops.
+func TestEventProcessorShutdown(t *testing.T) {
+	const timeout = 100 * time.Millisecond
+	stalled := func(t *testing.T, maxBufferSize int, opts ...option) (*EventProcessor, *eventsServer, context.CancelFunc) {
+		server := newEventsServer(t, stall)
 		ctx, cancel := context.WithCancel(t.Context())
-		cfg := testEventsConfig(server.URL, 100, 0)
-		cfg.timeout = 500 * time.Millisecond
-		cfg.retryBackoff = time.Millisecond
-		p := newTestEventProcessorWith(ctx, cfg)
-		p.TrackEvent("a", nil)
-
-		// When
+		return newProc(ctx, server.URL, maxBufferSize, 0, append([]option{withTimeout(timeout), withBackoff(time.Millisecond)}, opts...)...), server, cancel
+	}
+	t.Run("cuts a buffer-full batch", func(t *testing.T) {
+		p, server, cancel := stalled(t, 5)
+		track(p, "e0", "e1", "e2", "e3", "e4")
+		eventually(t, func() bool { return server.count() == 1 })
+		start := time.Now()
 		cancel()
-
-		// Then: the full ladder of three attempts, then dropped and counted
-		<-p.stopped
-		assert.Equal(t, 3, server.requestCount())
+		waitStopped(t, p)
+		assert.Less(t, time.Since(start), timeout+150*time.Millisecond)
+		assert.Equal(t, int64(5), p.DroppedEvents())
+		assert.Zero(t, inFlightCount(p))
 		assert.Empty(t, bufferedEvents(p))
-		assert.Equal(t, int64(1), p.DroppedEvents())
+		time.Sleep(50 * time.Millisecond)
+		sent := server.count()
+		time.Sleep(3 * timeout)
+		assert.Equal(t, sent, server.count(), "no attempt starts after exit; one aborted at the deadline may land just after")
+		track(p, "late")
+		assert.Empty(t, bufferedEvents(p))
+		assert.Equal(t, int64(6), p.DroppedEvents(), "tracking after shutdown is counted")
+		eventually(t, func() bool { return len(processorGoroutines()) == 0 })
+		eventually(t, func() bool { return server.active() == 0 })
 	})
-
-	t.Run("a retry that succeeds delivers the batch", func(t *testing.T) {
-		// Given
-		server := newEventsServer(t, statusSequence(http.StatusServiceUnavailable, http.StatusAccepted))
-		ctx, cancel := context.WithCancel(t.Context())
-		cfg := testEventsConfig(server.URL, 100, 0)
-		cfg.timeout = 500 * time.Millisecond
-		cfg.retryBackoff = time.Millisecond
-		p := newTestEventProcessorWith(ctx, cfg)
-		p.TrackEvent("a", nil)
-
-		// When
+	t.Run("drops the final batch cut at the deadline", func(t *testing.T) {
+		p, _, cancel := stalled(t, 3)
+		track(p, "a", "b", "c", "d", "e")
+		eventually(t, func() bool { return inFlightCount(p) == 1 })
 		cancel()
-
-		// Then
-		<-p.stopped
-		assert.Equal(t, 2, server.requestCount())
-		assert.Zero(t, p.DroppedEvents())
+		waitStopped(t, p)
+		assert.Equal(t, int64(5), p.DroppedEvents())
+		assert.Zero(t, inFlightCount(p))
+		assert.Empty(t, bufferedEvents(p))
+	})
+	t.Run("cuts an explicit Flush on a context that never ends", func(t *testing.T) {
+		p, server, cancel := stalled(t, 100, withBackoff(timeout), noJitter)
+		track(p, "a")
+		flushed := goFlush(context.Background(), p)
+		eventually(t, func() bool { return server.active() == 1 })
+		start := time.Now()
+		cancel()
+		waitStopped(t, p)
+		assert.Less(t, time.Since(start), timeout+80*time.Millisecond)
+		assert.Error(t, receive(t, flushed, "explicit Flush kept running after shutdown"))
+		assert.Less(t, time.Since(start), timeout+150*time.Millisecond, "unbounded, the retries would take about 600ms")
+		assert.Equal(t, int64(1), p.DroppedEvents())
+		assert.Empty(t, bufferedEvents(p))
+		assert.Zero(t, inFlightCount(p))
+		eventually(t, func() bool { return server.active() == 0 })
 	})
 }
 
-func TestSleepContextFailsWhenDeadlineTooClose(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Millisecond)
+func TestEventsContextHelpers(t *testing.T) {
+	p := newProc(t.Context(), noServer, 100, 0)
+	caller, cancelCaller := context.WithTimeout(t.Context(), time.Minute)
+	defer cancelCaller()
+	merged, cancel := p.flushContext(caller)
 	defer cancel()
+	want, _ := caller.Deadline()
+	got, ok := merged.Deadline()
+	require.True(t, ok)
+	assert.Equal(t, want, got, "flushContext keeps the caller's deadline")
+	cancelCaller()
+	receive(t, merged.Done(), "cancelling the caller's context did not end the flush context")
+	ctx, cancelShort := context.WithTimeout(t.Context(), 10*time.Millisecond)
+	defer cancelShort()
 	start := time.Now()
 	assert.ErrorIs(t, sleepContext(ctx, time.Second), context.DeadlineExceeded)
-	assert.Less(t, time.Since(start), 5*time.Millisecond)
+	assert.Less(t, time.Since(start), 5*time.Millisecond, "sleepContext fails at once when the deadline is too close")
 	assert.NoError(t, sleepContext(t.Context(), time.Millisecond))
 }
 
-func TestEventProcessorTickerFlush(t *testing.T) {
-	// Given
-	server := newEventsServer(t, nil)
-	p := newTestEventProcessor(t.Context(), server.URL+"/", 100, 20*time.Millisecond)
-
-	// When
-	p.TrackEvent("purchase", nil)
-
-	// Then
-	assert.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, 5*time.Millisecond)
-}
-
-func TestEventProcessorCancelFlushesAndStops(t *testing.T) {
-	// Given
-	server := newEventsServer(t, nil)
-	ctx, cancel := context.WithCancel(t.Context())
-	p := newTestEventProcessor(ctx, server.URL+"/", 100, time.Hour)
-	p.TrackEvent("purchase", nil)
-	assert.Equal(t, 0, server.requestCount())
-
-	// When
-	cancel()
-
-	// Then
-	select {
-	case <-p.stopped:
-	case <-time.After(time.Second):
-		t.Fatal("event processor goroutine did not exit")
-	}
-	assert.Equal(t, 1, server.requestCount())
-	assert.Len(t, server.events(t), 1)
-}
-
-func TestEventProcessorCancelWaitsForInFlightBatch(t *testing.T) {
-	// Given: a batch started by the buffer-full trigger on a slow server
-	server := newEventsServer(t, func([]byte) int {
-		time.Sleep(30 * time.Millisecond)
-		return http.StatusAccepted
-	})
-	ctx, cancel := context.WithCancel(t.Context())
-	client := resty.New()
-	p := NewEventProcessor(ctx, client, server.URL+"/", 1, 0, time.Second, createLogger())
-	p.TrackEvent("a", nil)
-	require.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, time.Millisecond)
-
-	// When
-	cancel()
-
-	// Then: the in-flight batch is not aborted by the cancellation
-	<-p.stopped
-	assert.Equal(t, 1, server.finishedCount())
-}
-
-func TestEventProcessorZeroFlushIntervalDisablesTicker(t *testing.T) {
-	// Given
-	server := newEventsServer(t, nil)
-	p := newTestEventProcessor(t.Context(), server.URL+"/", 2, 0)
-
-	// When
-	p.TrackEvent("a", nil)
-	time.Sleep(50 * time.Millisecond)
-
-	// Then
-	assert.Equal(t, 0, server.requestCount())
-
-	// When
-	p.TrackEvent("b", nil)
-
-	// Then
-	assert.Eventually(t, func() bool { return server.requestCount() == 1 }, time.Second, 5*time.Millisecond)
-}
-
-// panickingHandler is a slog.Handler that panics on every record.
-type panickingHandler struct{}
-
-func (panickingHandler) Enabled(context.Context, slog.Level) bool { return true }
-func (panickingHandler) Handle(context.Context, slog.Record) error {
-	panic(errors.New("logger failure"))
-}
-func (h panickingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
-func (h panickingHandler) WithGroup(string) slog.Handler      { return h }
-
-func TestEventProcessorNeverPanicsWhenLoggerPanics(t *testing.T) {
-	// Given
-	server := newEventsServer(t, func([]byte) int { return http.StatusBadRequest })
-	client := resty.New()
-	p := newEventProcessor(t.Context(), client, eventProcessorConfig{
-		baseURL: server.URL, maxBufferSize: 100, timeout: testEventsTimeout, retryBackoff: testEventsRetryBackoff,
-		log: slog.New(panickingHandler{}),
-	})
-
-	// When, Then
+// A panicking log handler never reaches the caller or kills the worker.
+func TestEventProcessorPanickingLogger(t *testing.T) {
+	server := newEventsServer(t, statuses(http.StatusBadRequest))
+	p := newProc(t.Context(), server.URL, 100, 0, withLogs(panickingHandler{}))
 	assert.NotPanics(t, func() {
 		p.TrackExposureEvent("f", "u", "v", nil, nil)
 		p.TrackExposureEvent("f", "u", "v", nil, nil)
 		p.TrackExposureEvent("f", "", "v", nil, nil)
 		assert.Error(t, p.Flush(t.Context()))
 	})
-	assert.Equal(t, 1, server.requestCount())
-}
-
-func TestEventProcessorWorkerSurvivesPanickingLogger(t *testing.T) {
-	// Given: batches sent by the worker are rejected, which is logged
-	server := newEventsServer(t, func([]byte) int { return http.StatusBadRequest })
-	client := resty.New()
-	p := newEventProcessor(t.Context(), client, eventProcessorConfig{
-		baseURL: server.URL, maxBufferSize: 1, timeout: testEventsTimeout, retryBackoff: testEventsRetryBackoff,
-		log: slog.New(panickingHandler{}),
-	})
-
-	// When: the next event is tracked once the first send has finished
-	p.TrackEvent("a", nil)
-	require.Eventually(t, func() bool { return server.finishedCount() == 1 && inFlightCount(p) == 0 }, time.Second, time.Millisecond)
-	p.TrackEvent("b", nil)
-
-	// Then: the process is still alive and the worker still sends
-	assert.Eventually(t, func() bool { return server.finishedCount() == 2 }, time.Second, time.Millisecond)
+	assert.Equal(t, 1, server.count())
+	server = newEventsServer(t, statuses(http.StatusBadRequest))
+	p = newProc(t.Context(), server.URL, 1, 0, withLogs(panickingHandler{}))
+	track(p, "a")
+	eventually(t, func() bool { return server.done() == 1 && inFlightCount(p) == 0 })
+	track(p, "b")
+	eventually(t, func() bool { return server.done() == 2 })
 	assert.NoError(t, p.Flush(t.Context()))
-}
-
-func TestNewEventProcessorRetryBackoffDefault(t *testing.T) {
-	p := NewEventProcessor(t.Context(), resty.New(), "http://localhost:1/", 100, 0, 50*time.Millisecond, createLogger())
-	assert.Equal(t, time.Second, p.cfg.retryBackoff)
-	assert.Equal(t, time.Second, DefaultEventsRetryBackoff)
-}
-
-func TestEventProcessorRetryBackoffIsCapped(t *testing.T) {
-	// Given: a backoff that doubles past the 10 second cap
-	server := newEventsServer(t, statusSequence(http.StatusServiceUnavailable))
-	var mu sync.Mutex
-	var bases []time.Duration
-	cfg := testEventsConfig(server.URL, 100, 0)
-	cfg.retryBackoff = 8 * time.Second
-	cfg.jitter = func(d time.Duration) time.Duration {
-		mu.Lock()
-		defer mu.Unlock()
-		bases = append(bases, d)
-		return d
-	}
-	cfg.sleep = func(context.Context, time.Duration) error { return nil }
-	p := newTestEventProcessorWith(t.Context(), cfg)
-	p.TrackEvent("purchase", nil)
-
-	// When
-	require.Error(t, p.Flush(t.Context()))
-
-	// Then
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, []time.Duration{8 * time.Second, 10 * time.Second}, bases)
-}
-
-func TestEventProcessorAttemptTimeout(t *testing.T) {
-	// Given: a server slower than the per-attempt timeout
-	release := make(chan struct{})
-	server := newEventsServer(t, func([]byte) int {
-		<-release
-		return http.StatusAccepted
-	})
-	defer close(release)
-	cfg := testEventsConfig(server.URL, 100, 0)
-	cfg.timeout = 30 * time.Millisecond
-	p := newTestEventProcessorWith(t.Context(), cfg)
-	p.TrackEvent("a", nil)
-
-	// When
-	start := time.Now()
-	err := p.Flush(t.Context())
-
-	// Then: every attempt times out and the batch is kept for the next flush
-	assert.Error(t, err)
-	assert.Less(t, time.Since(start), 500*time.Millisecond)
-	assert.Equal(t, 3, server.requestCount())
-	assert.Len(t, bufferedEvents(p), 1)
-}
-
-func TestNewEventProcessorAddsTrailingSlash(t *testing.T) {
-	// Given
-	server := newEventsServer(t, nil)
-	p := newTestEventProcessor(t.Context(), server.URL, 100, 0)
-	p.TrackEvent("a", nil)
-
-	// When
-	require.NoError(t, p.Flush(t.Context()))
-
-	// Then
-	path, _ := server.request(0)
-	assert.Equal(t, "/v1/events", path)
 }
