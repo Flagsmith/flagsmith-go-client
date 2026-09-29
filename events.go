@@ -255,7 +255,8 @@ func (p *EventProcessor) TrackExposureEvent(featureName string, identifier strin
 // attempted.
 //
 // The returned error is the outcome of the batch sent by this call, or ctx's error if ctx
-// ends while waiting. Failures of other batches are logged, not returned. Flush never
+// ends while waiting. Failures of other batches are logged, not returned. Shutdown cuts
+// the batch at its deadline like any other; it is then dropped and counted. Flush never
 // panics.
 func (p *EventProcessor) Flush(ctx context.Context) error {
 	return p.flush(ctx, false)
@@ -285,7 +286,13 @@ func (p *EventProcessor) flush(ctx context.Context, final bool) (err error) {
 	p.mu.Unlock()
 	batch, waiting := p.takeBatch(true)
 	if batch != nil {
-		err = p.post(ctx, batch, final)
+		sendCtx := ctx
+		if !final {
+			var cancel context.CancelFunc
+			sendCtx, cancel = p.flushContext(ctx)
+			defer cancel()
+		}
+		err = p.post(sendCtx, batch, final)
 	}
 	for _, other := range waiting {
 		select {
@@ -295,6 +302,21 @@ func (p *EventProcessor) flush(ctx context.Context, final bool) (err error) {
 		}
 	}
 	return err
+}
+
+// flushContext returns the context an explicit Flush sends its batch on. It ends when the
+// caller's ctx ends, keeping its deadline, and also when shutdown cuts in-flight batches,
+// so a Flush on a context that never ends cannot keep retrying past shutdown.
+func (p *EventProcessor) flushContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	merged, cancel := context.WithCancel(p.sendCtx)
+	if deadline, ok := ctx.Deadline(); ok {
+		var cancelDeadline context.CancelFunc
+		merged, cancelDeadline = context.WithDeadline(merged, deadline)
+		prev := cancel
+		cancel = func() { cancelDeadline(); prev() }
+	}
+	stop := context.AfterFunc(ctx, cancel)
+	return merged, func() { stop(); cancel() }
 }
 
 func (p *EventProcessor) start(ctx context.Context) {
@@ -345,20 +367,11 @@ func (p *EventProcessor) shutdown(ctx context.Context) {
 		p.warn("final events flush failed", "error", err)
 	}
 
-	// Cut whatever automatic batch is still retrying, and wait for it to give up, which is
-	// immediate once its context is cancelled. A batch started by an explicit Flush runs on
-	// its caller's context: it is only waited for until the same deadline.
+	// Cut whatever batch is still retrying, automatic or from an explicit Flush, and wait
+	// for it to give up, which is immediate once its context is cancelled.
 	p.cancelSend()
 	for _, b := range p.inFlightBatches() {
-		if b.auto {
-			<-b.done
-			continue
-		}
-		select {
-		case <-b.done:
-		case <-final.Done():
-			p.warn("events batch from an explicit flush still in flight after shutdown")
-		}
+		<-b.done
 	}
 
 	p.mu.Lock()
@@ -582,6 +595,12 @@ func (p *EventProcessor) send(ctx context.Context, events []event, final bool) e
 		return p.cfg.jitter(min(d, maxEventsRetryBackoff))
 	})
 	for attempt := 1; ; attempt++ {
+		if p.isDisabled() {
+			// A 401 or 403 on another batch stopped the processor: the key will not be
+			// accepted, so this batch is not sent.
+			p.drop(events)
+			return errEventsDisabled
+		}
 		var outcome sendOutcome
 		outcome, err = p.attempt(ctx, payload, events)
 		switch outcome {
@@ -597,6 +616,10 @@ func (p *EventProcessor) send(ctx context.Context, events []event, final bool) e
 		}
 		if attempt == maxEventsAttempts || ctx.Err() != nil {
 			break
+		}
+		if p.isDisabled() {
+			p.drop(events)
+			return errEventsDisabled
 		}
 		if p.cfg.sleep(ctx, b.next()) != nil {
 			break
@@ -704,10 +727,6 @@ func (p *EventProcessor) attempt(ctx context.Context, payload []byte, events []e
 	return outcomeRejected, apiErr
 }
 
-// maxLoggedRejectionError is the most characters of a per-event rejection error that are
-// logged.
-const maxLoggedRejectionError = 200
-
 // logRejected logs every event the events API accepted the request for but rejected on
 // its own. Those events are never sent again.
 func (p *EventProcessor) logRejected(respBody []byte, events []event) {
@@ -725,16 +744,12 @@ func (p *EventProcessor) logRejected(respBody []byte, events []event) {
 			continue
 		}
 		counted[r.Index] = struct{}{}
-		e := events[r.Index]
-		// Identifiers, traits and anything but a plain error message are never logged.
-		args := []any{"index", r.Index, "event", e.Event, "feature", deref(e.FeatureName)}
-		if msg, ok := r.Error.(string); ok {
-			if runes := []rune(msg); len(runes) > maxLoggedRejectionError {
-				msg = string(runes[:maxLoggedRejectionError])
-			}
-			args = append(args, "error", msg)
-		}
-		p.warn("events API rejected event", args...)
+		// The rejection's error is response content, and may echo the event, so it is
+		// never logged.
+		p.warn("events API rejected event", "index", r.Index)
+	}
+	if len(counted) > 0 {
+		p.warn("events API rejected events in an accepted batch; dropping them", "count", len(counted))
 	}
 	p.dropped.Add(int64(len(counted)))
 }
@@ -773,6 +788,16 @@ func (p *EventProcessor) requeueLocked(events []event) (kept bool, overflow int)
 	}
 	p.dropOldestLocked(overflow)
 	return true, overflow
+}
+
+// errEventsDisabled is returned for a batch not sent because a 401 or 403 stopped the
+// processor.
+var errEventsDisabled = &FlagsmithAPIError{Msg: "flagsmith: events API rejected the environment key; event tracking is disabled"}
+
+func (p *EventProcessor) isDisabled() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.disabled
 }
 
 func (p *EventProcessor) clearSeen() {

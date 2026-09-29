@@ -58,9 +58,9 @@ Events are sent in batches every 10 seconds, or as soon as 1000 are buffered. Fa
 - Any other error status, including 500, drops the batch without a retry.
 - A 401 or 403 means the environment key was rejected. Event tracking stops, the buffer is dropped, and one warning is logged. Later tracking calls do nothing, and are counted as dropped, until you create a new client. Flags are still evaluated as normal.
 - Only one scheduled or buffer-full send is in flight at a time. The buffer never holds more than the maximum buffer size. While a send is pending, or the events API is unreachable, the oldest events are dropped first.
-- When the events API accepts a batch but rejects some of its events, each rejection is logged as a warning. Rejected events are not sent again.
+- When the events API accepts a batch but rejects some of its events, each rejection is logged as a warning, by its position in the batch only. Rejected events are not sent again.
 - Events whose traits or metadata cannot be encoded as JSON, such as channels or infinite numbers, are dropped. The rest of the batch is still sent.
-- Logs never include identifiers, trait values or response content. When a batch is rejected, only its status and the size of the response body are logged.
+- Logs never include identifiers, trait values or response content.
 - Equal exposures are sent once. They can be sent again after the events API returns a success response, including a partial one.
 
 `DroppedEvents` returns how many events have been lost this way, so you can monitor it. The count only ever goes up.
@@ -80,7 +80,7 @@ Events cannot be used with `WithOfflineMode`.
 
 ### Shutdown
 
-The client has no `Close` method. Cancelling the context passed to `WithEvents` is the shutdown flush. It sends whatever is still buffered, then stops the background goroutine. That final send retries with backoff, but only while the retries fit within the request timeout. The same deadline also cuts sends that were already in progress. Anything that still fails, and anything left in the buffer, is dropped and counted by `DroppedEvents`. Events tracked after shutdown are dropped and counted too.
+The client has no `Close` method. Cancelling the context passed to `WithEvents` is the shutdown flush. It sends whatever is still buffered, then stops the background goroutine. That final send retries with backoff, but only while the retries fit within the request timeout. The same deadline also cuts sends that were already in progress, including a `FlushEvents` call. Anything that still fails, and anything left in the buffer, is dropped and counted by `DroppedEvents`. Events tracked after shutdown are dropped and counted too.
 
 When you need a guarantee, call `FlushEvents` with a deadline before the process exits. This matters most for short-lived processes such as CLI tools, jobs and serverless functions, which can exit before the next scheduled send.
 

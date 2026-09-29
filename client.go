@@ -325,8 +325,9 @@ func (c *Client) TrackExposureEvent(featureName string, identifier string, value
 // for. A retry whose wait would pass ctx's deadline is not attempted.
 //
 // It returns the error of the batch it sent, if any; a batch put back in the buffer is
-// sent again on the next flush. Call it with a deadline before a short-lived process
-// exits. It never panics.
+// sent again on the next flush. Shutdown of the WithEvents context also cuts its batch at
+// the shutdown deadline, whatever ctx is; the batch is then dropped and counted. Call it
+// with a deadline before a short-lived process exits. It never panics.
 //
 // Returns nil immediately when events are not enabled.
 func (c *Client) FlushEvents(ctx context.Context) error {
