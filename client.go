@@ -317,22 +317,18 @@ func (c *Client) DroppedEvents() int64 {
 	return c.eventProcessor.DroppedEvents()
 }
 
-// traitValues flattens the identity's non-transient traits to their values.
+// traitValues flattens the identity's traits, transient ones included, to their values.
 func traitValues(ic *IdentityEvaluationContext) map[string]interface{} {
 	if ic == nil || len(ic.Traits) == 0 {
 		return nil
 	}
 	values := make(map[string]interface{}, len(ic.Traits))
 	for key, trait := range ic.Traits {
-		switch {
-		case trait == nil:
+		if trait == nil {
 			values[key] = nil
-		case trait.Transient == nil || !*trait.Transient:
-			values[key] = trait.Value
+			continue
 		}
-	}
-	if len(values) == 0 {
-		return nil
+		values[key] = trait.Value
 	}
 	return values
 }

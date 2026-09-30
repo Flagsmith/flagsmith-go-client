@@ -1678,7 +1678,7 @@ func TestGetExperimentFlagRecordsExposureWhenEnrolled(t *testing.T) {
 	assert.NotContains(t, metadata, "experiment_name")
 }
 
-func TestGetExperimentFlagDropsTransientTraits(t *testing.T) {
+func TestGetExperimentFlagSendsTransientTraits(t *testing.T) {
 	// Given
 	events := &fixtures.EventsAPIHandler{}
 	client := newExperimentClient(t, newExperimentServer(t, events))
@@ -1704,8 +1704,8 @@ func TestGetExperimentFlagDropsTransientTraits(t *testing.T) {
 	// Then
 	sent := events.Events()
 	require.Len(t, sent, 2)
-	assert.Equal(t, map[string]interface{}{"plan": "premium"}, sent[0]["traits"])
-	assert.Nil(t, sent[1]["traits"])
+	assert.Equal(t, map[string]interface{}{"plan": "premium", "session": "secret"}, sent[0]["traits"])
+	assert.Equal(t, map[string]interface{}{"session": "secret"}, sent[1]["traits"])
 }
 
 func TestGetExperimentFlagWithoutTraitsSendsNullTraits(t *testing.T) {

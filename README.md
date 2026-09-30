@@ -43,7 +43,7 @@ Events are sent every 10 seconds (`WithEventsFlushInterval`) or when 1000 are bu
 - Events a 202 lists as rejected are logged by index and not resent.
 - Equal exposures are sent once until the batch carrying them succeeds.
 - Traits and metadata are captured when tracked. Values that cannot be encoded as JSON drop the event.
-- `GetExperimentFlag` sends the identity's traits except transient ones. A blank identifier is sent as none.
+- `GetExperimentFlag` sends the identity's traits, transient ones included. A blank identifier is sent as none.
 - The events request carries the SDK's own environment key and user agent. `WithCustomHeaders` is not applied to it.
 - Logs never include identifiers, trait values or response content.
 
