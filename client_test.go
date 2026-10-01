@@ -17,6 +17,7 @@ import (
 	"github.com/Flagsmith/flagsmith-go-client/v5/fixtures"
 	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func getTestHttpServer(t *testing.T, expectedPath string, expectedEnvKey string, expectedRequestBody *string, responseFixture string) *httptest.Server {
@@ -1481,4 +1482,551 @@ func TestUpdateEnvironmentDoesNotLogWarningWhenWithinRefreshInterval(t *testing.
 	logMu.Unlock()
 
 	assert.NotContains(t, logStr, "fetching environment took longer")
+}
+
+// newExperimentServer serves the experiment identity fixture on the flags API and records
+// events on the events API.
+func newExperimentServer(t *testing.T, events *fixtures.EventsAPIHandler) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/identities/", func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(rw, fixtures.IdentityResponseJsonWithExperiment)
+	})
+	mux.HandleFunc("/api/v1/environment-document/", fixtures.EnvironmentDocumentHandler)
+	mux.Handle("/v1/events", events)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server
+}
+
+func newExperimentClient(t *testing.T, server *httptest.Server, opts ...flagsmith.Option) *flagsmith.Client {
+	t.Helper()
+	opts = append([]flagsmith.Option{
+		flagsmith.WithBaseURL(server.URL + "/api/v1/"),
+		flagsmith.WithEvents(t.Context()),
+		flagsmith.WithEventsBaseURL(server.URL + "/"),
+		flagsmith.WithEventsFlushInterval(0),
+	}, opts...)
+	return flagsmith.NewClient(fixtures.EnvironmentAPIKey, opts...)
+}
+
+func TestClientPanicsIfEventsWithOfflineMode(t *testing.T) {
+	// Given
+	offlineHandler, err := flagsmith.NewLocalFileHandler("./fixtures/environment.json")
+	require.NoError(t, err)
+
+	// When, Then
+	assert.PanicsWithValue(t, "events cannot be used in offline mode.", func() {
+		_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+			flagsmith.WithOfflineHandler(offlineHandler),
+			flagsmith.WithOfflineMode(),
+			flagsmith.WithEvents(t.Context()),
+		)
+	})
+}
+
+func TestClientPanicsIfEventsConfigInvalid(t *testing.T) {
+	const msg = "events buffer size must be positive and flush interval must not be negative."
+	assert.PanicsWithValue(t, msg, func() {
+		_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithEvents(t.Context()), flagsmith.WithEventsMaxBufferSize(0))
+	})
+	assert.PanicsWithValue(t, msg, func() {
+		_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithEvents(t.Context()), flagsmith.WithEventsFlushInterval(-time.Second))
+	})
+	assert.PanicsWithValue(t, "events retry backoff must not be negative.", func() {
+		_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithEvents(t.Context()), flagsmith.WithEventsRetryBackoff(-time.Second))
+	})
+}
+
+func TestEventsOptionsWithoutWithEventsAreAccepted(t *testing.T) {
+	assert.NotPanics(t, func() {
+		_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+			flagsmith.WithEventsBaseURL("http://localhost"),
+			flagsmith.WithEventsMaxBufferSize(0),
+		)
+	})
+}
+
+func TestEventMethodsWithoutEventsEnabled(t *testing.T) {
+	// Given
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey)
+	var clientErr *flagsmith.FlagsmithClientError
+
+	// When, Then
+	_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, flagsmith.NewEvaluationContext("user", nil))
+	assert.ErrorAs(t, err, &clientErr)
+	assert.ErrorAs(t, client.TrackEvent("purchase", nil), &clientErr)
+	assert.ErrorAs(t, client.TrackExposureEvent("f", "user", "v", nil), &clientErr)
+	assert.NoError(t, client.FlushEvents(t.Context()))
+}
+
+func TestTrackEventRejectsReservedNames(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+
+	// When
+	err := client.TrackEvent(flagsmith.FlagExposureEvent, nil)
+
+	// Then
+	var clientErr *flagsmith.FlagsmithClientError
+	assert.ErrorAs(t, err, &clientErr)
+	assert.ErrorAs(t, client.TrackEvent("$custom", nil), &clientErr)
+	require.NoError(t, client.FlushEvents(t.Context()))
+	assert.Empty(t, events.Requests())
+}
+
+func TestTrackEventSendsEvent(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+
+	// When
+	err := client.TrackEvent("purchase", &flagsmith.EventOptions{
+		Identifier: "user-123",
+		Value:      49.0,
+		Traits:     map[string]interface{}{"plan": "premium"},
+		Metadata:   map[string]interface{}{"currency": "EUR"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, client.FlushEvents(t.Context()))
+
+	// Then
+	sent := events.Events()
+	require.Len(t, sent, 1)
+	assert.Equal(t, "purchase", sent[0]["event"])
+	assert.Nil(t, sent[0]["feature_name"])
+	assert.Equal(t, "user-123", sent[0]["identifier"])
+	assert.Equal(t, "49", sent[0]["value"])
+	assert.Equal(t, map[string]interface{}{"plan": "premium"}, sent[0]["traits"])
+	metadata := sent[0]["metadata"].(map[string]interface{})
+	assert.Equal(t, "EUR", metadata["currency"])
+	assert.NotEmpty(t, metadata["sdk_version"])
+
+	r := events.Requests()[0]
+	assert.Equal(t, fixtures.EnvironmentAPIKey, r.Header.Get("X-Environment-Key"))
+	assert.Regexp(t, `^flagsmith-go-sdk/`, r.Header.Get("Flagsmith-SDK-User-Agent"))
+	assert.Regexp(t, `^flagsmith-go-sdk/`, r.Header.Get("User-Agent"))
+	assert.Equal(t, "application/json", r.Header.Get("Accept"))
+	assert.Regexp(t, `^application/json`, r.Header.Get("Content-Type"))
+}
+
+func TestTrackExposureEventWithBlankIdentifierFails(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+
+	for _, identifier := range []string{"", "  "} {
+		// When
+		err := client.TrackExposureEvent("checkout_cta", identifier, "treatment", nil)
+
+		// Then
+		var clientErr *flagsmith.FlagsmithClientError
+		assert.ErrorAs(t, err, &clientErr, "%q", identifier)
+	}
+	require.NoError(t, client.FlushEvents(t.Context()))
+	assert.Empty(t, events.Requests())
+}
+
+func TestTrackExposureEventSendsExposure(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+
+	// When: Identifier and Value in opts are ignored in favour of the positional arguments
+	err := client.TrackExposureEvent("checkout_cta", "user-123", "treatment", &flagsmith.EventOptions{
+		Identifier: "ignored",
+		Value:      "ignored",
+		Traits:     map[string]interface{}{"plan": "premium"},
+		Metadata:   map[string]interface{}{"experiment_id": 7},
+	})
+	require.NoError(t, err)
+	require.NoError(t, client.FlushEvents(t.Context()))
+
+	// Then
+	sent := events.Events()
+	require.Len(t, sent, 1)
+	assert.Equal(t, flagsmith.FlagExposureEvent, sent[0]["event"])
+	assert.Equal(t, "checkout_cta", sent[0]["feature_name"])
+	assert.Equal(t, "user-123", sent[0]["identifier"])
+	assert.Equal(t, "treatment", sent[0]["value"])
+	assert.Equal(t, map[string]interface{}{"plan": "premium"}, sent[0]["traits"])
+	assert.Equal(t, 7.0, sent[0]["metadata"].(map[string]interface{})["experiment_id"])
+}
+
+func TestGetExperimentFlagRecordsExposureWhenEnrolled(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+	ec := flagsmith.NewEvaluationContext("user-123", map[string]interface{}{"plan": "premium"})
+
+	// When
+	flag, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, ec)
+
+	// Then
+	require.NoError(t, err)
+	assert.Equal(t, fixtures.ExperimentVariant, flag.Variant)
+	assert.Equal(t, &flagsmith.ExperimentMetadata{ID: fixtures.ExperimentID, Name: fixtures.ExperimentName, InExperiment: true}, flag.Experiment)
+	require.NoError(t, client.FlushEvents(t.Context()))
+	sent := events.Events()
+	require.Len(t, sent, 1)
+	assert.Equal(t, flagsmith.FlagExposureEvent, sent[0]["event"])
+	assert.Equal(t, fixtures.ExperimentFeatureName, sent[0]["feature_name"])
+	assert.Equal(t, "user-123", sent[0]["identifier"])
+	assert.Equal(t, fixtures.ExperimentVariant, sent[0]["value"])
+	assert.Equal(t, map[string]interface{}{"plan": "premium"}, sent[0]["traits"])
+	metadata := sent[0]["metadata"].(map[string]interface{})
+	assert.Equal(t, float64(fixtures.ExperimentID), metadata["experiment_id"])
+	assert.NotContains(t, metadata, "experiment_name")
+}
+
+func TestGetExperimentFlagSendsTransientTraits(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+	identifier := "user-123"
+	persistent, transient := flagsmith.NewTraitEvaluationContext("premium", false), flagsmith.NewTraitEvaluationContext("secret", true)
+	ec := flagsmith.EvaluationContext{Identity: &flagsmith.IdentityEvaluationContext{
+		Identifier: &identifier,
+		Traits:     map[string]*flagsmith.TraitEvaluationContext{"plan": &persistent, "session": &transient},
+	}}
+	onlyTransient := flagsmith.EvaluationContext{Identity: &flagsmith.IdentityEvaluationContext{
+		Identifier: &identifier,
+		Traits:     map[string]*flagsmith.TraitEvaluationContext{"session": &transient},
+	}}
+
+	// When
+	_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, ec)
+	require.NoError(t, err)
+	require.NoError(t, client.FlushEvents(t.Context()))
+	_, err = client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, onlyTransient)
+	require.NoError(t, err)
+	require.NoError(t, client.FlushEvents(t.Context()))
+
+	// Then
+	sent := events.Events()
+	require.Len(t, sent, 2)
+	assert.Equal(t, map[string]interface{}{"plan": "premium", "session": "secret"}, sent[0]["traits"])
+	assert.Equal(t, map[string]interface{}{"session": "secret"}, sent[1]["traits"])
+}
+
+func TestGetExperimentFlagWithoutTraitsSendsNullTraits(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+
+	// When
+	_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, flagsmith.NewEvaluationContext("user-123", nil))
+
+	// Then
+	require.NoError(t, err)
+	require.NoError(t, client.FlushEvents(t.Context()))
+	sent := events.Events()
+	require.Len(t, sent, 1)
+	assert.Nil(t, sent[0]["traits"])
+}
+
+func TestGetExperimentFlagSkipsExposure(t *testing.T) {
+	tests := []struct {
+		name        string
+		feature     string
+		opts        []flagsmith.Option
+		wantEnabled bool
+		wantDefault bool
+	}{
+		{name: "identity not enrolled", feature: fixtures.NotEnrolledFeatureName, wantEnabled: true},
+		{name: "no metadata", feature: fixtures.NoMetadataFeatureName, wantEnabled: true},
+		{name: "flag disabled", feature: fixtures.DisabledExperimentFeatureName},
+		{
+			name:    "missing feature served by the default handler",
+			feature: "missing",
+			opts: []flagsmith.Option{flagsmith.WithDefaultHandler(func(string) (flagsmith.Flag, error) {
+				return flagsmith.Flag{IsDefault: true, Enabled: true, Value: "default"}, nil
+			})},
+			wantEnabled: true,
+			wantDefault: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Given
+			events := &fixtures.EventsAPIHandler{}
+			client := newExperimentClient(t, newExperimentServer(t, events), tt.opts...)
+
+			// When
+			flag, err := client.GetExperimentFlag(t.Context(), tt.feature, flagsmith.NewEvaluationContext("user-123", nil))
+
+			// Then
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantEnabled, flag.Enabled)
+			assert.Equal(t, tt.wantDefault, flag.IsDefault)
+			require.NoError(t, client.FlushEvents(t.Context()))
+			assert.Empty(t, events.Requests())
+		})
+	}
+}
+
+func TestGetExperimentFlagMissingFeatureWithoutHandler(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+
+	// When
+	_, err := client.GetExperimentFlag(t.Context(), "missing", flagsmith.NewEvaluationContext("user-123", nil))
+
+	// Then
+	var clientErr *flagsmith.FlagsmithClientError
+	assert.ErrorAs(t, err, &clientErr)
+	require.NoError(t, client.FlushEvents(t.Context()))
+	assert.Empty(t, events.Requests())
+}
+
+func TestGetExperimentFlagRequiresIdentity(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+	empty, blank := "", "  "
+
+	for name, ec := range map[string]flagsmith.EvaluationContext{
+		"no identity":         {},
+		"no identifier":       {Identity: &flagsmith.IdentityEvaluationContext{}},
+		"empty identifier":    {Identity: &flagsmith.IdentityEvaluationContext{Identifier: &empty}},
+		"blank identifier":    {Identity: &flagsmith.IdentityEvaluationContext{Identifier: &blank}},
+		"environment context": {Environment: &flagsmith.EnvironmentEvaluationContext{APIKey: fixtures.EnvironmentAPIKey}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			// When
+			_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, ec)
+
+			// Then
+			var clientErr *flagsmith.FlagsmithClientError
+			assert.ErrorAs(t, err, &clientErr)
+		})
+	}
+}
+
+func TestGetExperimentFlagWithEnvironmentOverrideFails(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+	ec := flagsmith.NewEvaluationContext("user-123", nil)
+	ec.Environment = &flagsmith.EnvironmentEvaluationContext{APIKey: "other-environment"}
+
+	// When
+	flag, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, ec)
+
+	// Then
+	var clientErr *flagsmith.FlagsmithClientError
+	assert.ErrorAs(t, err, &clientErr)
+	assert.Equal(t, flagsmith.Flag{}, flag)
+	require.NoError(t, client.FlushEvents(t.Context()))
+	assert.Empty(t, events.Requests())
+}
+
+func TestGetExperimentFlagWithSameEnvironmentRecordsExposure(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+	ec := flagsmith.NewEvaluationContext("user-123", nil)
+	ec.Environment = &flagsmith.EnvironmentEvaluationContext{APIKey: fixtures.EnvironmentAPIKey}
+
+	// When
+	_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, ec)
+
+	// Then
+	require.NoError(t, err)
+	require.NoError(t, client.FlushEvents(t.Context()))
+	assert.Len(t, events.Events(), 1)
+}
+
+func TestGetExperimentFlagWithLocalEvaluationSkipsExposure(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	server := newExperimentServer(t, events)
+	client := newExperimentClient(t, server, flagsmith.WithLocalEvaluation(t.Context()))
+	require.NoError(t, client.UpdateEnvironment(t.Context()))
+
+	// When
+	flag, err := client.GetExperimentFlag(t.Context(), fixtures.Feature1Name, flagsmith.NewEvaluationContext("user-123", nil))
+
+	// Then
+	require.NoError(t, err)
+	assert.Equal(t, fixtures.Feature1Value, flag.Value)
+	assert.Nil(t, flag.Experiment)
+	require.NoError(t, client.FlushEvents(t.Context()))
+	assert.Empty(t, events.Requests())
+}
+
+func TestGetExperimentFlagTwoIdentities(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+
+	// When
+	for _, identifier := range []string{"user-1", "user-2"} {
+		_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, flagsmith.NewEvaluationContext(identifier, nil))
+		require.NoError(t, err)
+	}
+
+	// Then
+	require.NoError(t, client.FlushEvents(t.Context()))
+	sent := events.Events()
+	require.Len(t, sent, 2)
+	assert.Equal(t, "user-1", sent[0]["identifier"])
+	assert.Equal(t, "user-2", sent[1]["identifier"])
+}
+
+func TestGetExperimentFlagRequestError(t *testing.T) {
+	// Given: a flags API that fails
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	client := newExperimentClient(t, server)
+
+	// When
+	_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, flagsmith.NewEvaluationContext("user-123", nil))
+
+	// Then
+	assert.Error(t, err)
+}
+
+func TestEventsIgnoreClientRetries(t *testing.T) {
+	// Given: an events API that is always unavailable
+	events := &fixtures.EventsAPIHandler{Statuses: []int{503, 503, 503, 503, 503, 503, 503, 503, 503, 503}}
+	client := newExperimentClient(t, newExperimentServer(t, events),
+		flagsmith.WithRetries(3, time.Millisecond),
+		flagsmith.WithEventsRetryBackoff(time.Millisecond),
+	)
+	require.NoError(t, client.TrackEvent("purchase", nil))
+
+	// When
+	err := client.FlushEvents(t.Context())
+
+	// Then: three attempts in total, not multiplied by the client's retry count
+	assert.Error(t, err)
+	assert.Len(t, events.Requests(), 3)
+}
+
+func TestEventsRetryBackoff(t *testing.T) {
+	// Given: a zero backoff, where the 1s default would make the retries slow
+	events := &fixtures.EventsAPIHandler{Statuses: []int{503, 429}}
+	client := newExperimentClient(t, newExperimentServer(t, events),
+		flagsmith.WithEventsRetryBackoff(0),
+	)
+	require.NoError(t, client.TrackEvent("purchase", nil))
+
+	// When
+	start := time.Now()
+	err := client.FlushEvents(t.Context())
+
+	// Then: retried straight away, and delivered on the third attempt
+	assert.NoError(t, err)
+	assert.Less(t, time.Since(start), 500*time.Millisecond)
+	assert.Len(t, events.Requests(), 3)
+	assert.Zero(t, client.DroppedEvents())
+}
+
+func TestEventsDoNotSendCustomHeaders(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events),
+		flagsmith.WithCustomHeaders(map[string]string{
+			"X-Custom": "custom-value", "X-Environment-Key": "other-key", "User-Agent": "custom-agent",
+		}),
+	)
+	require.NoError(t, client.TrackEvent("purchase", nil))
+
+	// When
+	require.NoError(t, client.FlushEvents(t.Context()))
+
+	// Then
+	require.Len(t, events.Requests(), 1)
+	header := events.Requests()[0].Header
+	assert.Empty(t, header.Get("X-Custom"))
+	assert.Equal(t, fixtures.EnvironmentAPIKey, header.Get("X-Environment-Key"))
+	assert.Regexp(t, `^flagsmith-go-sdk/`, header.Get("User-Agent"))
+	assert.Regexp(t, `^flagsmith-go-sdk/`, header.Get("Flagsmith-SDK-User-Agent"))
+	assert.Equal(t, "application/json", header.Get("Accept"))
+}
+
+func TestWithEventsBaseURLWithoutTrailingSlash(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	server := newExperimentServer(t, events)
+	client := newExperimentClient(t, server, flagsmith.WithEventsBaseURL(server.URL))
+	require.NoError(t, client.TrackEvent("purchase", nil))
+
+	// When
+	require.NoError(t, client.FlushEvents(t.Context()))
+
+	// Then
+	require.Len(t, events.Requests(), 1)
+	assert.Equal(t, "/v1/events", events.Requests()[0].Path)
+}
+
+func TestEventsFlushOnMaxBufferSize(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events), flagsmith.WithEventsMaxBufferSize(2))
+
+	// When
+	require.NoError(t, client.TrackEvent("a", nil))
+	require.NoError(t, client.TrackEvent("b", nil))
+
+	// Then
+	assert.Eventually(t, func() bool { return len(events.Events()) == 2 }, time.Second, 5*time.Millisecond)
+}
+
+func TestEventsFlushedWhenContextCancelled(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	server := newExperimentServer(t, events)
+	ctx, cancel := context.WithCancel(t.Context())
+	client := newExperimentClient(t, server, flagsmith.WithEvents(ctx), flagsmith.WithEventsFlushInterval(time.Hour))
+	_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, flagsmith.NewEvaluationContext("user-123", nil))
+	require.NoError(t, err)
+
+	// When
+	cancel()
+
+	// Then
+	assert.Eventually(t, func() bool { return len(events.Events()) == 1 }, time.Second, 5*time.Millisecond)
+}
+
+func TestDroppedEventsExposedToHost(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{Statuses: []int{http.StatusBadRequest}}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+	require.NoError(t, client.TrackEvent("a", nil))
+	require.NoError(t, client.TrackEvent("b", nil))
+
+	// When
+	err := client.FlushEvents(t.Context())
+
+	// Then
+	assert.Error(t, err)
+	assert.Equal(t, int64(2), client.DroppedEvents())
+}
+
+func TestDroppedEventsWithoutEventsEnabled(t *testing.T) {
+	assert.Zero(t, flagsmith.NewClient(fixtures.EnvironmentAPIKey).DroppedEvents())
+}
+
+func TestEventsDisabledAfterUnauthorised(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{Statuses: []int{http.StatusUnauthorized}}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+	require.NoError(t, client.TrackEvent("a", nil))
+	require.Error(t, client.FlushEvents(t.Context()))
+
+	// When
+	_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, flagsmith.NewEvaluationContext("user-123", nil))
+	require.NoError(t, err)
+	require.NoError(t, client.TrackEvent("b", nil))
+
+	// Then: flags still work, but nothing more is sent
+	require.NoError(t, client.FlushEvents(t.Context()))
+	assert.Len(t, events.Requests(), 1)
 }

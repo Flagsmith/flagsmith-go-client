@@ -1,8 +1,11 @@
 package fixtures
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"sync"
 )
 
 const BaseURL = "http://localhost:8000/api/v1/"
@@ -268,6 +271,128 @@ const IdentityResponseJson = `
 }
 
 `
+
+// Features in IdentityResponseJsonWithExperiment.
+const (
+	ExperimentFeatureName         = "checkout_cta"
+	ExperimentFeatureID           = 10
+	ExperimentID                  = 42
+	ExperimentName                = "checkout_exp"
+	ExperimentVariant             = "treatment"
+	ExperimentReason              = "SPLIT; weight=70.0"
+	NotEnrolledFeatureName        = "not_enrolled"
+	NotEnrolledVariant            = "control"
+	NoMetadataFeatureName         = "no_metadata"
+	DisabledExperimentFeatureName = "disabled_experiment"
+)
+
+// IdentityResponseJsonWithExperiment carries one enrolled flag, one flag whose identity is
+// outside the rollout, one flag without metadata and one disabled flag that is enrolled.
+const IdentityResponseJsonWithExperiment = `
+{
+	"flags": [
+		{
+			"feature": {"id": 10, "name": "checkout_cta", "type": "MULTIVARIATE"},
+			"enabled": true,
+			"feature_state_value": "buy-now",
+			"variant": "treatment",
+			"reason": "SPLIT; weight=70.0",
+			"metadata": {
+				"experiment": {"id": 42, "name": "checkout_exp", "in_experiment": true},
+				"other": {"ignored": true}
+			}
+		},
+		{
+			"feature": {"id": 11, "name": "not_enrolled", "type": "MULTIVARIATE"},
+			"enabled": true,
+			"feature_state_value": "control-value",
+			"variant": "control",
+			"reason": "SPLIT; weight=30.0",
+			"metadata": {
+				"experiment": {"id": 43, "name": "other_exp", "in_experiment": false}
+			}
+		},
+		{
+			"feature": {"id": 12, "name": "no_metadata", "type": "STANDARD"},
+			"enabled": true,
+			"feature_state_value": "plain",
+			"variant": null,
+			"reason": "DEFAULT",
+			"metadata": null
+		},
+		{
+			"feature": {"id": 13, "name": "disabled_experiment", "type": "MULTIVARIATE"},
+			"enabled": false,
+			"feature_state_value": "off",
+			"variant": "treatment",
+			"reason": "SPLIT; weight=50.0",
+			"metadata": {
+				"experiment": {"id": 44, "name": "disabled_exp", "in_experiment": true}
+			}
+		}
+	],
+	"traits": []
+}
+`
+
+// EventsRequest is one request received by an EventsAPIHandler.
+type EventsRequest struct {
+	Path   string
+	Header http.Header
+	Body   []byte
+}
+
+// EventsAPIHandler is a fake events API. It records every request under a mutex and
+// answers with the next status in Statuses, or 202 once they are used up.
+type EventsAPIHandler struct {
+	Statuses []int
+
+	mu       sync.Mutex
+	requests []EventsRequest
+}
+
+func (h *EventsAPIHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	body, _ := io.ReadAll(req.Body)
+	h.mu.Lock()
+	h.requests = append(h.requests, EventsRequest{Path: req.URL.Path, Header: req.Header.Clone(), Body: body})
+	status := http.StatusAccepted
+	if len(h.Statuses) > 0 {
+		status = h.Statuses[0]
+		h.Statuses = h.Statuses[1:]
+	}
+	h.mu.Unlock()
+
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(status)
+	if status == http.StatusAccepted {
+		var payload struct {
+			Events []json.RawMessage `json:"events"`
+		}
+		_ = json.Unmarshal(body, &payload)
+		_, _ = fmt.Fprintf(rw, `{"accepted": %d, "rejected": []}`, len(payload.Events))
+	}
+}
+
+// Requests returns a copy of the requests received so far.
+func (h *EventsAPIHandler) Requests() []EventsRequest {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]EventsRequest(nil), h.requests...)
+}
+
+// Events returns every event received so far, decoded, in arrival order.
+func (h *EventsAPIHandler) Events() []map[string]interface{} {
+	var events []map[string]interface{}
+	for _, r := range h.Requests() {
+		var payload struct {
+			Events []map[string]interface{} `json:"events"`
+		}
+		if err := json.Unmarshal(r.Body, &payload); err == nil {
+			events = append(events, payload.Events...)
+		}
+	}
+	return events
+}
 
 // EnvironmentJsonPage2 contains only identity_overrides — the base environment fields
 // are irrelevant for subsequent pages since only IdentityOverrides are merged.

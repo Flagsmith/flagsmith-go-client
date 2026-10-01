@@ -37,6 +37,11 @@ var _ = []Option{
 	WithSlogLogger(nil),
 	WithRestyClient(nil),
 	WithHTTPClient(nil),
+	WithEvents(context.TODO()),
+	WithEventsBaseURL(""),
+	WithEventsFlushInterval(0),
+	WithEventsMaxBufferSize(0),
+	WithEventsRetryBackoff(0),
 }
 
 func WithBaseURL(url string) Option {
@@ -201,5 +206,50 @@ func WithRestyClient(restyClient *resty.Client) Option {
 		if restyClient != nil {
 			c.client = restyClient
 		}
+	}
+}
+
+// WithEvents enables experimentation events. Cancelling ctx performs the shutdown flush,
+// bounded by the request timeout. Not compatible with WithOfflineMode. See the README's
+// Experimentation section for delivery and failure handling.
+func WithEvents(ctx context.Context) Option {
+	return func(c *Client) {
+		c.config.enableEvents = true
+		c.ctxEvents = ctx
+	}
+}
+
+// WithEventsBaseURL sets the events API base URL. A trailing slash is added if missing.
+// Defaults to DefaultEventsBaseURL.
+func WithEventsBaseURL(url string) Option {
+	return func(c *Client) {
+		if !strings.HasSuffix(url, "/") {
+			url += "/"
+		}
+		c.config.eventsBaseURL = url
+	}
+}
+
+// WithEventsFlushInterval sets how often buffered events are sent; 0 disables the timer.
+// Defaults to DefaultEventsFlushInterval.
+func WithEventsFlushInterval(interval time.Duration) Option {
+	return func(c *Client) {
+		c.config.eventsFlushInterval = interval
+	}
+}
+
+// WithEventsMaxBufferSize sets the buffer size that triggers a send; beyond it the oldest
+// events are dropped. Defaults to DefaultEventsMaxBufferSize.
+func WithEventsMaxBufferSize(size int) Option {
+	return func(c *Client) {
+		c.config.eventsMaxBufferSize = size
+	}
+}
+
+// WithEventsRetryBackoff sets the backoff before the first retry of a failed batch. It
+// doubles, up to 10 seconds, with full jitter. Defaults to DefaultEventsRetryBackoff.
+func WithEventsRetryBackoff(backoff time.Duration) Option {
+	return func(c *Client) {
+		c.config.eventsRetryBackoff = &backoff
 	}
 }
