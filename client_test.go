@@ -1612,16 +1612,19 @@ func TestTrackEventSendsEvent(t *testing.T) {
 	assert.Regexp(t, `^application/json`, r.Header.Get("Content-Type"))
 }
 
-func TestTrackExposureEventWithEmptyIdentifierSendsNothing(t *testing.T) {
+func TestTrackExposureEventWithBlankIdentifierFails(t *testing.T) {
 	// Given
 	events := &fixtures.EventsAPIHandler{}
 	client := newExperimentClient(t, newExperimentServer(t, events))
 
-	// When
-	err := client.TrackExposureEvent("checkout_cta", "", "treatment", nil)
+	for _, identifier := range []string{"", "  "} {
+		// When
+		err := client.TrackExposureEvent("checkout_cta", identifier, "treatment", nil)
 
-	// Then
-	assert.NoError(t, err)
+		// Then
+		var clientErr *flagsmith.FlagsmithClientError
+		assert.ErrorAs(t, err, &clientErr, "%q", identifier)
+	}
 	require.NoError(t, client.FlushEvents(t.Context()))
 	assert.Empty(t, events.Requests())
 }
@@ -1783,12 +1786,13 @@ func TestGetExperimentFlagRequiresIdentity(t *testing.T) {
 	// Given
 	events := &fixtures.EventsAPIHandler{}
 	client := newExperimentClient(t, newExperimentServer(t, events))
-	empty := ""
+	empty, blank := "", "  "
 
 	for name, ec := range map[string]flagsmith.EvaluationContext{
 		"no identity":         {},
 		"no identifier":       {Identity: &flagsmith.IdentityEvaluationContext{}},
 		"empty identifier":    {Identity: &flagsmith.IdentityEvaluationContext{Identifier: &empty}},
+		"blank identifier":    {Identity: &flagsmith.IdentityEvaluationContext{Identifier: &blank}},
 		"environment context": {Environment: &flagsmith.EnvironmentEvaluationContext{APIKey: fixtures.EnvironmentAPIKey}},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -1802,7 +1806,7 @@ func TestGetExperimentFlagRequiresIdentity(t *testing.T) {
 	}
 }
 
-func TestGetExperimentFlagWithEnvironmentOverrideSkipsExposure(t *testing.T) {
+func TestGetExperimentFlagWithEnvironmentOverrideFails(t *testing.T) {
 	// Given
 	events := &fixtures.EventsAPIHandler{}
 	client := newExperimentClient(t, newExperimentServer(t, events))
@@ -1813,8 +1817,9 @@ func TestGetExperimentFlagWithEnvironmentOverrideSkipsExposure(t *testing.T) {
 	flag, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, ec)
 
 	// Then
-	require.NoError(t, err)
-	assert.Equal(t, fixtures.ExperimentVariant, flag.Variant)
+	var clientErr *flagsmith.FlagsmithClientError
+	assert.ErrorAs(t, err, &clientErr)
+	assert.Equal(t, flagsmith.Flag{}, flag)
 	require.NoError(t, client.FlushEvents(t.Context()))
 	assert.Empty(t, events.Requests())
 }

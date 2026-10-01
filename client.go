@@ -199,10 +199,9 @@ func (c *Client) newEventProcessor() *EventProcessor {
 		OnBeforeRequest(newRestyLogRequestMiddleware(log)).
 		OnAfterResponse(newRestyLogResponseMiddleware(log))
 	eventsClient.SetHeaders(map[string]string{
-		"Accept":                   "application/json",
-		"User-Agent":               getUserAgent(),
-		"Flagsmith-SDK-User-Agent": getUserAgent(),
-		EnvironmentKeyHeader:       c.apiKey,
+		"Accept":             "application/json",
+		"User-Agent":         getUserAgent(),
+		EnvironmentKeyHeader: c.apiKey,
 	})
 
 	timeout := httpClient.Timeout
@@ -225,13 +224,17 @@ func (c *Client) newEventProcessor() *EventProcessor {
 
 // GetExperimentFlag evaluates one flag for the identity in ec and records an exposure when
 // that identity is enrolled in a running experiment, which requires remote evaluation.
-// See the README's Experimentation section. Requires WithEvents and an identity in ec.
+// See the README's Experimentation section. Requires WithEvents and an identity in ec, and
+// returns an error if ec targets another environment.
 func (c *Client) GetExperimentFlag(ctx context.Context, featureName string, ec EvaluationContext) (Flag, error) {
 	if c.eventProcessor == nil {
 		return Flag{}, &FlagsmithClientError{msg: "flagsmith: events must be enabled (WithEvents) to use experiment flags"}
 	}
-	if ec.Identity == nil || ec.Identity.Identifier == nil || *ec.Identity.Identifier == "" {
+	if ec.Identity == nil || ec.Identity.Identifier == nil || strings.TrimSpace(*ec.Identity.Identifier) == "" {
 		return Flag{}, &FlagsmithClientError{msg: "flagsmith: GetExperimentFlag requires an identity in the evaluation context"}
+	}
+	if ec.Environment != nil && ec.Environment.APIKey != c.apiKey {
+		return Flag{}, &FlagsmithClientError{msg: "flagsmith: GetExperimentFlag cannot evaluate another environment; exposures are recorded for the client's environment key"}
 	}
 	identifier := *ec.Identity.Identifier
 
@@ -255,10 +258,6 @@ func (c *Client) GetExperimentFlag(ctx context.Context, featureName string, ec E
 		return skip("flag is disabled")
 	case flag.Experiment == nil || !flag.Experiment.InExperiment:
 		return skip("identity is not enrolled in an experiment")
-	case ec.Environment != nil && ec.Environment.APIKey != c.apiKey:
-		c.log.Warn("not recording exposure: flags were evaluated for a different environment than the events client",
-			"feature", featureName)
-		return flag, nil
 	}
 
 	c.eventProcessor.TrackExposureEvent(featureName, identifier, flag.Variant, traitValues(ec.Identity),
@@ -279,16 +278,15 @@ func (c *Client) TrackEvent(name string, opts *EventOptions) error {
 	return nil
 }
 
-// TrackExposureEvent buffers a $flag_exposure for a flag evaluated elsewhere. It is ignored
-// without an identifier, and reads only Traits and Metadata from opts, which may be nil.
+// TrackExposureEvent buffers a $flag_exposure for a flag evaluated elsewhere. It returns an
+// error without an identifier, and reads only Traits and Metadata from opts, which may be nil.
 // Requires WithEvents; see the README's Experimentation section.
 func (c *Client) TrackExposureEvent(featureName string, identifier string, value interface{}, opts *EventOptions) error {
 	if c.eventProcessor == nil {
 		return &FlagsmithClientError{msg: "flagsmith: events must be enabled (WithEvents) to track exposure events"}
 	}
 	if strings.TrimSpace(identifier) == "" {
-		c.log.Info("not sending exposure: an exposure requires an identifier", "feature", featureName)
-		return nil
+		return &FlagsmithClientError{msg: "flagsmith: TrackExposureEvent requires an identifier"}
 	}
 	var traits, metadata map[string]interface{}
 	if opts != nil {
