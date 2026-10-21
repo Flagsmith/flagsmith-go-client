@@ -1,5 +1,18 @@
 # Changelog
 
+## [5.3.1](https://github.com/Flagsmith/flagsmith-go-client/compare/v5.3.0...v5.3.1) (2026-10-21)
+
+
+### CI
+
+* Label Renovate's SDK spec bump PRs ([#236](https://github.com/Flagsmith/flagsmith-go-client/issues/236)) ([626676c](https://github.com/Flagsmith/flagsmith-go-client/commit/626676cee775405a4593ba0a42a222421deb9ba8))
+* Run the Flagsmith SDK behavioural spec ([#232](https://github.com/Flagsmith/flagsmith-go-client/issues/232)) ([5026d1a](https://github.com/Flagsmith/flagsmith-go-client/commit/5026d1aa6e89d25c555d054e0665fce5058f0994))
+
+
+### Tests
+
+* Assert the results of pending flushes when one batch fails ([#233](https://github.com/Flagsmith/flagsmith-go-client/issues/233)) ([4156489](https://github.com/Flagsmith/flagsmith-go-client/commit/415648983c35936a04e8b0d5ad0e9604705afdf8))
+
 ## [5.3.0](https://github.com/Flagsmith/flagsmith-go-client/compare/v5.2.0...v5.3.0) (2026-10-05)
 
 
