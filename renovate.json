@@ -4,6 +4,15 @@
     "ignorePresets": [":semanticPrefixFixDepsChoreOthers"],
     "semanticCommitType": "deps",
     "git-submodules": { "enabled": true },
+    "customManagers": [
+        {
+            "customType": "regex",
+            "managerFilePatterns": ["/^\\.github/workflows/sdk-spec\\.yml$/"],
+            "matchStrings": ["spec-ref: (?<currentValue>v[\\d.]+)"],
+            "depNameTemplate": "Flagsmith/sdk-spec",
+            "datasourceTemplate": "github-tags"
+        }
+    ],
     "packageRules": [
         {
             "matchUpdateTypes": [
@@ -26,6 +35,11 @@
         {
             "matchManagers": ["git-submodules"],
             "versioning": "semver-coerced"
+        },
+        {
+            "matchPackageNames": ["Flagsmith/sdk-spec"],
+            "groupName": "SDK spec",
+            "enabled": true
         }
     ]
 }
