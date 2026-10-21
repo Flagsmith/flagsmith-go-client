@@ -11,10 +11,12 @@ const circularDependencyReason = "ERROR; code=CIRCULAR_DEPENDENCY"
 
 // flagDependencyResolver resolves the flags read by segment conditions on `$.flags`,
 // following dependencies transitively and memoising the results for one evaluation.
+// Its state is only allocated once a condition reads a flag.
 type flagDependencyResolver struct {
-	ec          *engine_eval.EngineEvaluationContext
-	identityKey *string
+	ec                *engine_eval.EngineEvaluationContext
+	sortedSegmentKeys []string
 
+	identityKey              *string
 	segmentKeysByFeatureName map[string][]string
 	segmentMatches           map[string]bool
 	resolving                []string
@@ -28,25 +30,28 @@ type flagDependencyResolver struct {
 	cycleHits int
 }
 
-func newFlagDependencyResolver(ec *engine_eval.EngineEvaluationContext) *flagDependencyResolver {
-	segmentKeysByFeatureName := make(map[string][]string)
-	for _, segmentKey := range getSortedSegmentKeys(ec.Segments) {
-		for _, override := range ec.Segments[segmentKey].Overrides {
-			segmentKeysByFeatureName[override.Name] = append(segmentKeysByFeatureName[override.Name], segmentKey)
+func newFlagDependencyResolver(ec *engine_eval.EngineEvaluationContext, sortedSegmentKeys []string) *flagDependencyResolver {
+	return &flagDependencyResolver{ec: ec, sortedSegmentKeys: sortedSegmentKeys}
+}
+
+func (r *flagDependencyResolver) init() {
+	r.identityKey = getIdentityKey(r.ec)
+	r.segmentKeysByFeatureName = make(map[string][]string)
+	for _, segmentKey := range r.sortedSegmentKeys {
+		for _, override := range r.ec.Segments[segmentKey].Overrides {
+			r.segmentKeysByFeatureName[override.Name] = append(r.segmentKeysByFeatureName[override.Name], segmentKey)
 		}
 	}
-	return &flagDependencyResolver{
-		ec:                       ec,
-		identityKey:              getIdentityKey(ec),
-		segmentKeysByFeatureName: segmentKeysByFeatureName,
-		segmentMatches:           make(map[string]bool),
-		resolved:                 make(map[string]*engine_eval.FlagResult),
-		cyclic:                   make(map[string]struct{}),
-	}
+	r.segmentMatches = make(map[string]bool)
+	r.resolved = make(map[string]*engine_eval.FlagResult)
+	r.cyclic = make(map[string]struct{})
 }
 
 // ResolveFlag implements engine_eval.FlagResolver.
 func (r *flagDependencyResolver) ResolveFlag(featureName string) *engine_eval.FlagResult {
+	if r.resolved == nil {
+		r.init()
+	}
 	if _, ok := r.resolved[featureName]; !ok {
 		r.resolveFeature(featureName)
 	}
@@ -96,7 +101,9 @@ func (r *flagDependencyResolver) matchesSegment(segmentKey string) bool {
 		return false
 	}
 
-	r.segmentMatches[segmentKey] = matches
+	if r.segmentMatches != nil {
+		r.segmentMatches[segmentKey] = matches
+	}
 	return matches
 }
 

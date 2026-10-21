@@ -23,12 +23,12 @@ func getPriorityOrDefault(priority *float64) float64 {
 	return math.Inf(1) // Weakest possible priority
 }
 
-func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext, resolver *flagDependencyResolver) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
+func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext, sortedSegmentKeys []string, resolver *flagDependencyResolver) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
 	segmentResults := []engine_eval.SegmentResult{}
 	featureOverrides := make(map[string]featureContextWithSegmentName)
 
 	// Process segments in deterministic order (sorted by key)
-	for _, segmentKey := range getSortedSegmentKeys(ec.Segments) {
+	for _, segmentKey := range sortedSegmentKeys {
 		if !resolver.matchesSegment(segmentKey) {
 			continue
 		}
@@ -91,12 +91,17 @@ func getIdentityKey(ec *engine_eval.EngineEvaluationContext) *string {
 	return &ec.Identity.Key
 }
 
-func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides map[string]featureContextWithSegmentName) map[string]*engine_eval.FlagResult {
-	flags := make(map[string]*engine_eval.FlagResult)
+// getFlagResults evaluates every feature, reusing the flags already resolved as dependencies.
+func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides map[string]featureContextWithSegmentName, resolved map[string]*engine_eval.FlagResult) map[string]*engine_eval.FlagResult {
+	flags := make(map[string]*engine_eval.FlagResult, len(ec.Features))
 	identityKey := getIdentityKey(ec)
 
 	if ec.Features != nil {
 		for featureName, featureContext := range ec.Features {
+			if flagResult, ok := resolved[featureName]; ok {
+				flags[featureName] = flagResult
+				continue
+			}
 			reason := "DEFAULT"
 			// Check if there's an override for this feature
 			if override, ok := featureOverrides[featureName]; ok {
@@ -113,18 +118,15 @@ func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides ma
 
 // GetEvaluationResult computes flags and matched segments.
 func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.EvaluationResult {
-	resolver := newFlagDependencyResolver(ec)
+	sortedSegmentKeys := getSortedSegmentKeys(ec.Segments)
+	resolver := newFlagDependencyResolver(ec, sortedSegmentKeys)
 
 	// Process segments and get overrides
-	segmentResults, featureOverrides := getMatchingSegmentsAndOverrides(ec, resolver)
+	segmentResults, featureOverrides := getMatchingSegmentsAndOverrides(ec, sortedSegmentKeys, resolver)
 
 	// Get flag results
-	flags := getFlagResults(ec, featureOverrides)
+	flags := getFlagResults(ec, featureOverrides, resolver.resolved)
 
-	// Flags read by segment conditions were resolved with the cycle guard, so take precedence
-	for featureName, flagResult := range resolver.resolved {
-		flags[featureName] = flagResult
-	}
 	for featureName := range resolver.cyclic {
 		if flagResult, ok := flags[featureName]; ok {
 			flagResult.Reason = circularDependencyReason

@@ -242,15 +242,15 @@ func getContextValueGetter(property string, flags FlagResolver) func(ec *EngineE
 			if flags == nil {
 				return nil
 			}
+			field, ok := p[len(p)-1].(jp.Child)
+			if len(p) != 4 || !ok {
+				return nil
+			}
 			flag := flags.ResolveFlag(featureName)
 			if flag == nil {
 				return nil
 			}
-			results := append(jp.R(), p[3:]...).Get(flagResultNode(flag))
-			if len(results) > 0 {
-				return results[0]
-			}
-			return nil
+			return getFlagResultField(flag, string(field))
 		}
 	}
 	if err == nil {
@@ -280,19 +280,23 @@ func getFlagDependency(p jp.Expr) (string, bool) {
 	return string(featureName), ok
 }
 
-// flagResultNode returns the JSON representation of a flag result, as read by `$.flags` conditions.
-func flagResultNode(flag *FlagResult) map[string]any {
-	var variant any
-	if flag.Variant != "" {
-		variant = flag.Variant
+// getFlagResultField returns a field of a flag result by its JSON name, as read by `$.flags` conditions.
+func getFlagResultField(flag *FlagResult, field string) any {
+	switch field {
+	case "enabled":
+		return flag.Enabled
+	case "name":
+		return flag.Name
+	case "reason":
+		return flag.Reason
+	case "value":
+		return flag.Value
+	case "variant":
+		if flag.Variant != "" {
+			return flag.Variant
+		}
 	}
-	return map[string]any{
-		"enabled": flag.Enabled,
-		"name":    flag.Name,
-		"reason":  flag.Reason,
-		"value":   flag.Value,
-		"variant": variant,
-	}
+	return nil
 }
 
 func ToString(contextValue ContextValue) string {
