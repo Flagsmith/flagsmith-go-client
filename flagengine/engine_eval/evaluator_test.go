@@ -1024,6 +1024,24 @@ func TestIsContextInSegmentWithFlagsMatchesOnAnotherFlag(t *testing.T) {
 			expected:  true,
 		},
 		{
+			name:      "flag reason matches",
+			condition: engine_eval.Condition{Operator: engine_eval.Equal, Property: "$.flags.prerequisite.reason", Value: "DEFAULT"},
+			flags:     flags,
+			expected:  true,
+		},
+		{
+			name:      "flag name matches",
+			condition: engine_eval.Condition{Operator: engine_eval.Equal, Property: "$.flags.prerequisite.name", Value: "prerequisite"},
+			flags:     flags,
+			expected:  true,
+		},
+		{
+			name:      "wildcard flag field has no value",
+			condition: engine_eval.Condition{Operator: engine_eval.IsSet, Property: "$.flags.prerequisite.*"},
+			flags:     flags,
+			expected:  false,
+		},
+		{
 			name:      "flag object is not a condition value",
 			condition: engine_eval.Condition{Operator: engine_eval.IsSet, Property: "$.flags.prerequisite"},
 			flags:     flags,
