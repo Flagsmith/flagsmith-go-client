@@ -23,7 +23,7 @@ func asSpecFlags(flags flagsmith.Flags) []Flag {
 	return result
 }
 
-// Given an SDK client for the environment
+// Create the SDK client
 func CreateClient(environmentKey, apiURL string) *flagsmith.Client {
 	return flagsmith.NewClient(environmentKey, flagsmith.WithBaseURL(apiURL))
 }
