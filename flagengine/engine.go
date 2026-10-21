@@ -23,15 +23,16 @@ func getPriorityOrDefault(priority *float64) float64 {
 	return math.Inf(1) // Weakest possible priority
 }
 
-func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
+func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext, resolver *flagDependencyResolver) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
 	segmentResults := []engine_eval.SegmentResult{}
 	featureOverrides := make(map[string]featureContextWithSegmentName)
 
 	// Process segments in deterministic order (sorted by key)
-	for _, segmentContext := range getSortedSegments(ec.Segments) {
-		if !engine_eval.IsContextInSegment(ec, &segmentContext) {
+	for _, segmentKey := range getSortedSegmentKeys(ec.Segments) {
+		if !resolver.matchesSegment(segmentKey) {
 			continue
 		}
+		segmentContext := ec.Segments[segmentKey]
 
 		// Record matched segment
 		segmentResults = append(segmentResults, engine_eval.SegmentResult{
@@ -46,19 +47,14 @@ func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext) ([
 	return segmentResults, featureOverrides
 }
 
-// getSortedSegments returns segments sorted by their keys for deterministic ordering.
-func getSortedSegments(segments map[string]engine_eval.SegmentContext) []engine_eval.SegmentContext {
+// getSortedSegmentKeys returns segment keys sorted for deterministic ordering.
+func getSortedSegmentKeys(segments map[string]engine_eval.SegmentContext) []string {
 	keys := make([]string, 0, len(segments))
 	for key := range segments {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-
-	sorted := make([]engine_eval.SegmentContext, 0, len(keys))
-	for _, key := range keys {
-		sorted = append(sorted, segments[key])
-	}
-	return sorted
+	return keys
 }
 
 // applySegmentOverrides updates the feature overrides map with this segment's overrides,
@@ -66,17 +62,9 @@ func getSortedSegments(segments map[string]engine_eval.SegmentContext) []engine_
 func applySegmentOverrides(segment *engine_eval.SegmentContext, featureOverrides map[string]featureContextWithSegmentName) {
 	for i := range segment.Overrides {
 		override := &segment.Overrides[i]
-		newPriority := getPriorityOrDefault(override.Priority)
-
-		// Check if we should use this override
-		if existing, exists := featureOverrides[override.Name]; exists {
-			existingPriority := getPriorityOrDefault(existing.featureContext.Priority)
-			if newPriority > existingPriority {
-				continue // Existing override has higher priority
-			}
+		if existing, exists := featureOverrides[override.Name]; exists && !overrideTakesPrecedence(override, existing.featureContext) {
+			continue
 		}
-
-		// Use this override (either it's new or has equal/higher priority)
 		featureOverrides[override.Name] = featureContextWithSegmentName{
 			featureContext: override,
 			segmentName:    segment.Name,
@@ -84,20 +72,28 @@ func applySegmentOverrides(segment *engine_eval.SegmentContext, featureOverrides
 	}
 }
 
+// overrideTakesPrecedence reports whether a segment override replaces the one held so far,
+// i.e. whether it has equal or higher priority.
+func overrideTakesPrecedence(candidate, incumbent *engine_eval.FeatureContext) bool {
+	return getPriorityOrDefault(candidate.Priority) <= getPriorityOrDefault(incumbent.Priority)
+}
+
+// getIdentityKey returns the identity key used for multivariate bucketing, or nil without an identity.
+func getIdentityKey(ec *engine_eval.EngineEvaluationContext) *string {
+	if ec.Identity == nil {
+		return nil
+	}
+	// If identity key is not provided, construct it from environment key and identifier
+	if ec.Identity.Key == "" {
+		constructedKey := ec.Environment.Key + "_" + ec.Identity.Identifier
+		return &constructedKey
+	}
+	return &ec.Identity.Key
+}
+
 func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides map[string]featureContextWithSegmentName) map[string]*engine_eval.FlagResult {
 	flags := make(map[string]*engine_eval.FlagResult)
-
-	// Get identity key if identity exists
-	var identityKey *string
-	if ec.Identity != nil {
-		// If identity key is not provided, construct it from environment key and identifier
-		if ec.Identity.Key == "" {
-			constructedKey := ec.Environment.Key + "_" + ec.Identity.Identifier
-			identityKey = &constructedKey
-		} else {
-			identityKey = &ec.Identity.Key
-		}
-	}
+	identityKey := getIdentityKey(ec)
 
 	if ec.Features != nil {
 		for featureName, featureContext := range ec.Features {
@@ -117,11 +113,23 @@ func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides ma
 
 // GetEvaluationResult computes flags and matched segments.
 func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.EvaluationResult {
+	resolver := newFlagDependencyResolver(ec)
+
 	// Process segments and get overrides
-	segmentResults, featureOverrides := getMatchingSegmentsAndOverrides(ec)
+	segmentResults, featureOverrides := getMatchingSegmentsAndOverrides(ec, resolver)
 
 	// Get flag results
 	flags := getFlagResults(ec, featureOverrides)
+
+	// Flags read by segment conditions were resolved with the cycle guard, so take precedence
+	for featureName, flagResult := range resolver.resolved {
+		flags[featureName] = flagResult
+	}
+	for featureName := range resolver.cyclic {
+		if flagResult, ok := flags[featureName]; ok {
+			flagResult.Reason = circularDependencyReason
+		}
+	}
 
 	return engine_eval.EvaluationResult{
 		Flags:    flags,

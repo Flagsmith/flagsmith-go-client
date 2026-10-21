@@ -978,3 +978,113 @@ func TestMatchWithModuloOperator(t *testing.T) {
 	result := engine_eval.IsContextInSegment(evalContext, segmentContext)
 	assert.True(t, result)
 }
+
+type flagResolverStub map[string]*engine_eval.FlagResult
+
+func (s flagResolverStub) ResolveFlag(featureName string) *engine_eval.FlagResult {
+	return s[featureName]
+}
+
+func TestIsContextInSegmentWithFlagsMatchesOnAnotherFlag(t *testing.T) {
+	t.Parallel()
+
+	flags := flagResolverStub{
+		"prerequisite": {Name: "prerequisite", Enabled: true, Value: "blue", Reason: "DEFAULT"},
+		"my feature":   {Name: "my feature", Enabled: true, Variant: "treatment", Reason: "SPLIT; weight=100"},
+	}
+
+	cases := []struct {
+		name      string
+		condition engine_eval.Condition
+		flags     engine_eval.FlagResolver
+		expected  bool
+	}{
+		{
+			name:      "enabled flag matches",
+			condition: engine_eval.Condition{Operator: engine_eval.Equal, Property: "$.flags.prerequisite.enabled", Value: "true"},
+			flags:     flags,
+			expected:  true,
+		},
+		{
+			name:      "flag value matches",
+			condition: engine_eval.Condition{Operator: engine_eval.Equal, Property: "$.flags.prerequisite.value", Value: "blue"},
+			flags:     flags,
+			expected:  true,
+		},
+		{
+			name:      "flag variant of a quoted feature name matches",
+			condition: engine_eval.Condition{Operator: engine_eval.Equal, Property: "$.flags['my feature'].variant", Value: "treatment"},
+			flags:     flags,
+			expected:  true,
+		},
+		{
+			name:      "flag without a variant has none set",
+			condition: engine_eval.Condition{Operator: engine_eval.IsNotSet, Property: "$.flags.prerequisite.variant"},
+			flags:     flags,
+			expected:  true,
+		},
+		{
+			name:      "flag object is not a condition value",
+			condition: engine_eval.Condition{Operator: engine_eval.IsSet, Property: "$.flags.prerequisite"},
+			flags:     flags,
+			expected:  false,
+		},
+		{
+			name:      "unknown flag field has no value",
+			condition: engine_eval.Condition{Operator: engine_eval.IsSet, Property: "$.flags.prerequisite.colour"},
+			flags:     flags,
+			expected:  false,
+		},
+		{
+			name:      "unresolvable flag has no value",
+			condition: engine_eval.Condition{Operator: engine_eval.IsSet, Property: "$.flags.nonexistent.enabled"},
+			flags:     flags,
+			expected:  false,
+		},
+		{
+			name:      "flag is not read without flags",
+			condition: engine_eval.Condition{Operator: engine_eval.IsSet, Property: "$.flags.prerequisite.enabled"},
+			flags:     nil,
+			expected:  false,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Given
+			evalContext := createEvaluationContext(nil)
+			segmentContext := createSegmentContext("1", "dependent_segment", []engine_eval.SegmentRule{
+				{Type: engine_eval.All, Conditions: []engine_eval.Condition{c.condition}},
+			})
+
+			// When
+			result := engine_eval.IsContextInSegmentWithFlags(evalContext, segmentContext, c.flags)
+
+			// Then
+			assert.Equal(t, c.expected, result)
+		})
+	}
+}
+
+func TestIsContextInSegmentTreatsOtherFlagsAsUnset(t *testing.T) {
+	t.Parallel()
+
+	// Given
+	evalContext := createEvaluationContext(nil)
+	segmentContext := createSegmentContext("1", "dependent_segment", []engine_eval.SegmentRule{
+		{
+			Type: engine_eval.All,
+			Conditions: []engine_eval.Condition{
+				{Operator: engine_eval.IsNotSet, Property: "$.flags.prerequisite.enabled"},
+			},
+		},
+	})
+
+	// When
+	result := engine_eval.IsContextInSegment(evalContext, segmentContext)
+
+	// Then
+	assert.True(t, result)
+}

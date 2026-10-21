@@ -221,6 +221,82 @@ const EnvironmentJsonWithMultivariateFeature = `
 }
 `
 
+// EnvironmentJsonWithFlagDependency contains a feature overridden by a segment
+// that matches when another feature, the prerequisite, is enabled.
+const EnvironmentJsonWithFlagDependency = `
+{
+	"api_key": "B62qaMZNwfiqT76p38ggrQ",
+	"name": "Test Environment",
+	"updated_at": "2023-12-06T10:21:54.079725Z",
+	"project": {
+		"name": "Test project",
+		"organisation": {
+			"feature_analytics": false,
+			"name": "Test Org",
+			"id": 1,
+			"persist_trait_data": true,
+			"stop_serving_flags": false
+		},
+		"id": 1,
+		"hide_disabled_flags": false,
+		"segments": [{
+			"id": 1,
+			"name": "Prerequisite Enabled",
+			"feature_states": [{
+				"multivariate_feature_state_values": [],
+				"feature_state_value": "dependent_override",
+				"id": 3,
+				"featurestate_uuid": "dependent-override-uuid",
+				"feature": {
+					"name": "dependent",
+					"type": "STANDARD",
+					"id": 2
+				},
+				"segment_id": 1,
+				"enabled": true
+			}],
+			"rules": [{
+				"type": "ALL",
+				"conditions": [{
+					"operator": "EQUAL",
+					"property_": "$.flags.prerequisite.enabled",
+					"value": "true"
+				}],
+				"rules": []
+			}]
+		}]
+	},
+	"segment_overrides": [],
+	"id": 1,
+	"feature_states": [{
+		"multivariate_feature_state_values": [],
+		"feature_state_value": "prerequisite_value",
+		"id": 1,
+		"featurestate_uuid": "prerequisite-uuid",
+		"feature": {
+			"name": "prerequisite",
+			"type": "STANDARD",
+			"id": 1
+		},
+		"segment_id": null,
+		"enabled": true
+	}, {
+		"multivariate_feature_state_values": [],
+		"feature_state_value": "dependent_default",
+		"id": 2,
+		"featurestate_uuid": "dependent-uuid",
+		"feature": {
+			"name": "dependent",
+			"type": "STANDARD",
+			"id": 2
+		},
+		"segment_id": null,
+		"enabled": false
+	}],
+	"identity_overrides": []
+}
+`
+
 const FlagsJson = `
 [{
 	"id": 1,

@@ -483,6 +483,34 @@ func TestGetIdentityFlagsAppliesSegmentOverridesWithReason(t *testing.T) {
 	assert.Equal(t, "TARGETING_MATCH; segment=Test Segment", flag.Reason)
 }
 
+func TestGetIdentityFlagsAppliesSegmentOverrideDependingOnAnotherFlag(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(rw, fixtures.EnvironmentJsonWithFlagDependency)
+	}))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	err := client.UpdateEnvironment(ctx)
+	assert.NoError(t, err)
+
+	// When
+	flags, err := client.GetIdentityFlags(ctx, "test_identity", nil)
+
+	// Then
+	assert.NoError(t, err)
+	flag, err := flags.GetFlag("dependent")
+	assert.NoError(t, err)
+	assert.True(t, flag.Enabled)
+	assert.Equal(t, "dependent_override", flag.Value)
+	assert.Equal(t, "TARGETING_MATCH; segment=Prerequisite Enabled", flag.Reason)
+}
+
 func TestGetIdentityFlagsSetsVariantForMultivariateFeature(t *testing.T) {
 	// Given
 	ctx := context.Background()
