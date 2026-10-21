@@ -415,9 +415,8 @@ func TestEventProcessorFlushWaits(t *testing.T) {
 		}
 		assert.NoError(t, p.Flush(t.Context()))
 		assert.Equal(t, 2, server.done(), "the slow batch finished although the other failed")
-		for _, ch := range pending {
-			<-ch
-		}
+		assert.Error(t, receive(t, pending[0], "flush of the failing batch"))
+		assert.NoError(t, receive(t, pending[1], "flush of the slow batch"))
 	})
 	t.Run("sends its own batch during a stalled send", func(t *testing.T) {
 		release, done := newRelease()
