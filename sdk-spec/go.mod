@@ -1,4 +1,4 @@
-module github.com/Flagsmith/flagsmith-go-client/v5/spec-adapter
+module github.com/Flagsmith/flagsmith-go-client/v5/sdk-spec
 
 go 1.25.0
 
