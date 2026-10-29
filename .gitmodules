@@ -2,3 +2,7 @@
 	path = flagengine/engine-test-data
 	url = git@github.com:Flagsmith/engine-test-data.git
 	branch = v3.10.0
+[submodule "flagengine/sdk-benchmarks"]
+	path = flagengine/sdk-benchmarks
+	url = https://github.com/Flagsmith/sdk-benchmarks.git
+	branch = 0.0.2
