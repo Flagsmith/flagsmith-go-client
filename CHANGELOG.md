@@ -1,5 +1,28 @@
 # Changelog
 
+## [5.4.0](https://github.com/Flagsmith/flagsmith-go-client/compare/v5.3.0...v5.4.0) (2026-10-29)
+
+
+### Features
+
+* **CI:** Set up CodSpeed ([#239](https://github.com/Flagsmith/flagsmith-go-client/issues/239)) ([adc44cb](https://github.com/Flagsmith/flagsmith-go-client/commit/adc44cb6a9f02e19029fbcc8b840a494c7218b49))
+
+
+### CI
+
+* Label Renovate's SDK spec bump PRs ([#236](https://github.com/Flagsmith/flagsmith-go-client/issues/236)) ([626676c](https://github.com/Flagsmith/flagsmith-go-client/commit/626676cee775405a4593ba0a42a222421deb9ba8))
+* Run the Flagsmith SDK behavioural spec ([#232](https://github.com/Flagsmith/flagsmith-go-client/issues/232)) ([5026d1a](https://github.com/Flagsmith/flagsmith-go-client/commit/5026d1aa6e89d25c555d054e0665fce5058f0994))
+
+
+### Dependency Updates
+
+* update dependency flagsmith/sdk-spec to v0.6.0 ([#237](https://github.com/Flagsmith/flagsmith-go-client/issues/237)) ([cd7e433](https://github.com/Flagsmith/flagsmith-go-client/commit/cd7e433c2e32a4c75e0ad31d9590cfe6340e13c5))
+
+
+### Tests
+
+* Assert the results of pending flushes when one batch fails ([#233](https://github.com/Flagsmith/flagsmith-go-client/issues/233)) ([4156489](https://github.com/Flagsmith/flagsmith-go-client/commit/415648983c35936a04e8b0d5ad0e9604705afdf8))
+
 ## [5.3.0](https://github.com/Flagsmith/flagsmith-go-client/compare/v5.2.0...v5.3.0) (2026-10-05)
 
 
