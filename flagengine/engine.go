@@ -91,20 +91,6 @@ func getIdentityKey(ec *engine_eval.EngineEvaluationContext) *string {
 	return &ec.Identity.Key
 }
 
-// getTargetedFeatureNames returns the names of the features overridden by at least one segment.
-func getTargetedFeatureNames(ec *engine_eval.EngineEvaluationContext) map[string]struct{} {
-	var targetedFeatureNames map[string]struct{}
-	for _, segmentContext := range ec.Segments {
-		for _, override := range segmentContext.Overrides {
-			if targetedFeatureNames == nil {
-				targetedFeatureNames = make(map[string]struct{})
-			}
-			targetedFeatureNames[override.Name] = struct{}{}
-		}
-	}
-	return targetedFeatureNames
-}
-
 // getFallbackReason returns the reason for a flag evaluated to its environment default:
 // DEFAULT if segments override the feature but none matched, STATIC if none override it.
 func getFallbackReason(isTargeted bool) string {
@@ -118,7 +104,7 @@ func getFallbackReason(isTargeted bool) string {
 func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides map[string]featureContextWithSegmentName, resolved map[string]*engine_eval.FlagResult) map[string]*engine_eval.FlagResult {
 	flags := make(map[string]*engine_eval.FlagResult, len(ec.Features))
 	identityKey := getIdentityKey(ec)
-	targetedFeatureNames := getTargetedFeatureNames(ec)
+	targetedFeatureNames := engine_eval.GetTargetedFeatureNames(ec)
 
 	if ec.Features != nil {
 		for featureName, featureContext := range ec.Features {
