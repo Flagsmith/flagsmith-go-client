@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -453,6 +454,40 @@ func TestGetEnvironmentFlagsAppliesSegmentOverridesOnTheEnvironment(t *testing.T
 	assert.NoError(t, err)
 	assert.Equal(t, "segment_override", flag.Value)
 	assert.Equal(t, "TARGETING_MATCH; segment=Test Segment", flag.Reason)
+}
+
+func TestGetEnvironmentFlagsFollowsEnvironmentUpdates(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	var environmentJson atomic.Value
+	environmentJson.Store(fixtures.EnvironmentJson)
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(rw, environmentJson.Load().(string))
+	}))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	err := client.UpdateEnvironment(ctx)
+	assert.NoError(t, err)
+	_, err = client.GetEnvironmentFlags(ctx)
+	assert.NoError(t, err)
+
+	environmentJson.Store(fixtures.EnvironmentJsonWithSegmentOverride)
+	err = client.UpdateEnvironment(ctx)
+	assert.NoError(t, err)
+
+	// When
+	flags, err := client.GetEnvironmentFlags(ctx)
+
+	// Then
+	assert.NoError(t, err)
+	value, err := flags.GetFeatureValue(fixtures.Feature1Name)
+	assert.NoError(t, err)
+	assert.Equal(t, "segment_override", value)
 }
 
 func TestGetEnvironmentFlagsIgnoresSegmentOverridesNeedingAnIdentity(t *testing.T) {

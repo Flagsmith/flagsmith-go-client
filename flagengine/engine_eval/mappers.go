@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -319,6 +320,43 @@ func MapContextAndIdentityDataToContext(
 	newContext.Identity = &identity
 
 	return newContext
+}
+
+// RemoveIdentityFromContext returns a copy of the context to evaluate environment flags with:
+// without an identity, and keeping only the segments whose conditions read the environment or
+// other flags, as the Flagsmith API does.
+func RemoveIdentityFromContext(context *EngineEvaluationContext) EngineEvaluationContext {
+	newContext := *context
+	newContext.Identity = nil
+	newContext.Segments = nil
+	for key, segment := range context.Segments {
+		if !isIdentityFree(segment.Rules) {
+			continue
+		}
+		if newContext.Segments == nil {
+			newContext.Segments = make(map[string]SegmentContext)
+		}
+		newContext.Segments[key] = segment
+	}
+	return newContext
+}
+
+var identityFreePropertyPrefixes = []string{"$.environment.", "$.environment[", "$.flags.", "$.flags["}
+
+func isIdentityFree(rules []SegmentRule) bool {
+	for _, rule := range rules {
+		for _, condition := range rule.Conditions {
+			if !slices.ContainsFunc(identityFreePropertyPrefixes, func(prefix string) bool {
+				return strings.HasPrefix(condition.Property, prefix)
+			}) {
+				return false
+			}
+		}
+		if !isIdentityFree(rule.Rules) {
+			return false
+		}
+	}
+	return true
 }
 
 // MapEvaluationResultSegmentsToSegmentModels converts evaluation result segments

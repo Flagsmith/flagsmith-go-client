@@ -515,6 +515,74 @@ func TestMapContextAndIdentityDataToContextWithNilTraits(t *testing.T) {
 	}
 }
 
+func TestRemoveIdentityFromContextKeepsSegmentsReadingTheEnvironmentOrFlags(t *testing.T) {
+	// Given
+	context := EngineEvaluationContext{
+		Environment: EnvironmentContext{Key: "test-env-key", Name: "Test Environment"},
+		Identity:    &IdentityContext{Identifier: "test-user", Key: "test-env-key_test-user"},
+		Segments: map[string]SegmentContext{
+			"environment_and_flags": {
+				Key: "environment_and_flags",
+				Rules: []SegmentRule{{
+					Type:       All,
+					Conditions: []Condition{{Operator: Equal, Property: "$.environment.name", Value: "Test Environment"}},
+					Rules: []SegmentRule{{
+						Type:       Any,
+						Conditions: []Condition{{Operator: Equal, Property: "$.flags['prerequisite'].enabled", Value: "true"}},
+					}},
+				}},
+			},
+		},
+	}
+
+	// When
+	environmentContext := RemoveIdentityFromContext(&context)
+
+	// Then
+	if environmentContext.Identity != nil {
+		t.Errorf("Expected no identity, got %v", environmentContext.Identity)
+	}
+	if _, ok := environmentContext.Segments["environment_and_flags"]; !ok {
+		t.Errorf("Expected segment 'environment_and_flags' to be kept, got %v", environmentContext.Segments)
+	}
+}
+
+func TestRemoveIdentityFromContextDropsSegmentsNeedingAnIdentity(t *testing.T) {
+	// Given
+	context := EngineEvaluationContext{
+		Environment: EnvironmentContext{Key: "test-env-key", Name: "Test Environment"},
+		Segments: map[string]SegmentContext{
+			"trait": {
+				Key:   "trait",
+				Rules: []SegmentRule{{Type: All, Conditions: []Condition{{Operator: Equal, Property: "plan", Value: "premium"}}}},
+			},
+			"identifier_in_nested_rule": {
+				Key: "identifier_in_nested_rule",
+				Rules: []SegmentRule{{
+					Type:       All,
+					Conditions: []Condition{{Operator: Equal, Property: "$.environment.name", Value: "Test Environment"}},
+					Rules: []SegmentRule{{
+						Type:       Any,
+						Conditions: []Condition{{Operator: Equal, Property: "$.identity.identifier", Value: "test-user"}},
+					}},
+				}},
+			},
+			"percentage_split": {
+				Key:   "percentage_split",
+				Rules: []SegmentRule{{Type: All, Conditions: []Condition{{Operator: PercentageSplit, Value: "50"}}}},
+			},
+		},
+	}
+
+	// When
+	environmentContext := RemoveIdentityFromContext(&context)
+
+	// Then
+	if len(environmentContext.Segments) != 0 {
+		t.Errorf("Expected no segments, got %v", environmentContext.Segments)
+	}
+}
+
 func TestMapEvaluationResultSegmentsToSegmentModels(t *testing.T) {
 	// Create a test evaluation result with segments
 	result := EvaluationResult{
