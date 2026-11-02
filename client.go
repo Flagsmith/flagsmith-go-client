@@ -23,6 +23,8 @@ type contextKey string
 
 var contextKeyEvaluationContext = contextKey("evaluationContext")
 
+var identityFreePropertyPrefixes = []string{"$.environment.", "$.environment[", "$.flags.", "$.flags["}
+
 // Client provides various methods to query Flagsmith API.
 type Client struct {
 	apiKey string
@@ -507,16 +509,54 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	// Clear segments and identity for environment evaluation
 	environmentEvalCtx := engine_eval.EngineEvaluationContext{
 		Environment: evalCtx.Environment,
 		Features:    evalCtx.Features,
 		Identity:    nil,
-		Segments:    nil,
+		Segments:    identityFreeSegments(evalCtx.Segments),
 	}
 
 	result := flagengine.GetEvaluationResult(&environmentEvalCtx)
 	return makeFlagsFromEngineEvaluationResult(&result, c.analyticsProcessor, c.defaultFlagHandler), nil
+}
+
+// identityFreeSegments returns the segments that environment flags are evaluated against:
+// those whose conditions only read the environment or other flags, as the Flagsmith API does.
+func identityFreeSegments(segments map[string]engine_eval.SegmentContext) map[string]engine_eval.SegmentContext {
+	var result map[string]engine_eval.SegmentContext
+	for key, segment := range segments {
+		if !isIdentityFree(segment.Rules) {
+			continue
+		}
+		if result == nil {
+			result = make(map[string]engine_eval.SegmentContext)
+		}
+		result[key] = segment
+	}
+	return result
+}
+
+func isIdentityFree(rules []engine_eval.SegmentRule) bool {
+	for _, rule := range rules {
+		for _, condition := range rule.Conditions {
+			if !hasIdentityFreeProperty(condition) {
+				return false
+			}
+		}
+		if !isIdentityFree(rule.Rules) {
+			return false
+		}
+	}
+	return true
+}
+
+func hasIdentityFreeProperty(condition engine_eval.Condition) bool {
+	for _, prefix := range identityFreePropertyPrefixes {
+		if strings.HasPrefix(condition.Property, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) pollEnvironment(ctx context.Context, pollForever bool) {

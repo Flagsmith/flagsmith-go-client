@@ -428,8 +428,8 @@ func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.
 	assert.Equal(t, fixtures.Feature1Value, value)
 }
 
-func TestGetEnvironmentFlagsIgnoresSegmentOverrides(t *testing.T) {
-	// Given: a document with a truthy segment override
+func TestGetEnvironmentFlagsAppliesSegmentOverridesOnTheEnvironment(t *testing.T) {
+	// Given
 	ctx := context.Background()
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("Content-Type", "application/json")
@@ -438,22 +438,77 @@ func TestGetEnvironmentFlagsIgnoresSegmentOverrides(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// When
 	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
 		flagsmith.WithLocalEvaluation(ctx),
 		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
 	err := client.UpdateEnvironment(ctx)
 	assert.NoError(t, err)
 
+	// When
 	flags, err := client.GetEnvironmentFlags(ctx)
 
-	// Then: should return default value
+	// Then
 	assert.NoError(t, err)
 	flag, err := flags.GetFlag("feature_1")
 	assert.NoError(t, err)
+	assert.Equal(t, "segment_override", flag.Value)
+	assert.Equal(t, "TARGETING_MATCH; segment=Test Segment", flag.Reason)
+}
+
+func TestGetEnvironmentFlagsIgnoresSegmentOverridesNeedingAnIdentity(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(rw, fixtures.EnvironmentJsonWithTraitSegmentOverride)
+	}))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	err := client.UpdateEnvironment(ctx)
+	assert.NoError(t, err)
+
+	// When
+	flags, err := client.GetEnvironmentFlags(ctx)
+
+	// Then
+	assert.NoError(t, err)
+	flag, err := flags.GetFlag("feature_1")
+	assert.NoError(t, err)
+	assert.True(t, flag.Enabled)
 	assert.Equal(t, fixtures.Feature1Value, flag.Value)
-	assert.Equal(t, "some_value", flag.Value)
 	assert.Equal(t, "DEFAULT", flag.Reason)
+}
+
+func TestGetEnvironmentFlagsAppliesSegmentOverrideDependingOnAnotherFlag(t *testing.T) {
+	// Given
+	ctx := context.Background()
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(rw, fixtures.EnvironmentJsonWithFlagDependency)
+	}))
+	defer server.Close()
+
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithLocalEvaluation(ctx),
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"))
+	err := client.UpdateEnvironment(ctx)
+	assert.NoError(t, err)
+
+	// When
+	flags, err := client.GetEnvironmentFlags(ctx)
+
+	// Then
+	assert.NoError(t, err)
+	flag, err := flags.GetFlag("dependent")
+	assert.NoError(t, err)
+	assert.True(t, flag.Enabled)
+	assert.Equal(t, "dependent_override", flag.Value)
+	assert.Equal(t, "TARGETING_MATCH; segment=Prerequisite Enabled", flag.Reason)
 }
 
 func TestGetIdentityFlagsAppliesSegmentOverridesWithReason(t *testing.T) {

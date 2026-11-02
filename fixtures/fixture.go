@@ -173,6 +173,70 @@ const EnvironmentJsonWithSegmentOverride = `
   }
   `
 
+// EnvironmentJsonWithTraitSegmentOverride contains a feature overridden by a segment
+// that matches identities with the trait "plan" set to "premium".
+const EnvironmentJsonWithTraitSegmentOverride = `
+{
+	"api_key": "B62qaMZNwfiqT76p38ggrQ",
+	"name": "Test Environment",
+	"updated_at": "2023-12-06T10:21:54.079725Z",
+	"project": {
+		"name": "Test project",
+		"organisation": {
+			"feature_analytics": false,
+			"name": "Test Org",
+			"id": 1,
+			"persist_trait_data": true,
+			"stop_serving_flags": false
+		},
+		"id": 1,
+		"hide_disabled_flags": false,
+		"segments": [{
+			"id": 1,
+			"name": "Premium Users",
+			"feature_states": [{
+				"multivariate_feature_state_values": [],
+				"feature_state_value": "premium_override",
+				"id": 2,
+				"featurestate_uuid": "premium-override-uuid",
+				"feature": {
+					"name": "feature_1",
+					"type": "STANDARD",
+					"id": 1
+				},
+				"segment_id": 1,
+				"enabled": false
+			}],
+			"rules": [{
+				"type": "ALL",
+				"conditions": [{
+					"operator": "EQUAL",
+					"property_": "plan",
+					"value": "premium"
+				}],
+				"rules": []
+			}]
+		}]
+	},
+	"segment_overrides": [],
+	"id": 1,
+	"feature_states": [{
+		"multivariate_feature_state_values": [],
+		"feature_state_value": "some_value",
+		"id": 1,
+		"featurestate_uuid": "40eb539d-3713-4720-bbd4-829dbef10d51",
+		"feature": {
+			"name": "feature_1",
+			"type": "STANDARD",
+			"id": 1
+		},
+		"segment_id": null,
+		"enabled": true
+	}],
+	"identity_overrides": []
+}
+`
+
 // EnvironmentJsonWithMultivariateFeature contains a single multivariate feature whose
 // only variant is keyed and allocated 100%, so every identity is bucketed into it.
 const EnvironmentJsonWithMultivariateFeature = `

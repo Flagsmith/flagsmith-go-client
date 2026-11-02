@@ -37,6 +37,16 @@ func CreateClientWithEvents(environmentKey, apiURL, eventsURL string) *flagsmith
 	)
 }
 
+// Create the SDK client with local evaluation
+func CreateClientWithLocalEvaluation(environmentKey, apiURL string) (*flagsmith.Client, error) {
+	ctx := context.Background()
+	client := flagsmith.NewClient(environmentKey,
+		flagsmith.WithBaseURL(apiURL),
+		flagsmith.WithLocalEvaluation(ctx),
+	)
+	return client, client.UpdateEnvironment(ctx)
+}
+
 // When the application gets the environment flags
 func GetEnvironmentFlags(client *flagsmith.Client) ([]Flag, error) {
 	flags, err := client.GetEnvironmentFlags(context.Background())
