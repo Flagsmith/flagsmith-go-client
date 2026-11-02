@@ -378,7 +378,7 @@ func TestGetEnvironmentFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {
 	assert.Equal(t, fixtures.Feature1Name, allFlags[0].FeatureName)
 	assert.Equal(t, fixtures.Feature1ID, allFlags[0].FeatureID)
 	assert.Equal(t, fixtures.Feature1Value, allFlags[0].Value)
-	assert.Equal(t, "DEFAULT", allFlags[0].Reason)
+	assert.Equal(t, "STATIC", allFlags[0].Reason)
 }
 
 func TestGetEnvironmentFlagsCallsAPIWhenLocalEnvironmentNotAvailable(t *testing.T) {
@@ -515,7 +515,7 @@ func TestGetEnvironmentFlagsIgnoresSegmentOverridesNeedingAnIdentity(t *testing.
 	assert.NoError(t, err)
 	assert.True(t, flag.Enabled)
 	assert.Equal(t, fixtures.Feature1Value, flag.Value)
-	assert.Equal(t, "DEFAULT", flag.Reason)
+	assert.Equal(t, "STATIC", flag.Reason)
 }
 
 func TestGetEnvironmentFlagsAppliesSegmentOverrideDependingOnAnotherFlag(t *testing.T) {
@@ -655,7 +655,7 @@ func TestGetEnvironmentFlagsHasNoVariantForMultivariateFeature(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "control_value", flag.Value)
 	assert.Empty(t, flag.Variant)
-	assert.Equal(t, "DEFAULT", flag.Reason)
+	assert.Equal(t, "STATIC", flag.Reason)
 }
 
 func TestGetIdentityFlagsUseslocalEnvironmentWhenAvailable(t *testing.T) {

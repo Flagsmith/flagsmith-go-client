@@ -58,7 +58,22 @@ func MapEnvironmentDocumentToEvaluationContext(env *environments.EnvironmentMode
 		}
 	}
 
+	ctx.TargetedFeatureNames = GetTargetedFeatureNames(&ctx)
 	return ctx
+}
+
+// GetTargetedFeatureNames returns the names of the features overridden by at least one segment.
+func GetTargetedFeatureNames(ec *EngineEvaluationContext) map[string]struct{} {
+	if ec.TargetedFeatureNames != nil {
+		return ec.TargetedFeatureNames
+	}
+	targetedFeatureNames := make(map[string]struct{}, len(ec.Features))
+	for _, segmentContext := range ec.Segments {
+		for i := range segmentContext.Overrides {
+			targetedFeatureNames[segmentContext.Overrides[i].Name] = struct{}{}
+		}
+	}
+	return targetedFeatureNames
 }
 
 // mapMultivariateFeatureStateValuesToVariants converts multivariate feature state values to FeatureValue variants.
@@ -338,6 +353,8 @@ func RemoveIdentityFromContext(context *EngineEvaluationContext) EngineEvaluatio
 		}
 		newContext.Segments[key] = segment
 	}
+	newContext.TargetedFeatureNames = nil
+	newContext.TargetedFeatureNames = GetTargetedFeatureNames(&newContext)
 	return newContext
 }
 

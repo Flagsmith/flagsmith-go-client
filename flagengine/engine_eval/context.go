@@ -16,6 +16,9 @@ type EngineEvaluationContext struct {
 	Identity *IdentityContext `json:"identity,omitempty"`
 	// Segments applicable to the evaluation context.
 	Segments map[string]SegmentContext `json:"segments,omitempty"`
+	// Names of the features overridden by at least one of Segments, precomputed by the
+	// mappers so that evaluations reuse them. Computed per evaluation when nil.
+	TargetedFeatureNames map[string]struct{} `json:"-"`
 }
 
 // Environment context required for evaluation.
