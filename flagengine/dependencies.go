@@ -79,7 +79,7 @@ func (r *flagDependencyResolver) resolveFeature(featureName string) {
 		return
 	}
 
-	reason := "DEFAULT"
+	reason := getFallbackReason(len(r.segmentKeysByFeatureName[featureName]) > 0)
 	if hasOverride {
 		featureContext = *override.featureContext
 		reason = fmt.Sprintf("TARGETING_MATCH; segment=%s", override.segmentName)
