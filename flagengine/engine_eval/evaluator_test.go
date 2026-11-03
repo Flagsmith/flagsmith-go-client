@@ -856,10 +856,19 @@ func TestRegexOperator(t *testing.T) {
 		{"empty values", "", "", true},
 		{"number match", "123", `^\d+$`, true},
 		{"number no match", "abc", `^\d+$`, false},
+		{"prefix match", "production", "prod", true},
+		{"match not at start", "nonproduction", "prod", false},
+		{"alternative prefix match", "development", "prod|dev", true},
+		{"no alternative at start", "nondev", "prod|dev", false},
+		{"end-anchored match not at start", "jane@example.com", `@example\.com$`, false},
+		{"full match with grouped alternatives", "prod-api", `^(prod|uat|dev)-.+$`, true},
+		{"case-sensitive", "Production", "prod", false},
+		{"unbalanced parentheses", "a(b", "a)(b", false},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			// Given
 			evalContext := createEvaluationContext(map[string]any{
 				"test_trait": stringValue(c.traitValue),
 			})
@@ -877,7 +886,10 @@ func TestRegexOperator(t *testing.T) {
 				},
 			})
 
+			// When
 			result := engine_eval.IsContextInSegment(evalContext, segmentContext)
+
+			// Then
 			assert.Equal(t, c.expected, result)
 		})
 	}
