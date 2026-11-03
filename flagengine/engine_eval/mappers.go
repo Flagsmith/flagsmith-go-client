@@ -43,18 +43,24 @@ func MapEnvironmentDocumentToEvaluationContext(env *environments.EnvironmentMode
 		ctx.Segments = make(map[string]SegmentContext, len(env.Project.Segments))
 		for _, s := range env.Project.Segments {
 			sc := mapSegmentToSegmentContext(s)
+			if _, ok := ctx.Segments[sc.Key]; !ok {
+				ctx.segmentKeys = append(ctx.segmentKeys, sc.Key)
+			}
 			ctx.Segments[sc.Key] = sc
 		}
 	}
 
 	// Identity overrides (mapped to segments)
 	if len(env.IdentityOverrides) > 0 {
-		identitySegments := mapIdentityOverridesToSegments(env.IdentityOverrides)
+		identitySegments, identitySegmentKeys := mapIdentityOverridesToSegments(env.IdentityOverrides)
 		if ctx.Segments == nil {
 			ctx.Segments = make(map[string]SegmentContext)
 		}
-		for key, segment := range identitySegments {
-			ctx.Segments[key] = segment
+		for _, key := range identitySegmentKeys {
+			if _, ok := ctx.Segments[key]; !ok {
+				ctx.segmentKeys = append(ctx.segmentKeys, key)
+			}
+			ctx.Segments[key] = identitySegments[key]
 		}
 	}
 
@@ -210,10 +216,12 @@ func generateHash(overrides overridesKeyList) string {
 	return hex.EncodeToString(hash[:])[:16] // Use first 16 characters for shorter key
 }
 
-// This groups identities by their common feature overrides and creates segments for each group.
-func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityModel) map[string]SegmentContext {
+// This groups identities by their common feature overrides and creates segments for each group,
+// returned along with their keys in the order the groups first appear.
+func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityModel) (map[string]SegmentContext, []string) {
 	// Map from overrides key to list of identifiers
 	featuresToIdentifiers := make(map[string][]string)
+	var overridesHashes []string
 	overridesKeyToList := make(map[string]overridesKeyList)
 	featureNameToID := make(map[string]int)
 
@@ -244,6 +252,9 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 		overridesHash := generateHash(overrides)
 
 		// Group identifiers by their overrides
+		if _, ok := featuresToIdentifiers[overridesHash]; !ok {
+			overridesHashes = append(overridesHashes, overridesHash)
+		}
 		featuresToIdentifiers[overridesHash] = append(featuresToIdentifiers[overridesHash], identityOverride.Identifier)
 		overridesKeyToList[overridesHash] = overrides
 	}
@@ -296,7 +307,7 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 		segmentContexts[overridesHash] = sc
 	}
 
-	return segmentContexts
+	return segmentContexts, overridesHashes
 }
 
 type Trait = trait.Trait
@@ -344,7 +355,9 @@ func RemoveIdentityFromContext(context *EngineEvaluationContext) EngineEvaluatio
 	newContext := *context
 	newContext.Identity = nil
 	newContext.Segments = nil
-	for key, segment := range context.Segments {
+	newContext.segmentKeys = nil
+	for _, key := range context.SegmentKeys() {
+		segment := context.Segments[key]
 		if !isIdentityFree(segment.Rules) {
 			continue
 		}
@@ -352,6 +365,7 @@ func RemoveIdentityFromContext(context *EngineEvaluationContext) EngineEvaluatio
 			newContext.Segments = make(map[string]SegmentContext)
 		}
 		newContext.Segments[key] = segment
+		newContext.segmentKeys = append(newContext.segmentKeys, key)
 	}
 	newContext.TargetedFeatureNames = nil
 	newContext.TargetedFeatureNames = GetTargetedFeatureNames(&newContext)

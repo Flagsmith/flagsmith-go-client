@@ -23,12 +23,12 @@ func getPriorityOrDefault(priority *float64) float64 {
 	return math.Inf(1) // Weakest possible priority
 }
 
-func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext, sortedSegmentKeys []string, resolver *flagDependencyResolver) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
+func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext, segmentKeys []string, resolver *flagDependencyResolver) ([]engine_eval.SegmentResult, map[string]featureContextWithSegmentName) {
 	segmentResults := []engine_eval.SegmentResult{}
 	featureOverrides := make(map[string]featureContextWithSegmentName)
 
-	// Process segments in deterministic order (sorted by key)
-	for _, segmentKey := range sortedSegmentKeys {
+	// Process segments in context order
+	for _, segmentKey := range segmentKeys {
 		if !resolver.matchesSegment(segmentKey) {
 			continue
 		}
@@ -47,18 +47,8 @@ func getMatchingSegmentsAndOverrides(ec *engine_eval.EngineEvaluationContext, so
 	return segmentResults, featureOverrides
 }
 
-// getSortedSegmentKeys returns segment keys sorted for deterministic ordering.
-func getSortedSegmentKeys(segments map[string]engine_eval.SegmentContext) []string {
-	keys := make([]string, 0, len(segments))
-	for key := range segments {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
 // applySegmentOverrides updates the feature overrides map with this segment's overrides,
-// only replacing existing overrides if the new one has equal or higher priority.
+// only replacing existing overrides if the new one has higher priority.
 func applySegmentOverrides(segment *engine_eval.SegmentContext, featureOverrides map[string]featureContextWithSegmentName) {
 	for i := range segment.Overrides {
 		override := &segment.Overrides[i]
@@ -73,9 +63,9 @@ func applySegmentOverrides(segment *engine_eval.SegmentContext, featureOverrides
 }
 
 // overrideTakesPrecedence reports whether a segment override replaces the one held so far,
-// i.e. whether it has equal or higher priority.
+// i.e. whether it has higher priority, so the first seen wins a tie.
 func overrideTakesPrecedence(candidate, incumbent *engine_eval.FeatureContext) bool {
-	return getPriorityOrDefault(candidate.Priority) <= getPriorityOrDefault(incumbent.Priority)
+	return getPriorityOrDefault(candidate.Priority) < getPriorityOrDefault(incumbent.Priority)
 }
 
 // getIdentityKey returns the identity key used for multivariate bucketing, or nil without an identity.
@@ -129,11 +119,11 @@ func getFlagResults(ec *engine_eval.EngineEvaluationContext, featureOverrides ma
 
 // GetEvaluationResult computes flags and matched segments.
 func GetEvaluationResult(ec *engine_eval.EngineEvaluationContext) engine_eval.EvaluationResult {
-	sortedSegmentKeys := getSortedSegmentKeys(ec.Segments)
-	resolver := newFlagDependencyResolver(ec, sortedSegmentKeys)
+	segmentKeys := ec.SegmentKeys()
+	resolver := newFlagDependencyResolver(ec, segmentKeys)
 
 	// Process segments and get overrides
-	segmentResults, featureOverrides := getMatchingSegmentsAndOverrides(ec, sortedSegmentKeys, resolver)
+	segmentResults, featureOverrides := getMatchingSegmentsAndOverrides(ec, segmentKeys, resolver)
 
 	// Get flag results
 	flags := getFlagResults(ec, featureOverrides, resolver.resolved)

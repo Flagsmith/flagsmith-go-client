@@ -13,8 +13,8 @@ const circularDependencyReason = "ERROR; code=CIRCULAR_DEPENDENCY"
 // following dependencies transitively and memoising the results for one evaluation.
 // Its state is only allocated once a condition reads a flag.
 type flagDependencyResolver struct {
-	ec                *engine_eval.EngineEvaluationContext
-	sortedSegmentKeys []string
+	ec          *engine_eval.EngineEvaluationContext
+	segmentKeys []string
 
 	identityKey              *string
 	segmentKeysByFeatureName map[string][]string
@@ -30,14 +30,14 @@ type flagDependencyResolver struct {
 	cycleHits int
 }
 
-func newFlagDependencyResolver(ec *engine_eval.EngineEvaluationContext, sortedSegmentKeys []string) *flagDependencyResolver {
-	return &flagDependencyResolver{ec: ec, sortedSegmentKeys: sortedSegmentKeys}
+func newFlagDependencyResolver(ec *engine_eval.EngineEvaluationContext, segmentKeys []string) *flagDependencyResolver {
+	return &flagDependencyResolver{ec: ec, segmentKeys: segmentKeys}
 }
 
 func (r *flagDependencyResolver) init() {
 	r.identityKey = getIdentityKey(r.ec)
 	r.segmentKeysByFeatureName = make(map[string][]string)
-	for _, segmentKey := range r.sortedSegmentKeys {
+	for _, segmentKey := range r.segmentKeys {
 		for _, override := range r.ec.Segments[segmentKey].Overrides {
 			r.segmentKeysByFeatureName[override.Name] = append(r.segmentKeysByFeatureName[override.Name], segmentKey)
 		}
