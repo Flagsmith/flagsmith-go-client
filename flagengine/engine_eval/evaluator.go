@@ -11,13 +11,28 @@ import (
 	"github.com/ohler55/ojg/jp"
 )
 
+const flagsContextKey = "flags"
+
+// FlagResolver resolves the flags read by segment conditions on `$.flags.<feature name>`.
+type FlagResolver interface {
+	// ResolveFlag returns the flag result for the named feature, or nil if it cannot be resolved.
+	ResolveFlag(featureName string) *FlagResult
+}
+
 // IsContextInSegment determines if the given evaluation context matches the segment rules.
+// Conditions on `$.flags` never resolve; use IsContextInSegmentWithFlags to evaluate them.
 func IsContextInSegment(ec *EngineEvaluationContext, segmentContext *SegmentContext) bool {
+	return IsContextInSegmentWithFlags(ec, segmentContext, nil)
+}
+
+// IsContextInSegmentWithFlags determines if the given evaluation context matches the segment rules,
+// reading conditions on `$.flags.<feature name>` from flags.
+func IsContextInSegmentWithFlags(ec *EngineEvaluationContext, segmentContext *SegmentContext, flags FlagResolver) bool {
 	if len(segmentContext.Rules) == 0 {
 		return false
 	}
 	for i := range segmentContext.Rules {
-		if !contextMatchesSegmentRule(ec, &segmentContext.Rules[i], segmentContext.Key) {
+		if !contextMatchesSegmentRule(ec, flags, &segmentContext.Rules[i], segmentContext.Key) {
 			return false
 		}
 	}
@@ -25,9 +40,9 @@ func IsContextInSegment(ec *EngineEvaluationContext, segmentContext *SegmentCont
 }
 
 // Returns true if conditions match according to the rule type.
-func matchesConditionsByRuleType(ec *EngineEvaluationContext, conditions []Condition, ruleType Type, segmentKey string) bool {
+func matchesConditionsByRuleType(ec *EngineEvaluationContext, flags FlagResolver, conditions []Condition, ruleType Type, segmentKey string) bool {
 	for i := range conditions {
-		conditionMatches := contextMatchesCondition(ec, &conditions[i], segmentKey)
+		conditionMatches := contextMatchesCondition(ec, flags, &conditions[i], segmentKey)
 
 		switch ruleType {
 		case All:
@@ -51,23 +66,23 @@ func matchesConditionsByRuleType(ec *EngineEvaluationContext, conditions []Condi
 	return ruleType != Any
 }
 
-func contextMatchesSegmentRule(ec *EngineEvaluationContext, segmentRule *SegmentRule, segmentKey string) bool {
+func contextMatchesSegmentRule(ec *EngineEvaluationContext, flags FlagResolver, segmentRule *SegmentRule, segmentKey string) bool {
 	if len(segmentRule.Conditions) > 0 {
-		if !matchesConditionsByRuleType(ec, segmentRule.Conditions, segmentRule.Type, segmentKey) {
+		if !matchesConditionsByRuleType(ec, flags, segmentRule.Conditions, segmentRule.Type, segmentKey) {
 			return false
 		}
 	}
 
-	return matchesSubRulesByRuleType(ec, segmentRule.Rules, segmentRule.Type, segmentKey)
+	return matchesSubRulesByRuleType(ec, flags, segmentRule.Rules, segmentRule.Type, segmentKey)
 }
 
 // matchesSubRulesByRuleType evaluates sub-rules using the parent rule's type (ALL/ANY/NONE).
-func matchesSubRulesByRuleType(ec *EngineEvaluationContext, subRules []SegmentRule, ruleType Type, segmentKey string) bool {
+func matchesSubRulesByRuleType(ec *EngineEvaluationContext, flags FlagResolver, subRules []SegmentRule, ruleType Type, segmentKey string) bool {
 	if len(subRules) == 0 {
 		return true
 	}
 	for i := range subRules {
-		subRuleMatches := contextMatchesSegmentRule(ec, &subRules[i], segmentKey)
+		subRuleMatches := contextMatchesSegmentRule(ec, flags, &subRules[i], segmentKey)
 		switch ruleType {
 		case All:
 			if !subRuleMatches {
@@ -112,10 +127,10 @@ func matchPercentageSplit(ec *EngineEvaluationContext, segmentCondition *Conditi
 	return false
 }
 
-func contextMatchesCondition(ec *EngineEvaluationContext, segmentCondition *Condition, segmentKey string) bool {
+func contextMatchesCondition(ec *EngineEvaluationContext, flags FlagResolver, segmentCondition *Condition, segmentKey string) bool {
 	var contextValue ContextValue
 	if segmentCondition.Property != "" {
-		contextValue = getContextValue(ec, segmentCondition.Property)
+		contextValue = getContextValue(ec, flags, segmentCondition.Property)
 	}
 	if segmentCondition.Operator == PercentageSplit {
 		return matchPercentageSplit(ec, segmentCondition, segmentKey, contextValue)
@@ -180,9 +195,9 @@ func matchInOperator(segmentCondition *Condition, contextValue ContextValue) boo
 	return false
 }
 
-func getContextValue(ec *EngineEvaluationContext, property string) ContextValue {
+func getContextValue(ec *EngineEvaluationContext, flags FlagResolver, property string) ContextValue {
 	if strings.HasPrefix(property, "$.") {
-		value := getContextValueGetter(property)(ec)
+		value := getContextValueGetter(property, flags)(ec)
 		// Only use JSONPath result if it's a primitive value (not an object/array/map)
 		if value != nil && isPrimitive(value) {
 			return value
@@ -218,9 +233,26 @@ func isPrimitive(value any) bool {
 
 // getContextValueGetter returns a function to retrieve a value from the evaluation context
 // using either a JSONPath expression or returning nil if the property is not a valid JSONPath.
-func getContextValueGetter(property string) func(ec *EngineEvaluationContext) any {
+// Expressions selecting `$.flags.<feature name>` read the flag result resolved by flags.
+func getContextValueGetter(property string, flags FlagResolver) func(ec *EngineEvaluationContext) any {
 	// First, try to parse the property as a JSONPath expression.
 	p, err := jp.ParseString(property)
+	if featureName, ok := getFlagDependency(p); err == nil && ok {
+		return func(*EngineEvaluationContext) any {
+			if flags == nil {
+				return nil
+			}
+			field, ok := p[len(p)-1].(jp.Child)
+			if len(p) != 4 || !ok {
+				return nil
+			}
+			flag := flags.ResolveFlag(featureName)
+			if flag == nil {
+				return nil
+			}
+			return getFlagResultField(flag, string(field))
+		}
+	}
 	if err == nil {
 		// If successful, create a getter for the JSONPath.
 		getter := func(evalCtx *EngineEvaluationContext) any {
@@ -237,6 +269,34 @@ func getContextValueGetter(property string) func(ec *EngineEvaluationContext) an
 	return func(ec *EngineEvaluationContext) any {
 		return nil
 	}
+}
+
+// getFlagDependency returns the feature name a JSONPath expression selects under `$.flags`, if any.
+func getFlagDependency(p jp.Expr) (string, bool) {
+	if len(p) < 3 || p[1] != jp.Child(flagsContextKey) {
+		return "", false
+	}
+	featureName, ok := p[2].(jp.Child)
+	return string(featureName), ok
+}
+
+// getFlagResultField returns a field of a flag result by its JSON name, as read by `$.flags` conditions.
+func getFlagResultField(flag *FlagResult, field string) any {
+	switch field {
+	case "enabled":
+		return flag.Enabled
+	case "name":
+		return flag.Name
+	case "reason":
+		return flag.Reason
+	case "value":
+		return flag.Value
+	case "variant":
+		if flag.Variant != "" {
+			return flag.Variant
+		}
+	}
+	return nil
 }
 
 func ToString(contextValue ContextValue) string {

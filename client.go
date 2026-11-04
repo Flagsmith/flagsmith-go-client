@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -30,6 +31,7 @@ type Client struct {
 
 	environment             atomic.Value
 	engineEvaluationContext atomic.Value
+	environmentEvaluation   atomic.Value
 
 	analyticsProcessor *AnalyticsProcessor
 	eventProcessor     *EventProcessor
@@ -156,7 +158,7 @@ func NewClient(apiKey string, options ...Option) *Client {
 		env := c.offlineHandler.GetEnvironment()
 		c.environment.Store(env)
 		engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(env)
-		c.engineEvaluationContext.Store(&engineEvalCtx)
+		c.storeEngineEvaluationContext(&engineEvalCtx)
 	}
 
 	if c.config.localEvaluation {
@@ -503,20 +505,31 @@ func (c *Client) getIdentityFlagsFromEnvironment(identifier string, traits []*Tr
 }
 
 func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
-	evalCtx, ok := c.engineEvaluationContext.Load().(*engine_eval.EngineEvaluationContext)
+	evaluation, ok := c.environmentEvaluation.Load().(*environmentEvaluation)
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	// Clear segments and identity for environment evaluation
-	environmentEvalCtx := engine_eval.EngineEvaluationContext{
-		Environment: evalCtx.Environment,
-		Features:    evalCtx.Features,
-		Identity:    nil,
-		Segments:    nil,
-	}
+	return makeFlagsFromEngineEvaluationResult(evaluation.getResult(), c.analyticsProcessor, c.defaultFlagHandler), nil
+}
 
-	result := flagengine.GetEvaluationResult(&environmentEvalCtx)
-	return makeFlagsFromEngineEvaluationResult(&result, c.analyticsProcessor, c.defaultFlagHandler), nil
+func (c *Client) storeEngineEvaluationContext(evalCtx *engine_eval.EngineEvaluationContext) {
+	c.engineEvaluationContext.Store(evalCtx)
+	c.environmentEvaluation.Store(&environmentEvaluation{evalCtx: evalCtx})
+}
+
+// environmentEvaluation evaluates the environment flags of one environment document, once.
+type environmentEvaluation struct {
+	evalCtx *engine_eval.EngineEvaluationContext
+	once    sync.Once
+	result  engine_eval.EvaluationResult
+}
+
+func (e *environmentEvaluation) getResult() *engine_eval.EvaluationResult {
+	e.once.Do(func() {
+		environmentEvalCtx := engine_eval.RemoveIdentityFromContext(e.evalCtx)
+		e.result = flagengine.GetEvaluationResult(&environmentEvalCtx)
+	})
+	return &e.result
 }
 
 func (c *Client) pollEnvironment(ctx context.Context, pollForever bool) {
@@ -646,7 +659,7 @@ func (c *Client) UpdateEnvironment(ctx context.Context) error {
 	c.environment.Store(&env)
 
 	engineEvalCtx := engine_eval.MapEnvironmentDocumentToEvaluationContext(&env)
-	c.engineEvaluationContext.Store(&engineEvalCtx)
+	c.storeEngineEvaluationContext(&engineEvalCtx)
 
 	if isNew {
 		c.log.Info("environment updated", "environment", env.APIKey, "updated_at", env.UpdatedAt)

@@ -1,9 +1,11 @@
 package engine_eval
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"sort"
 )
 
 // A context object containing the necessary information to evaluate Flagsmith feature flags.
@@ -16,6 +18,94 @@ type EngineEvaluationContext struct {
 	Identity *IdentityContext `json:"identity,omitempty"`
 	// Segments applicable to the evaluation context.
 	Segments map[string]SegmentContext `json:"segments,omitempty"`
+	// Names of the features overridden by at least one of Segments, precomputed by the
+	// mappers so that evaluations reuse them. Computed per evaluation when nil.
+	TargetedFeatureNames map[string]struct{} `json:"-"`
+
+	segmentKeys []string
+}
+
+// SegmentKeys returns the keys of Segments in context order, i.e. as decoded from JSON or mapped
+// from an environment document, which settles precedence between overrides of equal priority.
+// Segments without a known order follow, sorted by key.
+func (ec *EngineEvaluationContext) SegmentKeys() []string {
+	if len(ec.segmentKeys) == len(ec.Segments) && hasAllKeys(ec.Segments, ec.segmentKeys) {
+		return ec.segmentKeys
+	}
+	keys := make([]string, 0, len(ec.Segments))
+	ordered := make(map[string]struct{}, len(ec.segmentKeys))
+	for _, key := range ec.segmentKeys {
+		if _, ok := ec.Segments[key]; ok {
+			keys = append(keys, key)
+			ordered[key] = struct{}{}
+		}
+	}
+	unordered := make([]string, 0, len(ec.Segments)-len(keys))
+	for key := range ec.Segments {
+		if _, ok := ordered[key]; !ok {
+			unordered = append(unordered, key)
+		}
+	}
+	sort.Strings(unordered)
+	return append(keys, unordered...)
+}
+
+func hasAllKeys(segments map[string]SegmentContext, keys []string) bool {
+	for _, key := range keys {
+		if _, ok := segments[key]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for EngineEvaluationContext,
+// keeping the order of its segments.
+func (ec *EngineEvaluationContext) UnmarshalJSON(data []byte) error {
+	type Alias EngineEvaluationContext
+	aux := struct {
+		*Alias
+		Segments json.RawMessage `json:"segments,omitempty"`
+	}{
+		Alias: (*Alias)(ec),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	segments, keys, err := decodeSegments(aux.Segments)
+	if err != nil {
+		return err
+	}
+	ec.Segments, ec.segmentKeys = segments, keys
+	return nil
+}
+
+// decodeSegments decodes a JSON object of segment contexts, along with their distinct keys
+// in the order they first appear.
+func decodeSegments(data json.RawMessage) (map[string]SegmentContext, []string, error) {
+	var segments map[string]SegmentContext
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &segments); err != nil {
+			return nil, nil, err
+		}
+	}
+	if segments == nil {
+		return nil, nil, nil
+	}
+	keys := make([]string, 0, len(segments))
+	seen := make(map[string]struct{}, len(segments))
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	_, _ = decoder.Token() // The data decoded above, so it holds a well-formed object.
+	for decoder.More() {
+		token, _ := decoder.Token()
+		key := token.(string)
+		_ = decoder.Decode(&json.RawMessage{})
+		if _, ok := seen[key]; !ok {
+			seen[key] = struct{}{}
+			keys = append(keys, key)
+		}
+	}
+	return segments, keys, nil
 }
 
 // Environment context required for evaluation.

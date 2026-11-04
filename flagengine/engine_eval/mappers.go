@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,22 +43,43 @@ func MapEnvironmentDocumentToEvaluationContext(env *environments.EnvironmentMode
 		ctx.Segments = make(map[string]SegmentContext, len(env.Project.Segments))
 		for _, s := range env.Project.Segments {
 			sc := mapSegmentToSegmentContext(s)
+			if _, ok := ctx.Segments[sc.Key]; !ok {
+				ctx.segmentKeys = append(ctx.segmentKeys, sc.Key)
+			}
 			ctx.Segments[sc.Key] = sc
 		}
 	}
 
 	// Identity overrides (mapped to segments)
 	if len(env.IdentityOverrides) > 0 {
-		identitySegments := mapIdentityOverridesToSegments(env.IdentityOverrides)
+		identitySegments, identitySegmentKeys := mapIdentityOverridesToSegments(env.IdentityOverrides)
 		if ctx.Segments == nil {
 			ctx.Segments = make(map[string]SegmentContext)
 		}
-		for key, segment := range identitySegments {
-			ctx.Segments[key] = segment
+		for _, key := range identitySegmentKeys {
+			if _, ok := ctx.Segments[key]; !ok {
+				ctx.segmentKeys = append(ctx.segmentKeys, key)
+			}
+			ctx.Segments[key] = identitySegments[key]
 		}
 	}
 
+	ctx.TargetedFeatureNames = GetTargetedFeatureNames(&ctx)
 	return ctx
+}
+
+// GetTargetedFeatureNames returns the names of the features overridden by at least one segment.
+func GetTargetedFeatureNames(ec *EngineEvaluationContext) map[string]struct{} {
+	if ec.TargetedFeatureNames != nil {
+		return ec.TargetedFeatureNames
+	}
+	targetedFeatureNames := make(map[string]struct{}, len(ec.Features))
+	for _, segmentContext := range ec.Segments {
+		for i := range segmentContext.Overrides {
+			targetedFeatureNames[segmentContext.Overrides[i].Name] = struct{}{}
+		}
+	}
+	return targetedFeatureNames
 }
 
 // mapMultivariateFeatureStateValuesToVariants converts multivariate feature state values to FeatureValue variants.
@@ -194,10 +216,12 @@ func generateHash(overrides overridesKeyList) string {
 	return hex.EncodeToString(hash[:])[:16] // Use first 16 characters for shorter key
 }
 
-// This groups identities by their common feature overrides and creates segments for each group.
-func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityModel) map[string]SegmentContext {
+// This groups identities by their common feature overrides and creates segments for each group,
+// returned along with their keys in the order the groups first appear.
+func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityModel) (map[string]SegmentContext, []string) {
 	// Map from overrides key to list of identifiers
 	featuresToIdentifiers := make(map[string][]string)
+	var overridesHashes []string
 	overridesKeyToList := make(map[string]overridesKeyList)
 	featureNameToID := make(map[string]int)
 
@@ -228,6 +252,9 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 		overridesHash := generateHash(overrides)
 
 		// Group identifiers by their overrides
+		if _, ok := featuresToIdentifiers[overridesHash]; !ok {
+			overridesHashes = append(overridesHashes, overridesHash)
+		}
 		featuresToIdentifiers[overridesHash] = append(featuresToIdentifiers[overridesHash], identityOverride.Identifier)
 		overridesKeyToList[overridesHash] = overrides
 	}
@@ -280,7 +307,7 @@ func mapIdentityOverridesToSegments(identityOverrides []*identities.IdentityMode
 		segmentContexts[overridesHash] = sc
 	}
 
-	return segmentContexts
+	return segmentContexts, overridesHashes
 }
 
 type Trait = trait.Trait
@@ -319,6 +346,48 @@ func MapContextAndIdentityDataToContext(
 	newContext.Identity = &identity
 
 	return newContext
+}
+
+// RemoveIdentityFromContext returns a copy of the context to evaluate environment flags with:
+// without an identity, and keeping only the segments whose conditions read the environment or
+// other flags, as the Flagsmith API does.
+func RemoveIdentityFromContext(context *EngineEvaluationContext) EngineEvaluationContext {
+	newContext := *context
+	newContext.Identity = nil
+	newContext.Segments = nil
+	newContext.segmentKeys = nil
+	for _, key := range context.SegmentKeys() {
+		segment := context.Segments[key]
+		if !isIdentityFree(segment.Rules) {
+			continue
+		}
+		if newContext.Segments == nil {
+			newContext.Segments = make(map[string]SegmentContext)
+		}
+		newContext.Segments[key] = segment
+		newContext.segmentKeys = append(newContext.segmentKeys, key)
+	}
+	newContext.TargetedFeatureNames = nil
+	newContext.TargetedFeatureNames = GetTargetedFeatureNames(&newContext)
+	return newContext
+}
+
+var identityFreePropertyPrefixes = []string{"$.environment.", "$.environment[", "$.flags.", "$.flags["}
+
+func isIdentityFree(rules []SegmentRule) bool {
+	for _, rule := range rules {
+		for _, condition := range rule.Conditions {
+			if !slices.ContainsFunc(identityFreePropertyPrefixes, func(prefix string) bool {
+				return strings.HasPrefix(condition.Property, prefix)
+			}) {
+				return false
+			}
+		}
+		if !isIdentityFree(rule.Rules) {
+			return false
+		}
+	}
+	return true
 }
 
 // MapEvaluationResultSegmentsToSegmentModels converts evaluation result segments
