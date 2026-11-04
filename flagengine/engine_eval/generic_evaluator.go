@@ -147,13 +147,14 @@ func parseAndMatch(operator Operator, traitValue, conditionValue string) bool {
 	return dispatchOperator(operator, traitValue, conditionValue)
 }
 
-// evaluateRegexGeneric performs regex matching on trait values.
+// evaluateRegexGeneric reports whether the regex matches at the start of the trait value, without requiring a full match.
 func evaluateRegexGeneric(traitValue, conditionValue string) bool {
-	match, err := regexp.Match(conditionValue, []byte(traitValue))
+	re, err := regexp.Compile(conditionValue)
 	if err != nil {
 		return false
 	}
-	return match
+	loc := re.FindStringIndex(traitValue)
+	return loc != nil && loc[0] == 0
 }
 
 // evaluateModuloGeneric performs modulo operation matching on trait values.
