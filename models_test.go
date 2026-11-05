@@ -72,7 +72,24 @@ func TestMakeFlagsFromIdentityAPIJsonWithoutExperimentIsUnchanged(t *testing.T) 
 	}}, flags.flags)
 }
 
-func TestMakeFlagFromEngineEvaluationFlagResultHasNoExperiment(t *testing.T) {
+func TestMakeFlagFromEngineEvaluationFlagResultSetsExperiment(t *testing.T) {
+	// When
+	flag := makeFlagFromEngineEvaluationFlagResult(&engine_eval.FlagResult{
+		Enabled: true,
+		Name:    "mv_feature",
+		Value:   "variant_value",
+		Variant: "treatment",
+		Metadata: engine_eval.FeatureMetadata{
+			FeatureID:  1,
+			Experiment: &engine_eval.ExperimentMetadata{ID: 42, Name: "Checkout experiment", InExperiment: true},
+		},
+	})
+
+	// Then
+	assert.Equal(t, &ExperimentMetadata{ID: 42, Name: "Checkout experiment", InExperiment: true}, flag.Experiment)
+}
+
+func TestMakeFlagFromEngineEvaluationFlagResultWithoutExperimentHasNoExperiment(t *testing.T) {
 	// When
 	flag := makeFlagFromEngineEvaluationFlagResult(&engine_eval.FlagResult{
 		Enabled: true,

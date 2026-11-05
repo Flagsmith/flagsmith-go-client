@@ -20,13 +20,13 @@ type Flag struct {
 	// Variant is the key of the multivariate variant the identity was bucketed into.
 	// Empty for standard features and evaluation without an identity.
 	Variant string
-	// Experiment is the running experiment on this feature. Only populated by remote
-	// identity evaluation; nil otherwise.
+	// Experiment is the running experiment on this feature. Only populated by identity
+	// evaluation, remote or local; nil otherwise.
 	Experiment *ExperimentMetadata
 }
 
 // ExperimentMetadata describes the running experiment a flag was evaluated under.
-// It is only populated by remote identity evaluation.
+// It is only populated by identity evaluation.
 type ExperimentMetadata struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
@@ -49,7 +49,7 @@ func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) 
 	// Get FeatureID from metadata
 	featureID := flagResult.Metadata.FeatureID
 
-	return Flag{
+	flag := Flag{
 		Enabled:     flagResult.Enabled,
 		Value:       value,
 		IsDefault:   false,
@@ -58,6 +58,14 @@ func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) 
 		Reason:      flagResult.Reason,
 		Variant:     flagResult.Variant,
 	}
+	if experiment := flagResult.Metadata.Experiment; experiment != nil {
+		flag.Experiment = &ExperimentMetadata{
+			ID:           experiment.ID,
+			Name:         experiment.Name,
+			InExperiment: experiment.InExperiment,
+		}
+	}
+	return flag
 }
 
 type Flags struct {

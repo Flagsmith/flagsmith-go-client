@@ -27,6 +27,19 @@ type FeatureStateModel struct {
 	FeatureStateUUID               string                                `json:"featurestate_uuid"`
 	MultivariateFeatureStateValues []*MultivariateFeatureStateValueModel `json:"multivariate_feature_state_values"`
 	RawValue                       interface{}                           `json:"feature_state_value"`
+	Metadata                       *FeatureStateMetadata                 `json:"metadata"`
+}
+
+// FeatureStateMetadata is what Flagsmith reports about a feature state beyond its value.
+type FeatureStateMetadata struct {
+	Experiment *ExperimentModel `json:"experiment"`
+}
+
+// ExperimentModel is the running experiment a feature state belongs to.
+type ExperimentModel struct {
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	InExperiment bool   `json:"in_experiment"`
 }
 
 func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
@@ -38,6 +51,7 @@ func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
 		FeatureStateUUID               string                                `json:"featurestate_uuid"`
 		MultivariateFeatureStateValues []*MultivariateFeatureStateValueModel `json:"multivariate_feature_state_values"`
 		RawValue                       interface{}                           `json:"feature_state_value"`
+		Metadata                       *FeatureStateMetadata                 `json:"metadata"`
 	}
 
 	err := json.Unmarshal(bytes, &obj)
@@ -52,6 +66,7 @@ func (fs *FeatureStateModel) UnmarshalJSON(bytes []byte) error {
 	fs.FeatureStateUUID = obj.FeatureStateUUID
 	fs.MultivariateFeatureStateValues = obj.MultivariateFeatureStateValues
 	fs.RawValue = obj.RawValue
+	fs.Metadata = obj.Metadata
 	return nil
 }
 

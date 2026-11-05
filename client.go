@@ -225,7 +225,7 @@ func (c *Client) newEventProcessor() *EventProcessor {
 }
 
 // GetExperimentFlag evaluates one flag for the identity in ec and records an exposure when
-// that identity is enrolled in a running experiment, which requires remote evaluation.
+// that identity is enrolled in a running experiment.
 // See the README's Experimentation section. Requires WithEvents and an identity in ec, and
 // returns an error if ec targets another environment.
 func (c *Client) GetExperimentFlag(ctx context.Context, featureName string, ec EvaluationContext) (Flag, error) {
@@ -509,7 +509,13 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	return makeFlagsFromEngineEvaluationResult(evaluation.getResult(), c.analyticsProcessor, c.defaultFlagHandler), nil
+	flags := makeFlagsFromEngineEvaluationResult(evaluation.getResult(), c.analyticsProcessor, c.defaultFlagHandler)
+	// Only an identity is enrolled in an experiment, so environment flags carry none, as
+	// with remote evaluation.
+	for i := range flags.flags {
+		flags.flags[i].Experiment = nil
+	}
+	return flags, nil
 }
 
 func (c *Client) storeEngineEvaluationContext(evalCtx *engine_eval.EngineEvaluationContext) {

@@ -1958,7 +1958,7 @@ func TestGetExperimentFlagWithSameEnvironmentRecordsExposure(t *testing.T) {
 	assert.Len(t, events.Events(), 1)
 }
 
-func TestGetExperimentFlagWithLocalEvaluationSkipsExposure(t *testing.T) {
+func TestGetExperimentFlagWithLocalEvaluationWithoutExperimentSkipsExposure(t *testing.T) {
 	// Given
 	events := &fixtures.EventsAPIHandler{}
 	server := newExperimentServer(t, events)
@@ -2147,4 +2147,115 @@ func TestEventsDisabledAfterUnauthorised(t *testing.T) {
 	// Then: flags still work, but nothing more is sent
 	require.NoError(t, client.FlushEvents(t.Context()))
 	assert.Len(t, events.Requests(), 1)
+}
+
+func newLocalExperimentClient(t *testing.T, events *fixtures.EventsAPIHandler) *flagsmith.Client {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/environment-document/", func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(rw, fixtures.EnvironmentJsonWithExperiment)
+	})
+	mux.Handle("/v1/events", events)
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	client := newExperimentClient(t, server, flagsmith.WithLocalEvaluation(t.Context()))
+	require.NoError(t, client.UpdateEnvironment(t.Context()))
+	return client
+}
+
+func TestGetExperimentFlagWithLocalEvaluationRecordsExposureWhenEnrolled(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newLocalExperimentClient(t, events)
+	ec := flagsmith.NewEvaluationContext("user-123", map[string]interface{}{"plan": "premium"})
+
+	// When
+	flag, err := client.GetExperimentFlag(t.Context(), fixtures.LocalExperimentFeatureName, ec)
+
+	// Then
+	require.NoError(t, err)
+	assert.Equal(t, fixtures.LocalExperimentVariantValue, flag.Value)
+	assert.Equal(t, fixtures.LocalExperimentVariant, flag.Variant)
+	assert.Equal(t, &flagsmith.ExperimentMetadata{
+		ID: fixtures.LocalExperimentID, Name: fixtures.LocalExperimentName, InExperiment: true,
+	}, flag.Experiment)
+	require.NoError(t, client.FlushEvents(t.Context()))
+	sent := events.Events()
+	require.Len(t, sent, 1)
+	assert.Equal(t, flagsmith.FlagExposureEvent, sent[0]["event"])
+	assert.Equal(t, fixtures.LocalExperimentFeatureName, sent[0]["feature_name"])
+	assert.Equal(t, "user-123", sent[0]["identifier"])
+	assert.Equal(t, fixtures.LocalExperimentVariant, sent[0]["value"])
+	assert.Equal(t, map[string]interface{}{"plan": "premium"}, sent[0]["traits"])
+	assert.Equal(t, float64(fixtures.LocalExperimentID), sent[0]["metadata"].(map[string]interface{})["experiment_id"])
+}
+
+func TestGetExperimentFlagWithLocalEvaluationSkipsExposureWhenNotEnrolled(t *testing.T) {
+	testCases := []struct {
+		name               string
+		feature            string
+		identifier         string
+		plan               string
+		expectedValue      string
+		expectedExperiment *flagsmith.ExperimentMetadata
+	}{
+		{
+			name:          "outside the rollout",
+			feature:       fixtures.LocalExperimentFeatureName,
+			identifier:    "user-123",
+			plan:          "free",
+			expectedValue: fixtures.LocalExperimentControlValue,
+			expectedExperiment: &flagsmith.ExperimentMetadata{
+				ID: fixtures.LocalExperimentID, Name: fixtures.LocalExperimentName, InExperiment: false,
+			},
+		},
+		{
+			name:          "identity override",
+			feature:       fixtures.LocalExperimentFeatureName,
+			identifier:    fixtures.LocalExperimentOverriddenUser,
+			plan:          "premium",
+			expectedValue: fixtures.LocalExperimentOverrideValue,
+		},
+		{
+			name:          "no experiment",
+			feature:       fixtures.LocalNoExperimentFeatureName,
+			identifier:    "user-123",
+			plan:          "premium",
+			expectedValue: fixtures.LocalNoExperimentFeatureValue,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Given
+			events := &fixtures.EventsAPIHandler{}
+			client := newLocalExperimentClient(t, events)
+			ec := flagsmith.NewEvaluationContext(tc.identifier, map[string]interface{}{"plan": tc.plan})
+
+			// When
+			flag, err := client.GetExperimentFlag(t.Context(), tc.feature, ec)
+
+			// Then
+			require.NoError(t, err)
+			assert.Equal(t, tc.expectedValue, flag.Value)
+			assert.Equal(t, tc.expectedExperiment, flag.Experiment)
+			require.NoError(t, client.FlushEvents(t.Context()))
+			assert.Empty(t, events.Requests())
+		})
+	}
+}
+
+func TestGetEnvironmentFlagsWithLocalEvaluationHasNoExperiment(t *testing.T) {
+	// Given
+	client := newLocalExperimentClient(t, &fixtures.EventsAPIHandler{})
+
+	// When
+	flags, err := client.GetEnvironmentFlags(t.Context())
+
+	// Then: only an identity is enrolled in an experiment, as with remote evaluation
+	require.NoError(t, err)
+	flag, err := flags.GetFlag(fixtures.LocalExperimentFeatureName)
+	require.NoError(t, err)
+	assert.Equal(t, fixtures.LocalExperimentControlValue, flag.Value)
+	assert.Nil(t, flag.Experiment)
 }
