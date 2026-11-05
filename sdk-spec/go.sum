@@ -8,6 +8,8 @@ github.com/itlightning/dateparse v0.2.1 h1:AB0NJTyI0HYcerEUMovKZOiQVBg1mBPxgAnWQ
 github.com/itlightning/dateparse v0.2.1/go.mod h1:xHlmL8lT0L9JIBlaKotRwsoDYpKJskXpiU9ZwbbSkNA=
 github.com/ohler55/ojg v1.28.1 h1:Xy93DelhLSZNeWv8GPKtP6qMqkUlZlAxBP/AQcC5RfY=
 github.com/ohler55/ojg v1.28.1/go.mod h1:/Y5dGWkekv9ocnUixuETqiL58f+5pAsUfg5P8e7Pa2o=
+github.com/ohler55/ojg v1.28.9 h1:VL2vdN1CjniaNABNOFjorAW+/o7eBQDc4z5jO49jkHM=
+github.com/ohler55/ojg v1.28.9/go.mod h1:/Y5dGWkekv9ocnUixuETqiL58f+5pAsUfg5P8e7Pa2o=
 github.com/stretchr/testify v1.12.0 h1:K6Mr6jO9JICuend/5xzTM03ydSV3vdNRYAdPSukj8uI=
 github.com/stretchr/testify v1.12.0/go.mod h1:bOYBZb5qJ00vPzWfIqBUZPaxK8jWiXc6d3ErP4Ca9Gw=
 github.com/tailscale/hujson v0.0.0-20250605163823-992244df8c5a h1:a6TNDN9CgG+cYjaeN8l2mc4kSz2iMiCDQxPEyltUV/I=
