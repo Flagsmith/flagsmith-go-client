@@ -510,8 +510,7 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
 	flags := makeFlagsFromEngineEvaluationResult(evaluation.getResult(), c.analyticsProcessor, c.defaultFlagHandler)
-	// Only an identity is enrolled in an experiment, so environment flags carry none, as
-	// with remote evaluation.
+	// Only an identity is enrolled in an experiment, so environment flags carry none.
 	for i := range flags.flags {
 		flags.flags[i].Experiment = nil
 	}
