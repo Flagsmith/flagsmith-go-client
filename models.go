@@ -21,7 +21,7 @@ type Flag struct {
 	// Empty for standard features and evaluation without an identity.
 	Variant string
 	// Experiment is the running experiment on this feature. Only populated by identity
-	// evaluation, remote or local; nil otherwise.
+	// evaluation; nil otherwise.
 	Experiment *ExperimentMetadata
 }
 
