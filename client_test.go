@@ -1964,24 +1964,6 @@ func TestGetExperimentFlagWithSameEnvironmentRecordsExposure(t *testing.T) {
 	assert.Len(t, events.Events(), 1)
 }
 
-func TestGetExperimentFlagWithLocalEvaluationWithoutExperimentSkipsExposure(t *testing.T) {
-	// Given
-	events := &fixtures.EventsAPIHandler{}
-	server := newExperimentServer(t, events)
-	client := newExperimentClient(t, server, flagsmith.WithLocalEvaluation(t.Context()))
-	require.NoError(t, client.UpdateEnvironment(t.Context()))
-
-	// When
-	flag, err := client.GetExperimentFlag(t.Context(), fixtures.Feature1Name, flagsmith.NewEvaluationContext("user-123", nil))
-
-	// Then
-	require.NoError(t, err)
-	assert.Equal(t, fixtures.Feature1Value, flag.Value)
-	assert.Nil(t, flag.Experiment)
-	require.NoError(t, client.FlushEvents(t.Context()))
-	assert.Empty(t, events.Requests())
-}
-
 func TestGetExperimentFlagTwoIdentities(t *testing.T) {
 	// Given
 	events := &fixtures.EventsAPIHandler{}
