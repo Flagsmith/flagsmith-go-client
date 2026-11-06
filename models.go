@@ -49,7 +49,11 @@ func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) 
 	// Get FeatureID from metadata
 	featureID := flagResult.Metadata.FeatureID
 
-	flag := Flag{
+	var experiment *ExperimentMetadata
+	if e := flagResult.Metadata.Experiment; e != nil {
+		experiment = &ExperimentMetadata{ID: e.ID, Name: e.Name, InExperiment: e.InExperiment}
+	}
+	return Flag{
 		Enabled:     flagResult.Enabled,
 		Value:       value,
 		IsDefault:   false,
@@ -57,15 +61,8 @@ func makeFlagFromEngineEvaluationFlagResult(flagResult *engine_eval.FlagResult) 
 		FeatureName: flagResult.Name,
 		Reason:      flagResult.Reason,
 		Variant:     flagResult.Variant,
+		Experiment:  experiment,
 	}
-	if experiment := flagResult.Metadata.Experiment; experiment != nil {
-		flag.Experiment = &ExperimentMetadata{
-			ID:           experiment.ID,
-			Name:         experiment.Name,
-			InExperiment: experiment.InExperiment,
-		}
-	}
-	return flag
 }
 
 type Flags struct {

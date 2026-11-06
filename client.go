@@ -511,12 +511,7 @@ func (c *Client) getEnvironmentFlagsFromEnvironment() (Flags, error) {
 	if !ok {
 		return Flags{}, fmt.Errorf("flagsmith: local environment has not yet been updated")
 	}
-	flags := makeFlagsFromEngineEvaluationResult(evaluation.getResult(), c.analyticsProcessor, c.defaultFlagHandler)
-	// Only an identity is enrolled in an experiment, so environment flags carry none.
-	for i := range flags.flags {
-		flags.flags[i].Experiment = nil
-	}
-	return flags, nil
+	return makeFlagsFromEngineEvaluationResult(evaluation.getResult(), c.analyticsProcessor, c.defaultFlagHandler), nil
 }
 
 func (c *Client) storeEngineEvaluationContext(evalCtx *engine_eval.EngineEvaluationContext) {
@@ -535,6 +530,10 @@ func (e *environmentEvaluation) getResult() *engine_eval.EvaluationResult {
 	e.once.Do(func() {
 		environmentEvalCtx := engine_eval.RemoveIdentityFromContext(e.evalCtx)
 		e.result = flagengine.GetEvaluationResult(&environmentEvalCtx)
+		// Only an identity is enrolled in an experiment, so environment flags carry none.
+		for _, flagResult := range e.result.Flags {
+			flagResult.Metadata.Experiment = nil
+		}
 	})
 	return &e.result
 }
