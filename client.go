@@ -225,7 +225,7 @@ func (c *Client) newEventProcessor() *EventProcessor {
 }
 
 // GetExperimentFlag evaluates one flag for the identity in ec and records an exposure when
-// that identity is enrolled in a running experiment, which requires remote evaluation.
+// that identity is enrolled in a running experiment.
 // See the README's Experimentation section. Requires WithEvents and an identity in ec, and
 // returns an error if ec targets another environment.
 func (c *Client) GetExperimentFlag(ctx context.Context, featureName string, ec EvaluationContext) (Flag, error) {
@@ -260,6 +260,8 @@ func (c *Client) GetExperimentFlag(ctx context.Context, featureName string, ec E
 		return skip("flag is disabled")
 	case flag.Experiment == nil || !flag.Experiment.InExperiment:
 		return skip("identity is not enrolled in an experiment")
+	case flag.Variant == "":
+		return skip("flag has no variant")
 	}
 
 	c.eventProcessor.TrackExposureEvent(featureName, identifier, flag.Variant, traitValues(ec.Identity),
@@ -528,6 +530,10 @@ func (e *environmentEvaluation) getResult() *engine_eval.EvaluationResult {
 	e.once.Do(func() {
 		environmentEvalCtx := engine_eval.RemoveIdentityFromContext(e.evalCtx)
 		e.result = flagengine.GetEvaluationResult(&environmentEvalCtx)
+		// Only an identity is enrolled in an experiment, so environment flags carry none.
+		for _, flagResult := range e.result.Flags {
+			flagResult.Metadata.Experiment = nil
+		}
 	})
 	return &e.result
 }

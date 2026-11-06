@@ -24,7 +24,7 @@ ec := flagsmith.NewEvaluationContext("user-123", map[string]interface{}{"plan": 
 flag, err := client.GetExperimentFlag(ctx, "checkout_cta", ec)
 ```
 
-`GetExperimentFlag` returns the flag and records a `$flag_exposure` when the identity is enrolled in a running experiment. Experiment metadata needs remote evaluation, so local evaluation records no exposure. `TrackExposureEvent` records one for a flag you evaluated some other way.
+`GetExperimentFlag` returns the flag and records a `$flag_exposure` when the identity is enrolled in a running experiment. `TrackExposureEvent` records one for a flag you evaluated some other way.
 
 Record conversions with `TrackEvent`. Names starting with `$` are reserved.
 

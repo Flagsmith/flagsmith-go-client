@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
+
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/features"
 )
 
 // A context object containing the necessary information to evaluate Flagsmith feature flags.
@@ -215,6 +217,8 @@ type SegmentMetadata struct {
 // FeatureMetadata contains metadata information about a feature.
 type FeatureMetadata struct {
 	FeatureID int `json:"feature_id,omitempty"`
+	// Experiment is the running experiment the feature state belongs to, if any.
+	Experiment *features.ExperimentModel `json:"experiment,omitempty"`
 }
 
 // Represents a segment context for feature flag evaluation.

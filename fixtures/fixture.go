@@ -285,6 +285,109 @@ const EnvironmentJsonWithMultivariateFeature = `
 }
 `
 
+// Features in EnvironmentJsonWithExperiment.
+const (
+	LocalExperimentFeatureName    = "checkout"
+	LocalExperimentID             = 42
+	LocalExperimentName           = "Checkout experiment"
+	LocalExperimentVariant        = "treatment"
+	LocalExperimentVariantValue   = "new checkout"
+	LocalExperimentControlValue   = "control"
+	LocalExperimentOverriddenUser = "user_overridden"
+	LocalExperimentOverrideValue  = "overridden checkout"
+	LocalNoExperimentFeatureName  = "plain"
+	LocalNoExperimentFeatureValue = "hello"
+)
+
+// EnvironmentJsonWithExperiment runs an experiment on "checkout", whose rollout segment is
+// identities on the premium plan, serving them the "treatment" variant. "user_overridden"
+// has an identity override for "checkout", and "plain" has no experiment.
+const EnvironmentJsonWithExperiment = `
+{
+	"api_key": "B62qaMZNwfiqT76p38ggrQ",
+	"name": "Test Environment",
+	"updated_at": "2023-12-06T10:21:54.079725Z",
+	"project": {
+		"name": "Test project",
+		"organisation": {
+			"feature_analytics": false,
+			"name": "Test Org",
+			"id": 1,
+			"persist_trait_data": true,
+			"stop_serving_flags": false
+		},
+		"id": 1,
+		"hide_disabled_flags": false,
+		"segments": [{
+			"id": 7,
+			"name": "Checkout experiment rollout",
+			"feature_states": [{
+				"multivariate_feature_state_values": [{
+					"id": 3,
+					"multivariate_feature_option": {
+						"id": 3,
+						"value": "new checkout",
+						"key": "treatment"
+					},
+					"percentage_allocation": 100,
+					"mv_fs_value_uuid": "3e3e3e3e-3e3e-3e3e-3e3e-3e3e3e3e3e3e"
+				}],
+				"feature_state_value": "control",
+				"id": 2,
+				"featurestate_uuid": "c2c2c2c2-c2c2-c2c2-c2c2-c2c2c2c2c2c2",
+				"feature": {"name": "checkout", "type": "MULTIVARIATE", "id": 10},
+				"feature_segment": {"priority": 0},
+				"enabled": true,
+				"metadata": {
+					"experiment": {"id": 42, "name": "Checkout experiment", "in_experiment": true}
+				}
+			}],
+			"rules": [{
+				"type": "ALL",
+				"conditions": [{
+					"operator": "EQUAL",
+					"property_": "plan",
+					"value": "premium"
+				}],
+				"rules": []
+			}]
+		}]
+	},
+	"segment_overrides": [],
+	"id": 1,
+	"feature_states": [{
+		"multivariate_feature_state_values": [],
+		"feature_state_value": "control",
+		"id": 1,
+		"featurestate_uuid": "c1c1c1c1-c1c1-c1c1-c1c1-c1c1c1c1c1c1",
+		"feature": {"name": "checkout", "type": "MULTIVARIATE", "id": 10},
+		"segment_id": null,
+		"enabled": true,
+		"metadata": {
+			"experiment": {"id": 42, "name": "Checkout experiment", "in_experiment": false}
+		}
+	}, {
+		"multivariate_feature_state_values": [],
+		"feature_state_value": "hello",
+		"id": 3,
+		"featurestate_uuid": "c3c3c3c3-c3c3-c3c3-c3c3-c3c3c3c3c3c3",
+		"feature": {"name": "plain", "type": "STANDARD", "id": 11},
+		"segment_id": null,
+		"enabled": true
+	}],
+	"identity_overrides": [{
+		"identifier": "user_overridden",
+		"identity_features": [{
+			"multivariate_feature_state_values": [],
+			"feature_state_value": "overridden checkout",
+			"featurestate_uuid": "c4c4c4c4-c4c4-c4c4-c4c4-c4c4c4c4c4c4",
+			"feature": {"name": "checkout", "type": "MULTIVARIATE", "id": 10},
+			"enabled": true
+		}]
+	}]
+}
+`
+
 // EnvironmentJsonWithFlagDependency contains a feature overridden by a segment
 // that matches when another feature, the prerequisite, is enabled.
 const EnvironmentJsonWithFlagDependency = `
@@ -424,10 +527,12 @@ const (
 	NotEnrolledVariant            = "control"
 	NoMetadataFeatureName         = "no_metadata"
 	DisabledExperimentFeatureName = "disabled_experiment"
+	NoVariantFeatureName          = "no_variant"
 )
 
 // IdentityResponseJsonWithExperiment carries one enrolled flag, one flag whose identity is
-// outside the rollout, one flag without metadata and one disabled flag that is enrolled.
+// outside the rollout, one flag without metadata, one disabled flag that is enrolled and one
+// enrolled flag without a variant.
 const IdentityResponseJsonWithExperiment = `
 {
 	"flags": [
@@ -468,6 +573,16 @@ const IdentityResponseJsonWithExperiment = `
 			"reason": "SPLIT; weight=50.0",
 			"metadata": {
 				"experiment": {"id": 44, "name": "disabled_exp", "in_experiment": true}
+			}
+		},
+		{
+			"feature": {"id": 14, "name": "no_variant", "type": "STANDARD"},
+			"enabled": true,
+			"feature_state_value": "on",
+			"variant": null,
+			"reason": "TARGETING_MATCH; segment=premium",
+			"metadata": {
+				"experiment": {"id": 45, "name": "no_variant_exp", "in_experiment": true}
 			}
 		}
 	],

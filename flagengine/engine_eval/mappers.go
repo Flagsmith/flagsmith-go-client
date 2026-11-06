@@ -117,6 +117,11 @@ func mapFeatureStateToFeatureContext(fs *features.FeatureStateModel) FeatureCont
 		},
 	}
 
+	// Experiment
+	if fs.Metadata != nil {
+		fc.Metadata.Experiment = fs.Metadata.Experiment
+	}
+
 	// Value
 	if fs.RawValue != nil {
 		fc.Value = fs.RawValue
