@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.5.0](https://github.com/Flagsmith/flagsmith-go-client/compare/v5.4.0...v5.5.0) (2026-11-06)
+
+
+### Features
+
+* Record exposures under local evaluation ([#246](https://github.com/Flagsmith/flagsmith-go-client/issues/246)) ([4ef3277](https://github.com/Flagsmith/flagsmith-go-client/commit/4ef3277f386e32d38a9bbc45c634b863bfefb22b))
+
+
+### Other
+
+* Let Renovate keep updating spec bumps the webhook handler commits to ([#249](https://github.com/Flagsmith/flagsmith-go-client/issues/249)) ([b8b7e88](https://github.com/Flagsmith/flagsmith-go-client/commit/b8b7e88e3aa8c610ee9d9a0486f65a2f0512c096))
+
 ## [5.4.0](https://github.com/Flagsmith/flagsmith-go-client/compare/v5.3.0...v5.4.0) (2026-11-04)
 
 
