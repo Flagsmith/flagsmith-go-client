@@ -2,7 +2,7 @@ module github.com/Flagsmith/flagsmith-go-client/v5/sdk-spec
 
 go 1.25.0
 
-require github.com/Flagsmith/flagsmith-go-client/v5 v5.0.0
+require github.com/Flagsmith/flagsmith-go-client/v5 v5.5.0
 
 require (
 	github.com/blang/semver/v4 v4.0.0 // indirect
