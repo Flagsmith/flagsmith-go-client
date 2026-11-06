@@ -8,6 +8,7 @@ import (
 
 	"github.com/Flagsmith/flagsmith-go-client/v5/fixtures"
 	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/engine_eval"
+	"github.com/Flagsmith/flagsmith-go-client/v5/flagengine/features"
 )
 
 func TestMakeFlagsFromIdentityAPIJsonWithExperiment(t *testing.T) {
@@ -16,7 +17,7 @@ func TestMakeFlagsFromIdentityAPIJsonWithExperiment(t *testing.T) {
 
 	// Then
 	require.NoError(t, err)
-	require.Len(t, flags.flags, 4)
+	require.Len(t, flags.flags, 5)
 	assert.Equal(t, Flag{
 		Enabled:     true,
 		Value:       "buy-now",
@@ -81,7 +82,7 @@ func TestMakeFlagFromEngineEvaluationFlagResultSetsExperiment(t *testing.T) {
 		Variant: "treatment",
 		Metadata: engine_eval.FeatureMetadata{
 			FeatureID:  1,
-			Experiment: &engine_eval.ExperimentMetadata{ID: 42, Name: "Checkout experiment", InExperiment: true},
+			Experiment: &features.ExperimentModel{ID: 42, Name: "Checkout experiment", InExperiment: true},
 		},
 	})
 
