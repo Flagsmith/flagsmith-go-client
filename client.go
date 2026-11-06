@@ -260,6 +260,8 @@ func (c *Client) GetExperimentFlag(ctx context.Context, featureName string, ec E
 		return skip("flag is disabled")
 	case flag.Experiment == nil || !flag.Experiment.InExperiment:
 		return skip("identity is not enrolled in an experiment")
+	case flag.Variant == "":
+		return skip("flag has no variant")
 	}
 
 	c.eventProcessor.TrackExposureEvent(featureName, identifier, flag.Variant, traitValues(ec.Identity),

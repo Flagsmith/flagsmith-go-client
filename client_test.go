@@ -1856,6 +1856,7 @@ func TestGetExperimentFlagSkipsExposure(t *testing.T) {
 		{name: "identity not enrolled", feature: fixtures.NotEnrolledFeatureName, wantEnabled: true},
 		{name: "no metadata", feature: fixtures.NoMetadataFeatureName, wantEnabled: true},
 		{name: "flag disabled", feature: fixtures.DisabledExperimentFeatureName},
+		{name: "flag has no variant", feature: fixtures.NoVariantFeatureName, wantEnabled: true},
 		{
 			name:    "missing feature served by the default handler",
 			feature: "missing",

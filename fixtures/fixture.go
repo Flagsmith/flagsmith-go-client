@@ -527,10 +527,12 @@ const (
 	NotEnrolledVariant            = "control"
 	NoMetadataFeatureName         = "no_metadata"
 	DisabledExperimentFeatureName = "disabled_experiment"
+	NoVariantFeatureName          = "no_variant"
 )
 
 // IdentityResponseJsonWithExperiment carries one enrolled flag, one flag whose identity is
-// outside the rollout, one flag without metadata and one disabled flag that is enrolled.
+// outside the rollout, one flag without metadata, one disabled flag that is enrolled and one
+// enrolled flag without a variant.
 const IdentityResponseJsonWithExperiment = `
 {
 	"flags": [
@@ -571,6 +573,16 @@ const IdentityResponseJsonWithExperiment = `
 			"reason": "SPLIT; weight=50.0",
 			"metadata": {
 				"experiment": {"id": 44, "name": "disabled_exp", "in_experiment": true}
+			}
+		},
+		{
+			"feature": {"id": 14, "name": "no_variant", "type": "STANDARD"},
+			"enabled": true,
+			"feature_state_value": "on",
+			"variant": null,
+			"reason": "TARGETING_MATCH; segment=premium",
+			"metadata": {
+				"experiment": {"id": 45, "name": "no_variant_exp", "in_experiment": true}
 			}
 		}
 	],
