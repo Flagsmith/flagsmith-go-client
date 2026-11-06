@@ -1852,11 +1852,14 @@ func TestGetExperimentFlagSkipsExposure(t *testing.T) {
 		opts        []flagsmith.Option
 		wantEnabled bool
 		wantDefault bool
+		// The flag's variant and enrollment, so each case reaches the guard it is named after.
+		wantVariant  string
+		wantEnrolled bool
 	}{
-		{name: "identity not enrolled", feature: fixtures.NotEnrolledFeatureName, wantEnabled: true},
+		{name: "identity not enrolled", feature: fixtures.NotEnrolledFeatureName, wantEnabled: true, wantVariant: fixtures.NotEnrolledVariant},
 		{name: "no metadata", feature: fixtures.NoMetadataFeatureName, wantEnabled: true},
-		{name: "flag disabled", feature: fixtures.DisabledExperimentFeatureName},
-		{name: "flag has no variant", feature: fixtures.NoVariantFeatureName, wantEnabled: true},
+		{name: "flag disabled", feature: fixtures.DisabledExperimentFeatureName, wantVariant: fixtures.ExperimentVariant, wantEnrolled: true},
+		{name: "flag has no variant", feature: fixtures.NoVariantFeatureName, wantEnabled: true, wantEnrolled: true},
 		{
 			name:    "missing feature served by the default handler",
 			feature: "missing",
@@ -1880,6 +1883,8 @@ func TestGetExperimentFlagSkipsExposure(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, tt.wantEnabled, flag.Enabled)
 			assert.Equal(t, tt.wantDefault, flag.IsDefault)
+			assert.Equal(t, tt.wantVariant, flag.Variant)
+			assert.Equal(t, tt.wantEnrolled, flag.Experiment != nil && flag.Experiment.InExperiment)
 			require.NoError(t, client.FlushEvents(t.Context()))
 			assert.Empty(t, events.Requests())
 		})
