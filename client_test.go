@@ -1655,6 +1655,9 @@ func TestClientPanicsIfEventsConfigInvalid(t *testing.T) {
 	assert.PanicsWithValue(t, "events retry backoff must not be negative.", func() {
 		_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithEvents(t.Context()), flagsmith.WithEventsRetryBackoff(-time.Second))
 	})
+	assert.PanicsWithValue(t, "events request timeout must be positive.", func() {
+		_ = flagsmith.NewClient(fixtures.EnvironmentAPIKey, flagsmith.WithEvents(t.Context()), flagsmith.WithEventsRequestTimeout(0))
+	})
 }
 
 func TestEventsOptionsWithoutWithEventsAreAccepted(t *testing.T) {
@@ -2011,7 +2014,7 @@ func TestEventsIgnoreClientRetries(t *testing.T) {
 	err := client.FlushEvents(t.Context())
 
 	// Then: three attempts in total, not multiplied by the client's retry count
-	assert.Error(t, err)
+	assert.NoError(t, err)
 	assert.Len(t, events.Requests(), 3)
 }
 
@@ -2112,7 +2115,7 @@ func TestDroppedEventsExposedToHost(t *testing.T) {
 	err := client.FlushEvents(t.Context())
 
 	// Then
-	assert.Error(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, int64(2), client.DroppedEvents())
 }
 
@@ -2125,7 +2128,7 @@ func TestEventsDisabledAfterUnauthorised(t *testing.T) {
 	events := &fixtures.EventsAPIHandler{Statuses: []int{http.StatusUnauthorized}}
 	client := newExperimentClient(t, newExperimentServer(t, events))
 	require.NoError(t, client.TrackEvent("a", nil))
-	require.Error(t, client.FlushEvents(t.Context()))
+	require.NoError(t, client.FlushEvents(t.Context()))
 
 	// When
 	_, err := client.GetExperimentFlag(t.Context(), fixtures.ExperimentFeatureName, flagsmith.NewEvaluationContext("user-123", nil))
@@ -2135,6 +2138,119 @@ func TestEventsDisabledAfterUnauthorised(t *testing.T) {
 	// Then: flags still work, but nothing more is sent
 	require.NoError(t, client.FlushEvents(t.Context()))
 	assert.Len(t, events.Requests(), 1)
+}
+
+func TestCloseSendsBufferedEventsWithRetries(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{Statuses: []int{http.StatusServiceUnavailable}}
+	client := newExperimentClient(t, newExperimentServer(t, events), flagsmith.WithEventsRetryBackoff(time.Millisecond))
+	require.NoError(t, client.TrackEvent("purchase", nil))
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	// When
+	client.Close(ctx)
+
+	// Then: sent again after the 503, and delivered
+	require.Len(t, events.Events(), 2)
+	assert.Equal(t, "purchase", events.Events()[1]["event"])
+	assert.Zero(t, client.DroppedEvents())
+}
+
+func TestCloseReturnsWithinItsDeadlineWhenTheEventsAPIDoesNotAnswer(t *testing.T) {
+	// Given
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/events", func(_ http.ResponseWriter, req *http.Request) {
+		_, _ = io.ReadAll(req.Body)
+		<-req.Context().Done()
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newExperimentClient(t, server)
+	require.NoError(t, client.TrackEvent("purchase", nil))
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+
+	// When
+	start := time.Now()
+	client.Close(ctx)
+
+	// Then
+	assert.Less(t, time.Since(start), time.Second)
+	assert.Equal(t, int64(1), client.DroppedEvents())
+}
+
+func TestEventsTrackedAfterCloseAreDropped(t *testing.T) {
+	// Given
+	events := &fixtures.EventsAPIHandler{}
+	client := newExperimentClient(t, newExperimentServer(t, events))
+	client.Close(t.Context())
+
+	// When
+	err := client.TrackEvent("purchase", nil)
+
+	// Then
+	assert.NoError(t, err)
+	assert.NoError(t, client.FlushEvents(t.Context()))
+	client.Close(t.Context())
+	assert.Empty(t, events.Requests())
+	assert.Equal(t, int64(1), client.DroppedEvents())
+}
+
+func TestCloseStopsEnvironmentPolling(t *testing.T) {
+	// Given
+	var polls atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		polls.Add(1)
+		fixtures.EnvironmentDocumentHandler(rw, req)
+	}))
+	defer server.Close()
+	client := flagsmith.NewClient(fixtures.EnvironmentAPIKey,
+		flagsmith.WithBaseURL(server.URL+"/api/v1/"),
+		flagsmith.WithLocalEvaluation(t.Context()),
+		flagsmith.WithEnvironmentRefreshInterval(5*time.Millisecond),
+	)
+	require.Eventually(t, func() bool { return polls.Load() >= 2 }, time.Second, time.Millisecond)
+
+	// When
+	client.Close(t.Context())
+
+	// Then
+	time.Sleep(20 * time.Millisecond)
+	stoppedAt := polls.Load()
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, stoppedAt, polls.Load())
+	flags, err := client.GetEnvironmentFlags(t.Context())
+	require.NoError(t, err)
+	assert.NotEmpty(t, flags.AllFlags(), "flags are still evaluated against the last environment")
+}
+
+func TestEventsRequestTimeoutAbandonsAnUnansweredRequest(t *testing.T) {
+	// Given
+	mux := http.NewServeMux()
+	var requests atomic.Int64
+	mux.HandleFunc("/v1/events", func(_ http.ResponseWriter, req *http.Request) {
+		requests.Add(1)
+		_, _ = io.ReadAll(req.Body)
+		<-req.Context().Done()
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	client := newExperimentClient(t, server,
+		flagsmith.WithEventsRequestTimeout(30*time.Millisecond),
+		flagsmith.WithEventsRetryBackoff(time.Millisecond),
+	)
+	require.NoError(t, client.TrackEvent("purchase", nil))
+
+	// When
+	start := time.Now()
+	err := client.FlushEvents(t.Context())
+
+	// Then: each attempt is abandoned at the timeout, and the batch is kept
+	assert.NoError(t, err)
+	assert.Less(t, time.Since(start), 500*time.Millisecond)
+	assert.Equal(t, int64(3), requests.Load())
+	assert.Zero(t, client.DroppedEvents())
 }
 
 func newLocalExperimentClient(t *testing.T, events *fixtures.EventsAPIHandler) *flagsmith.Client {

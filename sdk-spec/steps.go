@@ -5,6 +5,8 @@ package steps
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	flagsmith "github.com/Flagsmith/flagsmith-go-client/v5"
 )
@@ -89,4 +91,26 @@ func TrackEvent(client *flagsmith.Client, event, identifier string, value any, m
 // When the application tracks an exposure of feature "{feature}" for identity "{identifier}" with value {value} and metadata:
 func TrackExposureEvent(client *flagsmith.Client, feature, identifier string, value any, metadata map[string]any) error {
 	return client.TrackExposureEvent(feature, identifier, value, &flagsmith.EventOptions{Metadata: metadata})
+}
+
+// When the application tracks events "event_{first}" to "event_{last}" for identity "{identifier}"
+func TrackEvents(client *flagsmith.Client, first, last int, identifier string) error {
+	for number := first; number <= last; number++ {
+		if err := client.TrackEvent(fmt.Sprintf("event_%d", number), &flagsmith.EventOptions{Identifier: identifier}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// When the application flushes events
+func FlushEvents(client *flagsmith.Client) error {
+	return client.FlushEvents(context.Background())
+}
+
+// When the application closes the client with a timeout of {timeout} seconds
+func CloseClient(client *flagsmith.Client, timeout float64) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeout*float64(time.Second)))
+	defer cancel()
+	client.Close(ctx)
 }

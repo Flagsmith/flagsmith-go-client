@@ -14,11 +14,10 @@ For full documentation visit [https://docs.flagsmith.com/clients/server-side?lan
 
 ## Experimentation
 
-Enable events with `WithEvents`. Its context runs the background sender, and cancelling it is the shutdown flush.
+Enable events with `WithEvents`. Its context runs the background sender.
 
 ```go
-eventsCtx, stopEvents := context.WithCancel(context.Background())
-client := flagsmith.NewClient(os.Getenv("FLAGSMITH_SERVER_KEY"), flagsmith.WithEvents(eventsCtx))
+client := flagsmith.NewClient(os.Getenv("FLAGSMITH_SERVER_KEY"), flagsmith.WithEvents(context.Background()))
 
 ec := flagsmith.NewEvaluationContext("user-123", map[string]interface{}{"plan": "premium"})
 flag, err := client.GetExperimentFlag(ctx, "checkout_cta", ec)
@@ -34,10 +33,10 @@ err = client.TrackEvent("purchase", &flagsmith.EventOptions{Identifier: "user-12
 
 ### Delivery and failure handling
 
-Events are sent every 10 seconds (`WithEventsFlushInterval`) or when 1000 are buffered (`WithEventsMaxBufferSize`). Failures never reach the code that tracks events.
+Events are sent every 10 seconds (`WithEventsFlushInterval`) or when 1000 are buffered (`WithEventsMaxBufferSize`). Failures never reach the code that tracks, flushes or closes.
 
-- Network errors, timeouts and 408, 429, 502, 503 and 504 are retried: three attempts, backoff from 1 second (`WithEventsRetryBackoff`) doubling to 10 seconds, with full jitter. A batch that still fails goes back to the front of the buffer until the next scheduled send or `FlushEvents`.
-- Any other error status, including 500, drops the batch.
+- Network errors, requests unanswered after 3 seconds (`WithEventsRequestTimeout`), and 408, 429, 500, 502, 503 and 504 are retried: three attempts, backoff from 1 second (`WithEventsRetryBackoff`) doubling to 10 seconds, with full jitter. A batch that still fails goes back to the front of the buffer until the next scheduled send or `FlushEvents`, unless its last attempt got a 500: then it is dropped.
+- Any other error status drops the batch.
 - A 401 or 403 stops event tracking, drops the buffer and logs one warning, until the client is re-created. Flags keep working.
 - One scheduled send is in flight at a time. When the buffer is full meanwhile, the oldest events are dropped.
 - Events a 202 lists as rejected are logged by index and not resent.
@@ -53,18 +52,17 @@ Events cannot be used with `WithOfflineMode`.
 
 ### Shutdown
 
-Cancelling the `WithEvents` context sends what is buffered, retrying only within one request timeout. The same deadline cuts sends already in progress, including `FlushEvents`. Anything left is dropped and counted.
-
-For a guarantee, for example in a CLI tool, job or serverless function, call `FlushEvents` with a deadline before exit. It returns once every event tracked before the call has been sent, kept for retry or dropped.
+Close the client before the application exits, so that buffered events are not lost. `Close` sends them, retries included, and returns by its context's deadline, dropping and counting what is left. It also stops the client's environment polling, realtime updates and analytics.
 
 ```go
-flushCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
-if err := client.FlushEvents(flushCtx); err != nil {
-	log.Printf("flushing Flagsmith events: %v", err)
-}
-stopEvents()
+client.Close(ctx)
 ```
+
+`FlushEvents` sends buffered events without closing the client. It returns once every event tracked before the call has been sent, kept for retry or dropped, or with its context's error when that ends first.
+
+Cancelling the `WithEvents` context also closes event sending, within one events request timeout. The same deadline cuts sends already in progress, including `FlushEvents`.
 
 ## Contributing
 

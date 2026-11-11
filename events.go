@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -27,6 +28,8 @@ const (
 	DefaultEventsMaxBufferSize = 1000
 	// DefaultEventsRetryBackoff is the backoff before the first retry of a failed batch.
 	DefaultEventsRetryBackoff = time.Second
+	// DefaultEventsRequestTimeout is how long a request to the events API may take.
+	DefaultEventsRequestTimeout = 3 * time.Second
 	// FlagExposureEvent is the event recorded when an identity is exposed to a variant.
 	FlagExposureEvent     = "$flag_exposure"
 	eventsEndpoint        = "v1/events"
@@ -113,6 +116,8 @@ type EventProcessor struct {
 	dropped     atomic.Int64
 	disableOnce sync.Once
 	disabledCh  chan struct{}
+	closeOnce   sync.Once
+	closed      chan struct{}
 	stopped     chan struct{}
 }
 
@@ -158,6 +163,7 @@ func newEventProcessor(ctx context.Context, client *resty.Client, cfg eventProce
 		seen:       make(map[dedupeKey]struct{}),
 		inFlight:   make(map[*eventBatch]struct{}),
 		disabledCh: make(chan struct{}),
+		closed:     make(chan struct{}),
 		stopped:    make(chan struct{}),
 	}
 	go p.start(ctx)
@@ -181,9 +187,21 @@ func (p *EventProcessor) TrackExposureEvent(featureName string, identifier strin
 	p.bufferEvent(FlagExposureEvent, &featureName, identifier, value, traits, metadata)
 }
 
-// Flush sends buffered events and waits for the batches in flight when it was called.
+// Flush sends buffered events and waits for the batches in flight when it was called. Failed
+// sends are handled as the README describes, so it only returns an error when ctx, or
+// shutdown, ends it first.
 func (p *EventProcessor) Flush(ctx context.Context) error {
 	return p.flush(ctx, false)
+}
+
+// Close sends buffered events, retrying until ctx ends, and stops the processor. Events
+// still unsent then are dropped and counted, as are events tracked afterwards. Later
+// calls wait for the first to finish.
+func (p *EventProcessor) Close(ctx context.Context) {
+	p.closeOnce.Do(func() {
+		p.shutdown(ctx)
+		close(p.closed)
+	})
 }
 
 // DroppedEvents returns how many events have been lost so far.
@@ -212,7 +230,9 @@ func (p *EventProcessor) flush(ctx context.Context, final bool) (err error) {
 			sendCtx, cancel = p.flushContext(ctx)
 			defer cancel()
 		}
-		err = p.post(sendCtx, batch, final)
+		if p.post(sendCtx, batch, final) != nil && sendCtx.Err() != nil && !p.disabled.Load() {
+			return sendCtx.Err()
+		}
 	}
 	for _, other := range waiting {
 		select {
@@ -221,7 +241,7 @@ func (p *EventProcessor) flush(ctx context.Context, final bool) (err error) {
 			return ctx.Err()
 		}
 	}
-	return err
+	return nil
 }
 
 // flushContext ends with the caller's ctx, keeping its deadline, or at the shutdown deadline.
@@ -252,27 +272,29 @@ func (p *EventProcessor) start(ctx context.Context) {
 			p.onTick()
 		case <-p.disabledCh:
 			return
+		case <-p.closed:
+			return
 		case <-ctx.Done():
-			p.shutdown(ctx)
+			timeout := p.cfg.timeout
+			if timeout <= 0 {
+				timeout = DefaultTimeout
+			}
+			final, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
+			p.Close(final)
+			cancel()
 			return
 		}
 	}
 }
 
-// shutdown sends the buffer and cuts every in-flight batch at one request timeout.
+// shutdown sends the buffer and cuts every in-flight batch when ctx ends.
 func (p *EventProcessor) shutdown(ctx context.Context) {
 	p.mu.Lock()
 	p.stopping = true
 	p.mu.Unlock()
-	timeout := p.cfg.timeout
-	if timeout <= 0 {
-		timeout = DefaultTimeout
-	}
-	final, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
-	defer cancel()
-	stopAfter := context.AfterFunc(final, p.cancelSend)
+	stopAfter := context.AfterFunc(ctx, p.cancelSend)
 	defer stopAfter()
-	if err := p.flush(final, true); err != nil {
+	if err := p.flush(ctx, true); err != nil {
 		p.logf(slog.LevelWarn, "final events flush failed", "error", err)
 	}
 
@@ -418,7 +440,8 @@ func (p *EventProcessor) post(ctx context.Context, batch *eventBatch, final bool
 	return p.send(ctx, batch.events, final)
 }
 
-// send posts events with retries, then re-queues them, or drops them when final.
+// send posts events with retries, then re-queues them, or drops them when final or when the
+// last attempt got a 500.
 func (p *EventProcessor) send(ctx context.Context, events []bufferedEvent, final bool) error {
 	payload := encodeBatch(events)
 	b := newBackoffWithJitter(p.cfg.retryBackoff, maxEventsRetryBackoff, func(d time.Duration) time.Duration {
@@ -456,12 +479,14 @@ func (p *EventProcessor) send(ctx context.Context, events []bufferedEvent, final
 			break
 		}
 	}
-	if !final && p.requeue(events) {
+	var apiErr *FlagsmithAPIError
+	serverError := errors.As(err, &apiErr) && apiErr.ResponseStatusCode == http.StatusInternalServerError
+	if !final && !serverError && p.requeue(events) {
 		p.logf(slog.LevelWarn, "failed to send events; kept them for the next flush", "count", len(events), "error", err)
 		return err
 	}
-	if final {
-		p.dropped.Add(int64(len(events)))
+	if final || serverError {
+		p.drop(events)
 	}
 	p.logf(slog.LevelWarn, "failed to send events; dropping them", "count", len(events), "error", err)
 	return err
@@ -527,8 +552,8 @@ func (p *EventProcessor) attempt(ctx context.Context, payload []byte, events []b
 		ResponseStatus:     resp.Status(),
 	}
 	switch resp.StatusCode() {
-	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusBadGateway,
-		http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusInternalServerError,
+		http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return outcomeRetryable, apiErr
 	case http.StatusUnauthorized, http.StatusForbidden:
 		return outcomeUnauthorised, apiErr

@@ -42,6 +42,7 @@ var _ = []Option{
 	WithEventsFlushInterval(0),
 	WithEventsMaxBufferSize(0),
 	WithEventsRetryBackoff(0),
+	WithEventsRequestTimeout(0),
 }
 
 func WithBaseURL(url string) Option {
@@ -210,7 +211,7 @@ func WithRestyClient(restyClient *resty.Client) Option {
 }
 
 // WithEvents enables experimentation events. Cancelling ctx performs the shutdown flush,
-// bounded by the request timeout. Not compatible with WithOfflineMode. See the README's
+// bounded by the events request timeout; Client.Close does it within a deadline of yours. Not compatible with WithOfflineMode. See the README's
 // Experimentation section for delivery and failure handling.
 func WithEvents(ctx context.Context) Option {
 	return func(c *Client) {
@@ -251,5 +252,13 @@ func WithEventsMaxBufferSize(size int) Option {
 func WithEventsRetryBackoff(backoff time.Duration) Option {
 	return func(c *Client) {
 		c.config.eventsRetryBackoff = &backoff
+	}
+}
+
+// WithEventsRequestTimeout sets how long a request to the events API may take before it is
+// abandoned and retried. Defaults to DefaultEventsRequestTimeout.
+func WithEventsRequestTimeout(timeout time.Duration) Option {
+	return func(c *Client) {
+		c.config.eventsTimeout = timeout
 	}
 }

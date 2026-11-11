@@ -43,6 +43,7 @@ type Client struct {
 	ctxLocalEval   context.Context
 	ctxAnalytics   context.Context
 	ctxEvents      context.Context
+	stopBackground context.CancelFunc
 	log            *slog.Logger
 	offlineHandler OfflineHandler
 	errorHandler   func(handler *FlagsmithAPIError)
@@ -154,6 +155,11 @@ func NewClient(apiKey string, options ...Option) *Client {
 	if c.config.enableEvents && c.config.eventsRetryBackoff != nil && *c.config.eventsRetryBackoff < 0 {
 		panic("events retry backoff must not be negative.")
 	}
+	if c.config.enableEvents && c.config.eventsTimeout <= 0 {
+		panic("events request timeout must be positive.")
+	}
+	background, stopBackground := context.WithCancel(context.Background())
+	c.stopBackground = stopBackground
 	if c.offlineHandler != nil {
 		env := c.offlineHandler.GetEnvironment()
 		c.environment.Store(env)
@@ -165,19 +171,20 @@ func NewClient(apiKey string, options ...Option) *Client {
 		if !strings.HasPrefix(apiKey, "ser.") {
 			panic("In order to use local evaluation, please generate a server key in the environment settings page.")
 		}
+		ctx := untilDone(c.ctxLocalEval, background)
 		if c.config.polling || !c.config.useRealtime {
 			// Poll indefinitely
-			go c.pollEnvironment(c.ctxLocalEval, true)
+			go c.pollEnvironment(ctx, true)
 		}
 		if c.config.useRealtime {
 			// Poll until we get the environment once
-			go c.pollThenStartRealtime(c.ctxLocalEval)
+			go c.pollThenStartRealtime(ctx)
 		}
 	}
 	// Initialise analytics processor
 	if c.config.enableAnalytics {
 		c.analyticsProcessor = NewAnalyticsProcessor(
-			c.ctxAnalytics,
+			untilDone(c.ctxAnalytics, background),
 			c.client,
 			c.config.baseURL,
 			nil,
@@ -206,10 +213,6 @@ func (c *Client) newEventProcessor() *EventProcessor {
 		EnvironmentKeyHeader: c.apiKey,
 	})
 
-	timeout := httpClient.Timeout
-	if timeout <= 0 {
-		timeout = c.config.timeout
-	}
 	retryBackoff := DefaultEventsRetryBackoff
 	if c.config.eventsRetryBackoff != nil {
 		retryBackoff = *c.config.eventsRetryBackoff
@@ -218,7 +221,7 @@ func (c *Client) newEventProcessor() *EventProcessor {
 		baseURL:       c.config.eventsBaseURL,
 		maxBufferSize: c.config.eventsMaxBufferSize,
 		flushInterval: c.config.eventsFlushInterval,
-		timeout:       timeout,
+		timeout:       c.config.eventsTimeout,
 		retryBackoff:  retryBackoff,
 		log:           log,
 	})
@@ -301,13 +304,24 @@ func (c *Client) TrackExposureEvent(featureName string, identifier string, value
 }
 
 // FlushEvents sends buffered events and returns once every event tracked before the call
-// has been sent, kept for retry or dropped, or when ctx ends. Call it with a deadline
-// before a short-lived process exits. Returns nil when events are not enabled.
+// has been sent, kept for retry or dropped, or with ctx's error when ctx ends first.
+// Returns nil when events are not enabled.
 func (c *Client) FlushEvents(ctx context.Context) error {
 	if c.eventProcessor == nil {
 		return nil
 	}
 	return c.eventProcessor.Flush(ctx)
+}
+
+// Close sends buffered events, retrying until ctx ends, then stops the client's background
+// work: events, analytics, environment polling and realtime updates. Events still unsent
+// when ctx ends are dropped and counted by DroppedEvents. Call it with a deadline before the
+// application exits.
+func (c *Client) Close(ctx context.Context) {
+	c.stopBackground()
+	if c.eventProcessor != nil {
+		c.eventProcessor.Close(ctx)
+	}
 }
 
 // DroppedEvents returns how many experimentation events have been lost so far. The count

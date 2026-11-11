@@ -1,6 +1,7 @@
 package flagsmith
 
 import (
+	"context"
 	"sort"
 )
 
@@ -31,4 +32,11 @@ func sortedKeys[Map ~map[string]V, V any](m Map) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// untilDone returns a context carrying ctx's values that ends when ctx or stop ends.
+func untilDone(ctx, stop context.Context) context.Context {
+	merged, cancel := context.WithCancel(ctx)
+	context.AfterFunc(stop, cancel)
+	return merged
 }
