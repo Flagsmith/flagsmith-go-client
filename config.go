@@ -34,6 +34,7 @@ type config struct {
 	eventsFlushInterval time.Duration
 	eventsMaxBufferSize int
 	eventsRetryBackoff  *time.Duration // nil means DefaultEventsRetryBackoff
+	eventsTimeout       time.Duration
 }
 
 // defaultConfig returns default configuration.
@@ -48,5 +49,6 @@ func defaultConfig() config {
 		eventsBaseURL:       DefaultEventsBaseURL,
 		eventsFlushInterval: DefaultEventsFlushInterval,
 		eventsMaxBufferSize: DefaultEventsMaxBufferSize,
+		eventsTimeout:       DefaultEventsRequestTimeout,
 	}
 }

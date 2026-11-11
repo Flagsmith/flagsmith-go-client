@@ -415,8 +415,9 @@ func TestEventProcessorFlushWaits(t *testing.T) {
 		}
 		assert.NoError(t, p.Flush(t.Context()))
 		assert.Equal(t, 2, server.done(), "the slow batch finished although the other failed")
-		assert.Error(t, receive(t, pending[0], "flush of the failing batch"))
+		assert.NoError(t, receive(t, pending[0], "flush of the failing batch"))
 		assert.NoError(t, receive(t, pending[1], "flush of the slow batch"))
+		assert.Equal(t, int64(1), p.DroppedEvents())
 	})
 	t.Run("sends its own batch during a stalled send", func(t *testing.T) {
 		release, done := newRelease()
@@ -457,23 +458,33 @@ func TestEventProcessorRetries(t *testing.T) {
 			}
 			start := time.Now()
 			p, server, err := flushOnce(t, respond, opts...)
-			var apiErr *FlagsmithAPIError
-			require.ErrorAs(t, err, &apiErr)
-			if status > 0 {
-				assert.Equal(t, status, apiErr.ResponseStatusCode)
-			}
+			assert.NoError(t, err)
 			assert.Less(t, time.Since(start), 500*time.Millisecond)
 			assert.Equal(t, 3, server.count())
 			assert.Len(t, bufferedEvents(p), 1)
 			assert.Zero(t, p.DroppedEvents())
 		})
 	}
-	for _, status := range []int{400, 404, 409, 415, 422, 500, 501} {
+	for _, tt := range []struct {
+		name        string
+		statuses    []int
+		wantDropped int64
+	}{
+		{"500 on the last attempt is dropped", []int{503, 503, 500}, 1},
+		{"500 on an earlier attempt is retried then kept", []int{500, 500, 503}, 0},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p, server, err := flushOnce(t, statuses(tt.statuses...))
+			assert.NoError(t, err)
+			assert.Equal(t, 3, server.count())
+			assert.Len(t, bufferedEvents(p), 1-int(tt.wantDropped))
+			assert.Equal(t, tt.wantDropped, p.DroppedEvents())
+		})
+	}
+	for _, status := range []int{400, 404, 409, 415, 422, 501} {
 		t.Run(fmt.Sprintf("%d is dropped after one attempt", status), func(t *testing.T) {
 			p, server, err := flushOnce(t, statuses(status))
-			var apiErr *FlagsmithAPIError
-			require.ErrorAs(t, err, &apiErr)
-			assert.Equal(t, status, apiErr.ResponseStatusCode)
+			assert.NoError(t, err)
 			assert.Equal(t, 1, server.count())
 			assert.Empty(t, bufferedEvents(p))
 			assert.Equal(t, int64(1), p.DroppedEvents())
@@ -485,7 +496,7 @@ func TestEventProcessorRetries(t *testing.T) {
 		server := newEventsServer(t, statuses(503, 503, 503, http.StatusAccepted))
 		p := newProc(t.Context(), server.URL, 100, 0)
 		track(p, "first")
-		assert.Error(t, p.Flush(t.Context()))
+		assert.NoError(t, p.Flush(t.Context()))
 		assert.Equal(t, 3, server.count())
 		assert.Equal(t, []string{"first"}, bufferedNames(p))
 		track(p, "second")
@@ -520,7 +531,7 @@ func TestEventProcessorRetryBackoff(t *testing.T) {
 			}
 		})
 		track(p, "purchase")
-		require.Error(t, p.Flush(t.Context()))
+		require.NoError(t, p.Flush(t.Context()))
 		mu.Lock()
 		defer mu.Unlock()
 		return bases, waits
@@ -574,7 +585,7 @@ func TestEventProcessorBufferBounds(t *testing.T) {
 		eventually(t, func() bool { return server.count() == 1 })
 		track(p, "new-1", "new-2")
 		done()
-		require.Error(t, <-flushed)
+		require.NoError(t, <-flushed)
 		assert.Equal(t, []string{"old-2", "new-1", "new-2"}, bufferedNames(p))
 		assert.Equal(t, int64(1), p.DroppedEvents())
 	})
@@ -658,14 +669,9 @@ func TestEventProcessorUnauthorised(t *testing.T) {
 			}
 			track(p, "buffered")
 			done()
-			sawStatus := false
 			for _, ch := range pending {
-				err := <-ch
-				require.Error(t, err)
-				var apiErr *FlagsmithAPIError
-				sawStatus = sawStatus || (errors.As(err, &apiErr) && apiErr.ResponseStatusCode == status)
+				require.NoError(t, <-ch)
 			}
-			assert.True(t, sawStatus, "the first rejection cuts the other batch, so only one is sure to carry the status")
 			waitStopped(t, p)
 			require.Equal(t, int64(3), p.DroppedEvents(), "both batches and the buffer are discarded")
 			assert.Empty(t, bufferedEvents(p))
@@ -797,7 +803,7 @@ func TestEventProcessorLogsNoPersonalData(t *testing.T) {
 	p.TrackExposureEvent("checkout_cta", email, "treatment", traits, nil)
 	p.TrackExposureEvent("checkout_cta", email, "treatment", traits, nil)
 	p.TrackEvent("purchase", &EventOptions{Identifier: email, Traits: traits})
-	require.Error(t, p.Flush(t.Context()))
+	require.NoError(t, p.Flush(t.Context()))
 	require.NotEmpty(t, logs.matching(slog.LevelDebug, "skipping duplicate exposure"))
 	require.NotEmpty(t, logs.matching(slog.LevelWarn, "events API rejected batch; dropping it"))
 	logs.assertAbsent(t, email, trait)
@@ -809,7 +815,7 @@ func TestEventProcessorLogsNoPersonalData(t *testing.T) {
 		logs := &recordingHandler{}
 		p := newProc(t.Context(), newEventsServer(t, withBody(http.StatusBadRequest, body)).URL, 100, 0, withLogs(logs))
 		track(p, "purchase")
-		require.Error(t, p.Flush(t.Context()))
+		require.NoError(t, p.Flush(t.Context()))
 		assert.Equal(t, []map[string]interface{}{{"count": int64(1), "status": int64(http.StatusBadRequest), "body_bytes": int64(len(body))}},
 			logs.matching(slog.LevelWarn, "events API rejected batch; dropping it"))
 		logs.assertAbsent(t, "Invalid batch.", email, trait)
@@ -1011,7 +1017,7 @@ func TestEventProcessorPanickingLogger(t *testing.T) {
 		p.TrackExposureEvent("f", "u", "v", nil, nil)
 		p.TrackExposureEvent("f", "u", "v", nil, nil)
 		p.TrackExposureEvent("f", "", "v", nil, nil)
-		assert.Error(t, p.Flush(t.Context()))
+		assert.NoError(t, p.Flush(t.Context()))
 	})
 	assert.Equal(t, 1, server.count())
 	server = newEventsServer(t, statuses(http.StatusBadRequest))
@@ -1021,4 +1027,14 @@ func TestEventProcessorPanickingLogger(t *testing.T) {
 	track(p, "b")
 	eventually(t, func() bool { return server.done() == 2 })
 	assert.NoError(t, p.Flush(t.Context()))
+}
+
+// Requests to the events API time out on their own timeout, not the client's.
+func TestEventsRequestTimeout(t *testing.T) {
+	timeout := func(opts ...Option) time.Duration {
+		return NewClient(EnvironmentAPIKey, append([]Option{WithEvents(t.Context())}, opts...)...).eventProcessor.cfg.timeout
+	}
+	assert.Equal(t, 3*time.Second, timeout())
+	assert.Equal(t, 3*time.Second, timeout(WithRequestTimeout(30*time.Second)))
+	assert.Equal(t, 5*time.Second, timeout(WithEventsRequestTimeout(5*time.Second)))
 }
