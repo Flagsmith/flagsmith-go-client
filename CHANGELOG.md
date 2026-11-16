@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.6.0](https://github.com/Flagsmith/flagsmith-go-client/compare/v5.5.0...v5.6.0) (2026-11-13)
+
+
+### Features
+
+* Retry event delivery and flush on close ([#254](https://github.com/Flagsmith/flagsmith-go-client/issues/254)) ([3cc0973](https://github.com/Flagsmith/flagsmith-go-client/commit/3cc0973587a276a3a3d5a2c190b5f6aa6420d6cb))
+
+
+### Dependency Updates
+
+* update dependency flagengine/engine-test-data to v3.13.2 ([#244](https://github.com/Flagsmith/flagsmith-go-client/issues/244)) ([0a40fc7](https://github.com/Flagsmith/flagsmith-go-client/commit/0a40fc7e943a40cb0e9aa75f8965f0c55f3e539b))
+
 ## [5.5.0](https://github.com/Flagsmith/flagsmith-go-client/compare/v5.4.0...v5.5.0) (2026-11-06)
 
 
