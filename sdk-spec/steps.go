@@ -15,12 +15,17 @@ type Flag struct {
 	Feature string `json:"feature"`
 	Enabled bool   `json:"enabled"`
 	Value   any    `json:"value"`
+	Reason  string `json:"reason"`
+}
+
+func asSpecFlag(flag flagsmith.Flag) Flag {
+	return Flag{Feature: flag.FeatureName, Enabled: flag.Enabled, Value: flag.Value, Reason: flag.Reason}
 }
 
 func asSpecFlags(flags flagsmith.Flags) []Flag {
 	result := []Flag{}
 	for _, flag := range flags.AllFlags() {
-		result = append(result, Flag{Feature: flag.FeatureName, Enabled: flag.Enabled, Value: flag.Value})
+		result = append(result, asSpecFlag(flag))
 	}
 	return result
 }
@@ -80,7 +85,7 @@ func GetIdentityFlags(client *flagsmith.Client, identifier string, traits map[st
 // When the application gets the experiment flag "{feature}" for identity "{identifier}" with traits:
 func GetExperimentFlag(client *flagsmith.Client, feature, identifier string, traits map[string]any) ([]Flag, error) {
 	flag, err := client.GetExperimentFlag(context.Background(), feature, flagsmith.NewEvaluationContext(identifier, traits))
-	return []Flag{{Feature: flag.FeatureName, Enabled: flag.Enabled, Value: flag.Value}}, err
+	return []Flag{asSpecFlag(flag)}, err
 }
 
 // When the application tracks event "{event}" for identity "{identifier}" with value {value} and metadata:
