@@ -3,6 +3,7 @@ package flagsmith
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
@@ -13,8 +14,9 @@ const AnalyticsTimerInMilli = 10 * 1000
 const AnalyticsEndpoint = "analytics/flags/"
 
 type analyticDataStore struct {
-	mu   sync.Mutex
-	data map[string]int
+	flushMu sync.Mutex
+	mu      sync.Mutex
+	data    map[string]int
 }
 type AnalyticsProcessor struct {
 	client   *resty.Client
@@ -59,12 +61,16 @@ func (a *AnalyticsProcessor) start(ctx context.Context, tickerInterval int) {
 }
 
 func (a *AnalyticsProcessor) Flush(ctx context.Context) error {
+	a.store.flushMu.Lock()
+	defer a.store.flushMu.Unlock()
+
 	a.store.mu.Lock()
-	defer a.store.mu.Unlock()
-	if len(a.store.data) == 0 {
+	data := maps.Clone(a.store.data)
+	a.store.mu.Unlock()
+	if len(data) == 0 {
 		return nil
 	}
-	resp, err := a.client.R().SetContext(ctx).SetBody(a.store.data).Post(a.endpoint)
+	resp, err := a.client.R().SetContext(ctx).SetBody(data).Post(a.endpoint)
 	if err != nil {
 		return err
 	}
@@ -72,8 +78,15 @@ func (a *AnalyticsProcessor) Flush(ctx context.Context) error {
 		return fmt.Errorf("received unexpected response from server: %s", resp.Status())
 	}
 
-	// Clear the cache in case of success.
-	a.store.data = make(map[string]int)
+	// Keep counts tracked while this snapshot was being uploaded.
+	a.store.mu.Lock()
+	defer a.store.mu.Unlock()
+	for name, count := range data {
+		a.store.data[name] -= count
+		if a.store.data[name] == 0 {
+			delete(a.store.data, name)
+		}
+	}
 	return nil
 }
 
