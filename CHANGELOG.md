@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.7.0](https://github.com/Flagsmith/flagsmith-go-client/compare/v5.6.0...v5.7.0) (2026-11-20)
+
+
+### Features
+
+* Every SDK includes `reason` in responses for identity and environment flags ([#258](https://github.com/Flagsmith/flagsmith-go-client/issues/258)) ([0ef6d32](https://github.com/Flagsmith/flagsmith-go-client/commit/0ef6d32ca3d006f9b725003ac33a166a32b0cfff))
+
 ## [5.6.0](https://github.com/Flagsmith/flagsmith-go-client/compare/v5.5.0...v5.6.0) (2026-11-13)
 
 
