@@ -1,6 +1,6 @@
 module github.com/Flagsmith/flagsmith-go-client/v5
 
-go 1.25.0
+go 1.26
 
 require (
 	github.com/blang/semver/v4 v4.0.0
@@ -12,7 +12,7 @@ require (
 	github.com/go-resty/resty/v2 v2.17.2
 	github.com/itlightning/dateparse v0.2.1
 	github.com/ohler55/ojg v1.28.1
-	github.com/tailscale/hujson v0.0.0-20250605163823-992244df8c5a
+	github.com/tailscale/hujson v0.0.0-20260727124030-b80ff77dac4f
 )
 
 require (
