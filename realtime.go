@@ -60,7 +60,11 @@ func (r *realtime) start() {
 
 // connect establishes and maintains the SSE connection.
 func (r *realtime) connect() error {
-	resp, err := http.Get(r.streamURL)
+	req, err := http.NewRequestWithContext(r.ctx, http.MethodGet, r.streamURL, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
