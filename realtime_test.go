@@ -1,12 +1,15 @@
 package flagsmith
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,7 +19,29 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type syncLogBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncLogBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncLogBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func newTestRealtimeLogger(buf *syncLogBuffer) *slog.Logger {
+	return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
 func TestRealtimeStartUnblocksOnContextCancel(t *testing.T) {
+	// Given
 	streamConnected := make(chan struct{})
 	releaseStream := make(chan struct{})
 	defer close(releaseStream)
@@ -39,9 +64,11 @@ func TestRealtimeStartUnblocksOnContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	client := &Client{log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	var logs syncLogBuffer
+	client := &Client{log: newTestRealtimeLogger(&logs)}
 	rt := newRealtime(client, ctx, server.URL+"/stream", time.Unix(0, 0))
 
+	// When
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -54,16 +81,27 @@ func TestRealtimeStartUnblocksOnContextCancel(t *testing.T) {
 		t.Fatal("timed out waiting for SSE stream connection")
 	}
 
+	require.Eventually(t, func() bool {
+		return strings.Contains(logs.String(), "msg=connected")
+	}, 2*time.Second, 5*time.Millisecond)
+
 	cancel()
 
+	// Then
 	select {
 	case <-done:
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("realtime.start() remained blocked after context cancellation")
 	}
+
+	logOutput := logs.String()
+	assert.Contains(t, logOutput, `msg="connecting to realtime"`)
+	assert.Contains(t, logOutput, "msg=connected")
+	assert.Contains(t, logOutput, "msg=stopped")
 }
 
 func TestRealtimeConnectProcessesUpdatedAtEvent(t *testing.T) {
+	// Given
 	var envRequests atomic.Int32
 	releaseStream := make(chan struct{})
 	defer close(releaseStream)
@@ -94,19 +132,22 @@ func TestRealtimeConnectProcessesUpdatedAtEvent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	var logs syncLogBuffer
 	client := NewClient(
 		fixtures.EnvironmentAPIKey,
 		WithBaseURL(server.URL+"/api/v1/"),
-		WithSlogLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
+		WithSlogLogger(newTestRealtimeLogger(&logs)),
 	)
 	rt := newRealtime(client, ctx, server.URL+"/sse/environments/"+fixtures.EnvironmentAPIKey+"/stream", time.Unix(0, 0))
 
+	// When
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		rt.start()
 	}()
 
+	// Then
 	assert.Eventually(t, func() bool {
 		return envRequests.Load() >= 1
 	}, 2*time.Second, 10*time.Millisecond)
@@ -118,4 +159,9 @@ func TestRealtimeConnectProcessesUpdatedAtEvent(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 		t.Fatal("realtime.start() remained blocked after context cancellation")
 	}
+
+	logOutput := logs.String()
+	assert.Contains(t, logOutput, `msg="connecting to realtime"`)
+	assert.Contains(t, logOutput, "msg=connected")
+	assert.Contains(t, logOutput, "msg=stopped")
 }
